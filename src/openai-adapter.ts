@@ -4,6 +4,7 @@
  */
 
 import type { AnthropicRequest, AnthropicMessage, ContentBlock } from "./types";
+import { translateToolCalls, needsTranslation } from "./tool-call-translator";
 
 export interface OpenAIMessage {
   role: "system" | "user" | "assistant";
@@ -68,6 +69,33 @@ export interface OpenAIStreamChunk {
   }[];
 }
 
+/**
+ * Normalize Cursor model names to Anthropic format
+ * Examples:
+ * - claude-4.5-opus-high → claude-opus-4-5 (with reasoning_budget: high)
+ * - claude-4.5-opus-high-thinking → claude-opus-4-5 (with reasoning_budget: high)
+ * - claude-4.5-sonnet-high → claude-sonnet-4-5 (with reasoning_budget: high)
+ * - claude-4.5-haiku → claude-haiku-4-5
+ */
+export function normalizeModelName(model: string): { model: string; reasoningBudget?: string } {
+  // Handle Cursor's format: claude-4.5-{model}-{budget} or claude-4.5-{model}-{budget}-thinking
+  const match = model.match(/^claude-4\.5-(opus|sonnet|haiku)(?:-(high|medium|low))?(?:-thinking)?$/);
+  if (match) {
+    const [, modelType, budget] = match;
+    return {
+      model: `claude-${modelType}-4-5`,
+      reasoningBudget: budget || undefined,
+    };
+  }
+  
+  // Handle Anthropic format directly (passthrough)
+  if (model.startsWith("claude-")) {
+    return { model };
+  }
+  
+  // Unknown format, passthrough
+  return { model };
+}
 
 function convertContent(
   content: string | OpenAIContentPart[]
@@ -76,17 +104,21 @@ function convertContent(
     return content;
   }
 
-  return content.map((part): ContentBlock => {
+  const blocks: ContentBlock[] = [];
+  
+  for (const part of content) {
     if (part.type === "text") {
-      return { type: "text", text: part.text || "" };
-    }
-    if (part.type === "image_url" && part.image_url) {
+      // Only add text blocks if they have non-empty content
+      if (part.text && part.text.trim().length > 0) {
+        blocks.push({ type: "text", text: part.text });
+      }
+    } else if (part.type === "image_url" && part.image_url) {
       // Handle base64 images
       const url = part.image_url.url;
       if (url.startsWith("data:")) {
         const match = url.match(/^data:([^;]+);base64,(.+)$/);
         if (match) {
-          return {
+          blocks.push({
             type: "image",
             source: {
               type: "base64",
@@ -97,20 +129,22 @@ function convertContent(
                 | "image/webp",
               data: match[2],
             },
-          };
+          });
         }
+      } else {
+        // Handle URL images
+        blocks.push({
+          type: "image",
+          source: {
+            type: "url",
+            url: url,
+          },
+        });
       }
-      // Handle URL images
-      return {
-        type: "image",
-        source: {
-          type: "url",
-          url: url,
-        },
-      };
     }
-    return { type: "text", text: "" };
-  });
+  }
+  
+  return blocks;
 }
 
 export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest {
@@ -128,9 +162,22 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
         system = content;
       }
     } else if (msg.role === "user" || msg.role === "assistant") {
+      const convertedContent = convertContent(msg.content);
+      // Skip messages with no valid content blocks
+      if (typeof convertedContent === "string") {
+        // String content: skip if empty
+        if (convertedContent.trim().length === 0) {
+          continue;
+        }
+      } else {
+        // Array content: skip if empty after filtering
+        if (convertedContent.length === 0) {
+          continue;
+        }
+      }
       messages.push({
         role: msg.role,
-        content: convertContent(msg.content),
+        content: convertedContent,
       });
     }
   }
@@ -141,11 +188,25 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     messages.unshift({ role: "user", content: "Continue." });
   }
 
-  return {
-    model: request.model,
+  // Normalize model name from Cursor format
+  const normalized = normalizeModelName(request.model);
+  
+  // Determine max_tokens: use Cursor's value or default to 4096
+  const maxTokens = request.max_tokens || request.max_completion_tokens || 4096;
+  const maxTokensSource = request.max_tokens 
+    ? "Cursor (max_tokens)" 
+    : request.max_completion_tokens 
+    ? "Cursor (max_completion_tokens)" 
+    : "Default (4096)";
+  
+  console.log(`   [Debug] Normalized model: "${request.model}" → "${normalized.model}"${normalized.reasoningBudget ? ` (reasoning_budget: ${normalized.reasoningBudget})` : ""}`);
+  console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
+
+  const result: AnthropicRequest = {
+    model: normalized.model,
     messages,
     system,
-    max_tokens: request.max_tokens || request.max_completion_tokens || 4096,
+    max_tokens: maxTokens,
     temperature: request.temperature,
     top_p: request.top_p,
     stream: request.stream,
@@ -155,13 +216,22 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
         : [request.stop]
       : undefined,
   };
+  
+  // Add reasoning_budget if present (Anthropic expects it as a number or specific string)
+  if (normalized.reasoningBudget) {
+    // Convert "high" to a number or keep as string depending on API requirements
+    // For now, pass as string - may need to convert to number based on API docs
+    result.reasoning_budget = normalized.reasoningBudget;
+  }
+  
+  return result;
 }
 
 export function anthropicToOpenai(
   anthropicResponse: any,
   model: string
 ): OpenAIChatResponse {
-  const content = anthropicResponse.content
+  let content = anthropicResponse.content
     ?.map((block: any) => {
       if (block.type === "text") return block.text;
       if (block.type === "tool_use")
@@ -169,6 +239,11 @@ export function anthropicToOpenai(
       return "";
     })
     .join("") || "";
+
+  // Translate tool calls if present in non-streaming response
+  if (needsTranslation(content)) {
+    content = translateToolCalls(content);
+  }
 
   return {
     id: `chatcmpl-${anthropicResponse.id || Date.now()}`,

@@ -9,17 +9,34 @@ import {
   type OpenAIChatRequest,
 } from "./src/openai-adapter";
 import {
+  isOpenAIPassthroughEnabled,
+  proxyOpenAIRequest,
+} from "./src/openai-passthrough";
+import {
   getDb,
   getAnalytics,
   getBudgetSettings,
   updateBudgetSettings,
   getRecentRequests,
+  resetAnalytics,
   type BudgetSettings,
 } from "./src/db";
 import { formatCost } from "./src/pricing";
 import type { AnthropicRequest, AnthropicError } from "./src/types";
+import {
+  translateToolCalls,
+  needsTranslation,
+} from "./src/tool-call-translator";
+import { logger } from "./src/logger";
 
 const config = getConfig();
+
+function shouldPassthroughToOpenAI(model: string): boolean {
+  if (!isOpenAIPassthroughEnabled()) return false;
+  const normalized = model.toLowerCase();
+  // Pass through non-Claude models (GPT, Gemini, Llama, etc.)
+  return !normalized.includes("claude");
+}
 
 async function checkCredentials(): Promise<boolean> {
   const creds = await loadCredentials();
@@ -27,65 +44,182 @@ async function checkCredentials(): Promise<boolean> {
     console.log("\n⚠️  No Claude Code credentials found.");
     console.log(`   Expected at: ${CLAUDE_CREDENTIALS_PATH}`);
     console.log("   Run 'claude /login' to authenticate.\n");
-    
+
     if (config.anthropicApiKey) {
       console.log("✓ Fallback ANTHROPIC_API_KEY is configured");
       return true;
     }
-    
+
     console.log("⚠️  No ANTHROPIC_API_KEY fallback configured either.");
     return false;
   }
-  
+
   console.log("✓ Claude Code credentials loaded");
-  
+
   const token = await getValidToken();
   if (token) {
     const expiresIn = Math.round((token.expiresAt - Date.now()) / 1000 / 60);
     console.log(`  Token expires in ${expiresIn} minutes`);
   }
-  
+
   if (config.anthropicApiKey) {
     console.log("✓ Fallback ANTHROPIC_API_KEY configured");
   } else {
-    console.log("⚠️  No fallback ANTHROPIC_API_KEY (will fail if Claude Code limits hit)");
+    console.log(
+      "⚠️  No fallback ANTHROPIC_API_KEY (will fail if Claude Code limits hit)"
+    );
   }
-  
+
   return true;
+}
+
+function logRequestDetails(req: Request, endpoint: string) {
+  const url = new URL(req.url);
+  const userAgent = req.headers.get("user-agent") || "unknown";
+  const origin = req.headers.get("origin") || "none";
+  const referer = req.headers.get("referer") || "none";
+  const cfRay = req.headers.get("cf-ray") || "none";
+  const cfConnectingIp = req.headers.get("cf-connecting-ip") || "none";
+  const xForwardedFor = req.headers.get("x-forwarded-for") || "none";
+  const xRealIp = req.headers.get("x-real-ip") || "none";
+
+  const anthropicBeta = req.headers.get("anthropic-beta") || "none";
+
+  console.log(`\n📥 [${endpoint}] Request Details:`);
+  console.log(`   User-Agent: ${userAgent}`);
+  console.log(`   Origin: ${origin}`);
+  console.log(`   Referer: ${referer}`);
+  console.log(`   CF-Ray: ${cfRay}`);
+  console.log(`   CF-Connecting-IP: ${cfConnectingIp} (Cursor backend server)`);
+  console.log(`   X-Forwarded-For: ${xForwardedFor}`);
+  console.log(`   X-Real-IP: ${xRealIp}`);
+  console.log(`   Anthropic-Beta: ${anthropicBeta}`);
+  console.log(`   URL: ${url.pathname}${url.search}`);
+  console.log(`   Method: ${req.method}`);
+
+  // Log all headers (useful for debugging tunnel issues)
+  const allHeaders: Record<string, string> = {};
+  req.headers.forEach((value, key) => {
+    allHeaders[key] = value;
+  });
+  console.log(`   All Headers: ${JSON.stringify(allHeaders, null, 2)}`);
 }
 
 function extractHeaders(req: Request): Record<string, string> {
   const headers: Record<string, string> = {};
   const passthrough = ["anthropic-version", "anthropic-beta"];
-  
+
   for (const key of passthrough) {
     const value = req.headers.get(key);
     if (value) headers[key] = value;
   }
-  
+
   if (!headers["anthropic-version"]) {
     headers["anthropic-version"] = "2023-06-01";
   }
-  
+
   return headers;
+}
+
+function extractAPIKey(req: Request): string | null {
+  // Check Authorization header (Bearer token)
+  const authHeader = req.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const apiKey = authHeader.substring(7).trim();
+    // Only use if it looks like an Anthropic API key (starts with sk-ant-)
+    if (apiKey.startsWith("sk-ant-")) {
+      return apiKey;
+    }
+  }
+
+  // Check x-api-key header (Anthropic format)
+  const apiKeyHeader = req.headers.get("x-api-key");
+  if (apiKeyHeader?.startsWith("sk-ant-")) {
+    return apiKeyHeader;
+  }
+
+  return null;
+}
+
+function checkIPWhitelist(req: Request): {
+  allowed: boolean;
+  ip?: string;
+  reason?: string;
+} {
+  // Only enforce IP whitelist when requests come through tunnel (have CF headers)
+  const cfRay = req.headers.get("cf-ray");
+  const cfConnectingIp = req.headers.get("cf-connecting-ip");
+
+  // If no CF headers, assume local request (allow)
+  if (!cfRay && !cfConnectingIp) {
+    return { allowed: true, ip: "local" };
+  }
+
+  // If CF headers present, validate IP
+  const clientIP =
+    cfConnectingIp || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+
+  if (!clientIP) {
+    return { allowed: false, reason: "No IP found in headers" };
+  }
+
+  const isAllowed = config.allowedIPs.includes(clientIP);
+
+  if (!isAllowed) {
+    console.log(
+      `\n🚫 [SECURITY] Blocked request from unauthorized IP: ${clientIP}`
+    );
+    console.log(`   Allowed IPs: ${config.allowedIPs.join(", ")}`);
+    console.log(`   CF-Ray: ${cfRay}`);
+  }
+
+  return {
+    allowed: isAllowed,
+    ip: clientIP,
+    reason: isAllowed ? undefined : `IP ${clientIP} not in whitelist`,
+  };
 }
 
 const server = Bun.serve({
   port: config.port,
-  
+  idleTimeout: 255, // 255 seconds for streaming responses
+
   async fetch(req) {
     const url = new URL(req.url);
-    
+
     if (req.method === "OPTIONS") {
       return new Response(null, {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta",
+          "Access-Control-Allow-Headers":
+            "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta",
         },
       });
     }
-    
+
+    // Check IP whitelist for API endpoints (not health checks)
+    if (
+      url.pathname.startsWith("/v1/") ||
+      url.pathname.startsWith("/analytics") ||
+      url.pathname.startsWith("/budget")
+    ) {
+      const ipCheck = checkIPWhitelist(req);
+      if (!ipCheck.allowed) {
+        return Response.json(
+          {
+            error: {
+              type: "authentication_error",
+              message: `Unauthorized: ${
+                ipCheck.reason || "IP not whitelisted"
+              }`,
+            },
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     if (url.pathname === "/health" || url.pathname === "/") {
       const token = await getValidToken();
       return Response.json({
@@ -95,22 +229,42 @@ const server = Bun.serve({
           expiresAt: token?.expiresAt,
         },
         fallback: !!config.anthropicApiKey,
+        openaiPassthrough: {
+          enabled: isOpenAIPassthroughEnabled(),
+          baseUrl: config.openaiBaseUrl,
+        },
       });
     }
-    
+
     // Anthropic-compatible endpoint
     if (url.pathname === "/v1/messages" && req.method === "POST") {
       try {
-        const body: AnthropicRequest = await req.json();
+        logRequestDetails(req, "Anthropic /v1/messages");
+        const body = (await req.json()) as AnthropicRequest;
         const headers = extractHeaders(req);
-        
-        console.log(`\n→ ${body.model} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`);
-        
-        const response = await proxyRequest("/v1/messages", body, headers);
-        
+
+        // Check if user provided their own API key
+        const userAPIKey = extractAPIKey(req);
+        if (userAPIKey) {
+          console.log(`\n🔑 Using user-provided API key from request`);
+        }
+
+        console.log(
+          `\n→ Model: "${body.model}" | ${
+            body.stream ? "stream" : "sync"
+          } | max_tokens=${body.max_tokens}`
+        );
+
+        const response = await proxyRequest(
+          "/v1/messages",
+          body,
+          headers,
+          userAPIKey || undefined
+        );
+
         const responseHeaders = new Headers(response.headers);
         responseHeaders.set("Access-Control-Allow-Origin", "*");
-        
+
         return new Response(response.body, {
           status: response.status,
           headers: responseHeaders,
@@ -118,121 +272,873 @@ const server = Bun.serve({
       } catch (error) {
         console.error("Request handling error:", error);
         return Response.json(
-          { 
-            type: "error", 
-            error: { type: "invalid_request_error", message: String(error) } 
+          {
+            type: "error",
+            error: { type: "invalid_request_error", message: String(error) },
           } satisfies AnthropicError,
           { status: 400 }
         );
       }
     }
-    
+
     // OpenAI-compatible endpoint
     if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
       try {
-        const openaiBody: OpenAIChatRequest = await req.json();
+        logRequestDetails(req, "OpenAI /v1/chat/completions");
+        const openaiBody = (await req.json()) as OpenAIChatRequest;
+
+        // Log the request body from Cursor (truncated)
+        const bodyStr = JSON.stringify(openaiBody, null, 2);
+        const truncatedBody =
+          bodyStr.length > 500
+            ? bodyStr.substring(0, 500) + "... [truncated]"
+            : bodyStr;
+
+        console.log(`\n📋 [Cursor Request Body]:`);
+        console.log(`   Model: "${openaiBody.model}"`);
+        console.log(`   Stream: ${openaiBody.stream || false}`);
+        console.log(
+          `   Max Tokens: ${
+            openaiBody.max_tokens ||
+            openaiBody.max_completion_tokens ||
+            "not set"
+          }`
+        );
+        console.log(`   Temperature: ${openaiBody.temperature || "not set"}`);
+        console.log(`   Messages Count: ${openaiBody.messages?.length || 0}`);
+
+        // Log the FULL raw request body to file for debugging tool call format
+        logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
+        logger.verbose(JSON.stringify(openaiBody, null, 2));
+
+        // Log all messages, especially system messages (verbose to file)
+        if (openaiBody.messages && openaiBody.messages.length > 0) {
+          logger.verbose(`\n📝 [Cursor Messages]:`);
+          openaiBody.messages.forEach((msg, idx) => {
+            const content =
+              typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content);
+
+            // For system messages, log the full content (might contain tool call format instructions)
+            if (msg.role === "system") {
+              logger.verbose(
+                `   [${idx}] System Message (${content.length} chars):`
+              );
+              logger.verbose(
+                `   ${content
+                  .split("\n")
+                  .map((l: string) => `      ${l}`)
+                  .join("\n")}`
+              );
+            } else {
+              // For other messages, log full content (no truncation in verbose mode)
+              logger.verbose(
+                `   [${idx}] ${msg.role} (${content.length} chars):`
+              );
+              logger.verbose(
+                `   ${content
+                  .split("\n")
+                  .map((l: string) => `      ${l}`)
+                  .join("\n")}`
+              );
+            }
+          });
+        }
+
+        console.log(`\n   Body Preview: ${truncatedBody}`);
+
+        // Passthrough to OpenAI/OpenRouter for non-Claude models
+        if (shouldPassthroughToOpenAI(openaiBody.model)) {
+          console.log(
+            `\n→ [OpenAI Passthrough] ${openaiBody.model} | ${
+              openaiBody.stream ? "stream" : "sync"
+            }`
+          );
+
+          const response = await proxyOpenAIRequest(
+            "/v1/chat/completions",
+            openaiBody
+          );
+
+          const responseHeaders = new Headers(response.headers);
+          responseHeaders.set("Access-Control-Allow-Origin", "*");
+
+          return new Response(response.body, {
+            status: response.status,
+            headers: responseHeaders,
+          });
+        }
+
+        // Convert to Anthropic for Claude models
         const anthropicBody = openaiToAnthropic(openaiBody);
         const headers = extractHeaders(req);
-        
-        console.log(`\n→ [OpenAI] ${openaiBody.model} → ${anthropicBody.model} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`);
-        
-        const response = await proxyRequest("/v1/messages", anthropicBody, headers);
-        
+
+        // Check if user provided their own API key
+        const userAPIKey = extractAPIKey(req);
+        if (userAPIKey) {
+          console.log(`\n🔑 Using user-provided API key from request`);
+        }
+
+        console.log(
+          `\n→ [OpenAI→Anthropic] Original: "${
+            openaiBody.model
+          }" → Normalized: "${anthropicBody.model}" | ${
+            anthropicBody.stream ? "stream" : "sync"
+          } | max_tokens=${anthropicBody.max_tokens}`
+        );
+        if (anthropicBody.reasoning_budget) {
+          console.log(`   Reasoning Budget: ${anthropicBody.reasoning_budget}`);
+        }
+
+        // Log the system prompt that will be sent to Claude Code (verbose to file)
+        if (anthropicBody.system) {
+          const systemContent =
+            typeof anthropicBody.system === "string"
+              ? anthropicBody.system
+              : Array.isArray(anthropicBody.system)
+              ? anthropicBody.system
+                  .map((block) =>
+                    block &&
+                    typeof block === "object" &&
+                    "type" in block &&
+                    block.type === "text"
+                      ? block.text
+                      : JSON.stringify(block)
+                  )
+                  .join("\n")
+              : String(anthropicBody.system);
+          logger.verbose(
+            `\n📋 [Anthropic System Prompt] (${systemContent.length} chars):`
+          );
+          logger.verbose(
+            systemContent
+              .split("\n")
+              .map((l: string) => `   ${l}`)
+              .join("\n")
+          );
+        }
+
+        // Log Anthropic messages (verbose to file)
+        if (anthropicBody.messages && anthropicBody.messages.length > 0) {
+          logger.verbose(
+            `\n📨 [Anthropic Messages] (${anthropicBody.messages.length}):`
+          );
+          anthropicBody.messages.forEach((msg, idx) => {
+            const content =
+              typeof msg.content === "string"
+                ? msg.content
+                : Array.isArray(msg.content)
+                ? msg.content
+                    .map((block) =>
+                      block &&
+                      typeof block === "object" &&
+                      "type" in block &&
+                      block.type === "text"
+                        ? block.text
+                        : JSON.stringify(block)
+                    )
+                    .join("\n")
+                : JSON.stringify(msg.content);
+            // Log full content (no truncation in verbose mode for debugging tool calls)
+            logger.verbose(
+              `   [${idx}] ${msg.role} (${content.length} chars):`
+            );
+            logger.verbose(
+              `   ${content
+                .split("\n")
+                .map((l: string) => `      ${l}`)
+                .join("\n")}`
+            );
+          });
+        }
+
+        // Log what we're about to send (before Claude Code preparation)
+        console.log(`\n📤 [Prepared Request Summary]:`);
+        console.log(`   System prompt present: ${!!anthropicBody.system}`);
+        if (anthropicBody.system) {
+          const sysStr =
+            typeof anthropicBody.system === "string"
+              ? anthropicBody.system
+              : "array";
+          console.log(
+            `   System type: ${typeof anthropicBody.system}, preview: ${String(
+              sysStr
+            ).substring(0, 100)}...`
+          );
+        }
+
+        const response = await proxyRequest(
+          "/v1/messages",
+          anthropicBody,
+          headers,
+          userAPIKey || undefined
+        );
+
+        console.log(
+          `   [Debug] Response status: ${response.status}, ok: ${response.ok}`
+        );
+
+        if (!response.ok) {
+          const errorText = await response
+            .clone()
+            .text()
+            .catch(() => "Unable to read error");
+          console.log(
+            `   [Debug] Error response: ${errorText.substring(0, 500)}`
+          );
+        }
+
+        console.log(
+          `   [Debug] Response headers: ${JSON.stringify(
+            Object.fromEntries(response.headers)
+          )}`
+        );
+        console.log(
+          `   [Debug] Response body readable: ${response.body !== null}`
+        );
+
         const responseHeaders = new Headers();
         responseHeaders.set("Access-Control-Allow-Origin", "*");
         responseHeaders.set("Content-Type", "application/json");
-        
+
         // Handle streaming
         if (anthropicBody.stream && response.ok) {
           responseHeaders.set("Content-Type", "text/event-stream");
           responseHeaders.set("Cache-Control", "no-cache");
           responseHeaders.set("Connection", "keep-alive");
-          
+          responseHeaders.set("X-Accel-Buffering", "no"); // Disable buffering for nginx/proxies
+
           const streamId = Date.now().toString();
           const reader = response.body?.getReader();
-          
+
+          logger.verbose(
+            `   [Debug] Stream reader created: ${reader !== null}`
+          );
+
           if (!reader) {
-            return Response.json({ error: { message: "No response body" } }, { status: 500 });
+            return Response.json(
+              { error: { message: "No response body" } },
+              { status: 500 }
+            );
           }
-          
+
+          let cancelled = false;
           const stream = new ReadableStream({
             async start(controller) {
               const decoder = new TextDecoder();
               let buffer = "";
               let sentStart = false;
-              
+              let toolCallBuffer = ""; // Buffer for tool calls that span multiple chunks
+              let inToolCall = false;
+              let lastChunkTime = Date.now();
+              const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds if buffering
+              let currentBlockIndex = -1; // Track which content block we're processing
+              let blockTextSent = false; // Track if we've sent text from content_block_start
+
+              // Helper to safely enqueue data
+              const safeEnqueue = (data: Uint8Array) => {
+                try {
+                  if (!cancelled) {
+                    controller.enqueue(data);
+                  }
+                } catch {
+                  // Controller might be closed, ignore
+                  cancelled = true;
+                }
+              };
+
+              // Helper to process and translate tool call buffer
+              const processToolCallBuffer = (
+                force: boolean = false
+              ): string => {
+                if (!toolCallBuffer) return "";
+
+                // Check if we have a complete tool call (has closing tag)
+                const hasCompleteToolCall =
+                  /<\/invoke>/i.test(toolCallBuffer) ||
+                  /<\/function_calls>/i.test(toolCallBuffer) ||
+                  /<\/search_files>/i.test(toolCallBuffer) ||
+                  /<\/read_file>/i.test(toolCallBuffer);
+
+                // Process if complete or forced (end of stream)
+                if (hasCompleteToolCall || force) {
+                  const translated = translateToolCalls(toolCallBuffer);
+                  const result = translated;
+                  toolCallBuffer = "";
+                  inToolCall = false;
+                  return result;
+                }
+
+                // Not complete yet, keep buffering
+                return "";
+              };
+
               try {
+                logger.verbose(`   [Debug] Starting to read stream...`);
+                let chunkCount = 0;
                 while (true) {
+                  if (cancelled) {
+                    logger.verbose(`   [Debug] Stream cancelled by client`);
+                    break;
+                  }
+
                   const { done, value } = await reader.read();
-                  if (done) break;
-                  
+                  if (done) {
+                    console.log(
+                      `   [Debug] Stream ended after ${chunkCount} chunks`
+                    );
+                    break;
+                  }
+
+                  if (cancelled) break;
+
+                  chunkCount++;
+                  if (chunkCount === 1) {
+                    console.log(
+                      `   [Debug] First chunk received, length: ${value.length}`
+                    );
+                  }
+
                   buffer += decoder.decode(value, { stream: true });
                   const lines = buffer.split("\n");
                   buffer = lines.pop() || "";
-                  
+
                   for (const line of lines) {
+                    if (cancelled) break;
                     if (!line.startsWith("data: ")) continue;
                     const data = line.slice(6);
                     if (data === "[DONE]") {
-                      controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                      safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
                       continue;
                     }
-                    
+
                     try {
                       const event = JSON.parse(data);
-                      
-                      // Send start chunk with role
-                      if (!sentStart) {
-                        controller.enqueue(
-                          new TextEncoder().encode(createOpenAIStreamStart(streamId, openaiBody.model))
+                      if (chunkCount === 1) {
+                        console.log(
+                          `   [Debug] First event type: ${
+                            event.type
+                          }, full event: ${JSON.stringify(event).substring(
+                            0,
+                            200
+                          )}`
+                        );
+                      }
+
+                      // Handle message_start - send OpenAI start chunk
+                      if (event.type === "message_start" && !sentStart) {
+                        safeEnqueue(
+                          new TextEncoder().encode(
+                            createOpenAIStreamStart(streamId, openaiBody.model)
+                          )
                         );
                         sentStart = true;
-                      }
-                      
-                      // Handle content_block_delta events
-                      if (event.type === "content_block_delta" && event.delta?.text) {
-                        controller.enqueue(
-                          new TextEncoder().encode(
-                            createOpenAIStreamChunk(streamId, openaiBody.model, event.delta.text)
-                          )
+                        console.log(
+                          `   [Debug] Sent OpenAI stream start chunk`
                         );
                       }
-                      
+
+                      // Handle content_block_start - ensure we've sent start
+                      if (event.type === "content_block_start") {
+                        if (!sentStart) {
+                          safeEnqueue(
+                            new TextEncoder().encode(
+                              createOpenAIStreamStart(
+                                streamId,
+                                openaiBody.model
+                              )
+                            )
+                          );
+                          sentStart = true;
+                        }
+
+                        // Log content_block_start for debugging (tool_use blocks come here)
+                        const block = event.content_block;
+                        logger.verbose(
+                          `   [Debug] content_block_start: type=${
+                            block?.type
+                          }, block=${JSON.stringify(block)}`
+                        );
+
+                        // Handle text blocks that might contain tool calls (complete blocks, not streaming)
+                        currentBlockIndex = event.index ?? currentBlockIndex;
+                        blockTextSent = false;
+
+                        if (block?.type === "text" && block.text) {
+                          const textContent = block.text;
+                          logger.verbose(
+                            `   [Debug] content_block_start text block (${textContent.length} chars): ${textContent}`
+                          );
+
+                          // Check if text contains tool calls and translate immediately
+                          if (needsTranslation(textContent)) {
+                            logger.verbose(
+                              `   [Debug] Found tool calls in content_block_start! Translating...`
+                            );
+                            const translated = translateToolCalls(textContent);
+                            if (translated !== textContent) {
+                              logger.verbose(
+                                `   [Debug] Translated tool call in content_block_start:\n     Original (${
+                                  textContent.length
+                                } chars):\n${textContent
+                                  .split("\n")
+                                  .map((l: string) => `       ${l}`)
+                                  .join("\n")}\n     Translated (${
+                                  translated.length
+                                } chars):\n${translated
+                                  .split("\n")
+                                  .map((l: string) => `       ${l}`)
+                                  .join("\n")}`
+                              );
+
+                              // Send the translated text as a delta chunk
+                              safeEnqueue(
+                                new TextEncoder().encode(
+                                  createOpenAIStreamChunk(
+                                    streamId,
+                                    openaiBody.model,
+                                    translated
+                                  )
+                                )
+                              );
+                              blockTextSent = true;
+                            } else {
+                              // Translation didn't change anything, send original
+                              safeEnqueue(
+                                new TextEncoder().encode(
+                                  createOpenAIStreamChunk(
+                                    streamId,
+                                    openaiBody.model,
+                                    textContent
+                                  )
+                                )
+                              );
+                              blockTextSent = true;
+                            }
+                          } else {
+                            // No tool calls, send the text as-is
+                            safeEnqueue(
+                              new TextEncoder().encode(
+                                createOpenAIStreamChunk(
+                                  streamId,
+                                  openaiBody.model,
+                                  textContent
+                                )
+                              )
+                            );
+                            blockTextSent = true;
+                          }
+                        }
+                      }
+
+                      // Handle content_block_stop - reset block tracking
+                      if (event.type === "content_block_stop") {
+                        logger.verbose(
+                          `   [Debug] content_block_stop for index ${event.index}`
+                        );
+                        blockTextSent = false;
+                        currentBlockIndex = -1;
+                      }
+
+                      // Handle content_block_delta events
+                      if (
+                        event.type === "content_block_delta" &&
+                        event.delta?.text
+                      ) {
+                        // Skip deltas if we already sent complete text from content_block_start
+                        if (blockTextSent) {
+                          logger.verbose(
+                            `   [Debug] Skipping delta - already sent complete text from content_block_start`
+                          );
+                          continue;
+                        }
+
+                        if (!sentStart) {
+                          safeEnqueue(
+                            new TextEncoder().encode(
+                              createOpenAIStreamStart(
+                                streamId,
+                                openaiBody.model
+                              )
+                            )
+                          );
+                          sentStart = true;
+                        }
+
+                        let text = event.delta.text;
+
+                        // Log all text chunks for debugging (especially tool calls)
+                        logger.verbose(
+                          `   [Debug] content_block_delta chunk (${
+                            text.length
+                          } chars): ${JSON.stringify(text)}`
+                        );
+
+                        // Check if this chunk contains tool call markers (including incorrect formats)
+                        const hasToolCallMarkers =
+                          /<function_calls/i.test(text) ||
+                          /<invoke/i.test(text) ||
+                          /<\/invoke>/i.test(text) ||
+                          /<\/function_calls>/i.test(text) ||
+                          /<search_files/i.test(text) ||
+                          /<read_file/i.test(text) ||
+                          /<\/search_files>/i.test(text) ||
+                          /<\/read_file>/i.test(text) ||
+                          /<grep>/i.test(text) ||
+                          /<\/grep>/i.test(text);
+
+                        // Also detect potential tool call starts (partial tags like "<search" or "<rea")
+                        // This catches tool calls that start mid-chunk, even partial ones
+                        const mightStartToolCall =
+                          !inToolCall &&
+                          (/<sea/i.test(text) || // <search_files
+                            /<rea/i.test(text) || // <read_file
+                            /<gre/i.test(text) || // <grep
+                            /<inv/i.test(text) || // <invoke
+                            /<fun/i.test(text)); // <function_calls
+
+                        if (hasToolCallMarkers) {
+                          logger.verbose(
+                            `   [Debug] Detected tool call markers in chunk!`
+                          );
+                        }
+
+                        if (mightStartToolCall) {
+                          logger.verbose(
+                            `   [Debug] Detected potential tool call start in chunk!`
+                          );
+                        }
+
+                        if (
+                          hasToolCallMarkers ||
+                          inToolCall ||
+                          mightStartToolCall
+                        ) {
+                          // Start or continue buffering tool calls
+                          // If this is a new tool call starting mid-chunk, split it:
+                          // send text before the tool call, buffer the tool call part
+                          if (
+                            !inToolCall &&
+                            (mightStartToolCall || hasToolCallMarkers)
+                          ) {
+                            // Find where the tool call starts in this chunk
+                            // Look for < followed by letters (start of a tag)
+                            const toolCallStartMatch = text.match(/<[a-z]/i);
+                            if (
+                              toolCallStartMatch &&
+                              toolCallStartMatch.index !== undefined
+                            ) {
+                              const beforeToolCall = text.substring(
+                                0,
+                                toolCallStartMatch.index
+                              );
+                              const toolCallPart = text.substring(
+                                toolCallStartMatch.index
+                              );
+
+                              // Send the text before the tool call
+                              if (beforeToolCall) {
+                                safeEnqueue(
+                                  new TextEncoder().encode(
+                                    createOpenAIStreamChunk(
+                                      streamId,
+                                      openaiBody.model,
+                                      beforeToolCall
+                                    )
+                                  )
+                                );
+                                logger.verbose(
+                                  `   [Debug] Sent text before tool call: "${beforeToolCall}"`
+                                );
+                              }
+
+                              // Buffer the tool call part
+                              inToolCall = true;
+                              toolCallBuffer = toolCallPart;
+                              logger.verbose(
+                                `   [Debug] Started buffering tool call: "${toolCallPart.substring(
+                                  0,
+                                  50
+                                )}..."`
+                              );
+                            } else {
+                              // Couldn't find start, buffer everything
+                              inToolCall = true;
+                              toolCallBuffer += text;
+                              logger.verbose(
+                                `   [Debug] Buffering entire chunk (no split point found)`
+                              );
+                            }
+                          } else if (inToolCall) {
+                            // Already in tool call, keep buffering
+                            toolCallBuffer += text;
+                            logger.verbose(
+                              `   [Debug] Continuing to buffer tool call, total: ${toolCallBuffer.length} chars`
+                            );
+                          } else {
+                            // Complete marker found but not in tool call yet, buffer everything
+                            inToolCall = true;
+                            toolCallBuffer += text;
+                          }
+
+                          // Check if we now have a complete tool call
+                          // Extract the FIRST complete tool call from the buffer
+                          let completeToolCall = "";
+                          let remainingBuffer = "";
+
+                          // Find opening tag first
+                          const openMatch = toolCallBuffer.match(
+                            /<(search_files|read_file|grep|invoke|function_calls)/i
+                          );
+                          if (
+                            openMatch &&
+                            openMatch.index !== undefined &&
+                            openMatch[1]
+                          ) {
+                            const tagName = openMatch[1];
+                            const closeTag = `</${tagName}>`;
+
+                            // Find the matching closing tag
+                            const closeIndex = toolCallBuffer.indexOf(
+                              closeTag,
+                              openMatch.index
+                            );
+                            if (closeIndex !== -1) {
+                              // Extract the complete tool call (including the closing tag)
+                              completeToolCall = toolCallBuffer.substring(
+                                openMatch.index,
+                                closeIndex + closeTag.length
+                              );
+                              // Everything after the closing tag is remaining buffer
+                              remainingBuffer = toolCallBuffer.substring(
+                                closeIndex + closeTag.length
+                              );
+                            }
+                          }
+
+                          if (completeToolCall) {
+                            // Process and translate the complete tool call
+                            const translated =
+                              translateToolCalls(completeToolCall);
+                            text = translated;
+
+                            // Update buffer with remaining content
+                            toolCallBuffer = remainingBuffer;
+                            if (!toolCallBuffer) {
+                              inToolCall = false;
+                            }
+
+                            logger.verbose(
+                              `   [Debug] Translated complete tool call:\n     Original (${
+                                completeToolCall.length
+                              } chars):\n${completeToolCall
+                                .split("\n")
+                                .map((l: string) => `       ${l}`)
+                                .join("\n")}\n     Translated (${
+                                translated.length
+                              } chars):\n${translated
+                                .split("\n")
+                                .map((l: string) => `       ${l}`)
+                                .join("\n")}`
+                            );
+
+                            // Send the translated tool call
+                            safeEnqueue(
+                              new TextEncoder().encode(
+                                createOpenAIStreamChunk(
+                                  streamId,
+                                  openaiBody.model,
+                                  text
+                                )
+                              )
+                            );
+                            continue;
+                          } else {
+                            // Still buffering incomplete tool call
+                            // Send heartbeat comment to keep connection alive if we've been buffering for a while
+                            const timeSinceLastChunk =
+                              Date.now() - lastChunkTime;
+                            if (timeSinceLastChunk > HEARTBEAT_INTERVAL) {
+                              // Send a comment chunk to keep connection alive
+                              safeEnqueue(
+                                new TextEncoder().encode(
+                                  createOpenAIStreamChunk(
+                                    streamId,
+                                    openaiBody.model,
+                                    "" // Empty content, just keep connection alive
+                                  )
+                                )
+                              );
+                              lastChunkTime = Date.now();
+                            }
+                            continue;
+                          }
+                        }
+                        // Note: We no longer flush the buffer prematurely here.
+                        // The buffer is only flushed when we detect a complete tool call
+                        // or at the end of the stream.
+
+                        // Translate any remaining tool calls in the text (safety check)
+                        if (needsTranslation(text)) {
+                          const originalText = text;
+                          text = translateToolCalls(text);
+                          if (text !== originalText) {
+                            logger.verbose(
+                              `   [Debug] Translated tool call format in chunk:\n     Original (${
+                                originalText.length
+                              } chars):\n${originalText
+                                .split("\n")
+                                .map((l: string) => `       ${l}`)
+                                .join("\n")}\n     Translated (${
+                                text.length
+                              } chars):\n${text
+                                .split("\n")
+                                .map((l: string) => `       ${l}`)
+                                .join("\n")}`
+                            );
+                          }
+                        }
+
+                        safeEnqueue(
+                          new TextEncoder().encode(
+                            createOpenAIStreamChunk(
+                              streamId,
+                              openaiBody.model,
+                              text
+                            )
+                          )
+                        );
+                        lastChunkTime = Date.now();
+                      }
+
                       // Handle message_stop
                       if (event.type === "message_stop") {
-                        controller.enqueue(
+                        // Flush any remaining tool call buffer (force flush)
+                        if (toolCallBuffer) {
+                          const processed = processToolCallBuffer(true);
+                          if (processed) {
+                            safeEnqueue(
+                              new TextEncoder().encode(
+                                createOpenAIStreamChunk(
+                                  streamId,
+                                  openaiBody.model,
+                                  processed
+                                )
+                              )
+                            );
+                            console.log(
+                              `   [Debug] Flushed final tool call buffer (${processed.length} chars)`
+                            );
+                          }
+                        }
+
+                        safeEnqueue(
                           new TextEncoder().encode(
-                            createOpenAIStreamChunk(streamId, openaiBody.model, undefined, "stop")
+                            createOpenAIStreamChunk(
+                              streamId,
+                              openaiBody.model,
+                              undefined,
+                              "stop"
+                            )
                           )
                         );
-                        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                        safeEnqueue(
+                          new TextEncoder().encode("data: [DONE]\n\n")
+                        );
+                        logger.verbose(`   [Debug] Sent [DONE] chunk`);
                       }
-                    } catch {
+                    } catch (parseError) {
+                      // Only log if not cancelled (avoid spam when cancelled)
+                      if (!cancelled) {
+                        console.log(
+                          `   [Debug] Failed to parse event: ${parseError}`
+                        );
+                      }
                       // Skip unparseable events
                     }
                   }
                 }
+              } catch (streamError) {
+                // Only log/error if not cancelled
+                if (!cancelled) {
+                  console.error(
+                    `   [Error] Stream processing failed: ${streamError}`
+                  );
+                  try {
+                    controller.error(streamError);
+                  } catch {
+                    // Controller already closed, ignore
+                  }
+                }
               } finally {
-                controller.close();
+                // Cancel upstream reader if still active
+                try {
+                  if (!cancelled) {
+                    reader.cancel().catch(() => {
+                      // Reader might already be cancelled, ignore
+                    });
+                  }
+                } catch {
+                  // Reader might already be released, ignore
+                }
+
+                // Close controller if not already closed
+                try {
+                  if (!cancelled) {
+                    controller.close();
+                  }
+                } catch {
+                  // Controller already closed, ignore
+                }
               }
             },
+            cancel(reason) {
+              logger.verbose(
+                `   [Debug] Stream cancelled by client: ${reason}`
+              );
+              cancelled = true;
+              // Cancel the upstream reader
+              reader.cancel(reason).catch(() => {
+                // Reader might already be cancelled, ignore
+              });
+            },
           });
-          
+
           return new Response(stream, { headers: responseHeaders });
         }
-        
+
         // Non-streaming response
         if (!response.ok) {
-          const error = await response.json();
+          const error = (await response.json()) as {
+            error?: { message?: string; type?: string };
+          };
+          // Normalize model name in error messages if present
+          let errorMessage = error?.error?.message || "Unknown error";
+          if (errorMessage.includes("model:")) {
+            // Replace any x- prefixed model names in error message with normalized version
+            errorMessage = errorMessage.replace(
+              /model:\s*x-([^\s,]+)/g,
+              (_match, modelName) => `model: ${modelName}`
+            );
+          }
           return Response.json(
-            { error: { message: error?.error?.message || "Unknown error", type: error?.error?.type } },
+            {
+              error: {
+                message: errorMessage,
+                type: error?.error?.type,
+              },
+            },
             { status: response.status, headers: responseHeaders }
           );
         }
-        
+
         const anthropicResponse = await response.json();
-        const openaiResponse = anthropicToOpenai(anthropicResponse, openaiBody.model);
-        
+        const openaiResponse = anthropicToOpenai(
+          anthropicResponse,
+          openaiBody.model
+        );
+
         return Response.json(openaiResponse, { headers: responseHeaders });
       } catch (error) {
         console.error("OpenAI request handling error:", error);
@@ -242,28 +1148,60 @@ const server = Bun.serve({
         );
       }
     }
-    
+
     // OpenAI models endpoint (for compatibility)
     if (url.pathname === "/v1/models" && req.method === "GET") {
       return Response.json({
         object: "list",
         data: [
-          { id: "claude-sonnet-4-20250514", object: "model", created: 1700000000, owned_by: "anthropic" },
-          { id: "claude-opus-4-20250514", object: "model", created: 1700000000, owned_by: "anthropic" },
-          { id: "claude-3-5-sonnet-20241022", object: "model", created: 1700000000, owned_by: "anthropic" },
-          { id: "claude-3-5-haiku-20241022", object: "model", created: 1700000000, owned_by: "anthropic" },
-          { id: "gpt-4o", object: "model", created: 1700000000, owned_by: "openai-proxy" },
-          { id: "gpt-4", object: "model", created: 1700000000, owned_by: "openai-proxy" },
+          // Claude 4.5 models (Anthropic format)
+          {
+            id: "claude-sonnet-4-5",
+            object: "model",
+            created: 1700000000,
+            owned_by: "anthropic",
+          },
+          {
+            id: "claude-opus-4-5",
+            object: "model",
+            created: 1700000000,
+            owned_by: "anthropic",
+          },
+          {
+            id: "claude-haiku-4-5",
+            object: "model",
+            created: 1700000000,
+            owned_by: "anthropic",
+          },
+          // Cursor format models (will be normalized)
+          {
+            id: "claude-4.5-opus-high",
+            object: "model",
+            created: 1700000000,
+            owned_by: "anthropic",
+          },
+          {
+            id: "claude-4.5-sonnet-high",
+            object: "model",
+            created: 1700000000,
+            owned_by: "anthropic",
+          },
+          {
+            id: "claude-4.5-haiku",
+            object: "model",
+            created: 1700000000,
+            owned_by: "anthropic",
+          },
         ],
       });
     }
-    
+
     // Analytics endpoints
     if (url.pathname === "/analytics" && req.method === "GET") {
       const period = url.searchParams.get("period") || "day";
       const now = Date.now();
       let since: number;
-      
+
       switch (period) {
         case "hour":
           since = now - 60 * 60 * 1000;
@@ -283,9 +1221,9 @@ const server = Bun.serve({
         default:
           since = now - 24 * 60 * 60 * 1000;
       }
-      
+
       const analytics = getAnalytics(since, now);
-      
+
       return Response.json({
         period,
         ...analytics,
@@ -294,33 +1232,41 @@ const server = Bun.serve({
         note: "Costs are estimates. Actual costs may be lower due to prompt caching.",
       });
     }
-    
+
     if (url.pathname === "/analytics/requests" && req.method === "GET") {
       const limit = parseInt(url.searchParams.get("limit") || "100");
       const requests = getRecentRequests(Math.min(limit, 1000));
       return Response.json({ requests });
     }
-    
+
+    if (url.pathname === "/analytics/reset" && req.method === "POST") {
+      const result = resetAnalytics();
+      return Response.json({ success: true, ...result });
+    }
+
     // Budget endpoints
     if (url.pathname === "/budget" && req.method === "GET") {
       const settings = getBudgetSettings();
       return Response.json(settings);
     }
-    
+
     if (url.pathname === "/budget" && req.method === "POST") {
       try {
-        const body = await req.json() as Partial<BudgetSettings>;
+        const body = (await req.json()) as Partial<BudgetSettings>;
         updateBudgetSettings(body);
         return Response.json({ success: true, settings: getBudgetSettings() });
       } catch (error) {
         return Response.json({ error: String(error) }, { status: 400 });
       }
     }
-    
+
     return Response.json(
-      { 
-        type: "error", 
-        error: { type: "not_found_error", message: `Unknown endpoint: ${url.pathname}` } 
+      {
+        type: "error",
+        error: {
+          type: "not_found_error",
+          message: `Unknown endpoint: ${url.pathname}`,
+        },
       } satisfies AnthropicError,
       { status: 404 }
     );
@@ -341,12 +1287,21 @@ getDb();
 
 console.log(`🚀 Server running at http://localhost:${server.port}`);
 console.log(`   Anthropic:  http://localhost:${server.port}/v1/messages`);
-console.log(`   OpenAI:     http://localhost:${server.port}/v1/chat/completions`);
+console.log(
+  `   OpenAI:     http://localhost:${server.port}/v1/chat/completions`
+);
 console.log(`   Analytics:  http://localhost:${server.port}/analytics`);
 console.log(`   Budget:     http://localhost:${server.port}/budget\n`);
 
 await checkCredentials();
 
+if (isOpenAIPassthroughEnabled()) {
+  console.log(`✓ OpenAI passthrough enabled → ${config.openaiBaseUrl}`);
+} else {
+  console.log("⚠️  No OPENAI_API_KEY (non-Claude models will fail)");
+}
+
 console.log("\n📋 Usage in Cursor/other clients:");
 console.log(`   API Base URL: http://localhost:${server.port}`);
-console.log("   API Key: (any value, e.g. 'proxy')\n");
+console.log("   API Key: (any value, e.g. 'proxy')");
+console.log(`\n📝 Verbose logging enabled → api.log (gitignored)\n`);

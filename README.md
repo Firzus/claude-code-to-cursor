@@ -33,7 +33,23 @@ bun install
 bun run index.ts
 ```
 
-The proxy starts on `http://localhost:8082` by default.
+The proxy starts on `http://localhost:8082` by default. Use `http://localhost:8082/v1` as the base URL in Cursor settings.
+
+### Using with Cloudflared Tunnel (HTTPS)
+
+If you need HTTPS (required for OpenAI provider override in Cursor), use cloudflared:
+
+```bash
+# Install cloudflared
+brew install cloudflared
+
+# Start tunnel (run in separate terminal)
+cloudflared tunnel --url http://localhost:8082
+```
+
+This will give you an HTTPS URL like `https://random-words.trycloudflare.com`. Use `https://random-words.trycloudflare.com/v1` as your base URL in Cursor.
+
+**Note**: Quick tunnel URLs change on restart. For a permanent URL, set up a named tunnel with a Cloudflare account.
 
 ## Configuration
 
@@ -55,14 +71,67 @@ ANTHROPIC_API_KEY=sk-ant-xxx bun run index.ts
 
 ## Usage in Cursor
 
-1. Open Cursor Settings → Models
-2. For **Anthropic** provider:
-   - Set **API Base URL**: `http://localhost:8082`
-   - Set **API Key**: `proxy` (any value works)
-3. For **OpenAI** provider:
-   - Set **API Base URL**: `http://localhost:8082`
-   - Set **API Key**: `proxy` (any value works)
-4. Select your model (e.g., `claude-sonnet-4-20250514`)
+### Option 1: Override Anthropic Provider (Recommended)
+
+1. Open Cursor Settings (`Cmd + ,` on Mac, `Ctrl + ,` on Windows/Linux)
+2. Search for "anthropic" in the settings search bar
+3. Find **Anthropic API Base URL** and set it to:
+   ```
+   http://localhost:8082/v1
+   ```
+4. Find **Anthropic API Key** and set it to any value (e.g., `proxy`)
+5. Now use any Claude model in Cursor - it will route through the proxy
+
+### Option 2: Override OpenAI Provider (Recommended for Cursor)
+
+1. Open Cursor Settings (`Cmd + ,`)
+2. Search for "openai" in the settings search bar
+3. Find **OpenAI API Base URL** and set it to:
+   ```
+   http://localhost:8082/v1
+   ```
+   Or if using cloudflared tunnel:
+   ```
+   https://your-tunnel-url.trycloudflare.com/v1
+   ```
+4. Find **OpenAI API Key** and set it to any value (e.g., `proxy`)
+5. Use Cursor format models (e.g., `claude-4.5-opus-high`)
+
+The proxy normalizes Cursor model names to Anthropic format (e.g., `claude-4.5-opus-high` → `claude-opus-4-5` with reasoning budget).
+
+### Option 3: Add as Custom Model
+
+1. Open Cursor Settings (`Cmd + ,`)
+2. Go to **Models** section
+3. Click **Add Model**
+4. Configure:
+   - **Model Name**: `claude-4.5-opus-high` (or any Claude model)
+   - **Provider**: `OpenAI Compatible`
+   - **API Base URL**: `http://localhost:8082/v1`
+   - **API Key**: `proxy`
+
+### Verifying It Works
+
+After configuring, make a request in Cursor and check the proxy terminal output:
+
+```
+→ [OpenAI→Anthropic] claude-4.5-opus-high → claude-opus-4-5 | stream | max_tokens=4096
+✓ Request served via Claude Code
+```
+
+If you see `✓ Request served via Claude Code`, it's using your subscription!
+
+### Available Models
+
+The proxy normalizes Cursor model names to Anthropic format:
+
+| Cursor Model Name        | Normalized to Anthropic | Reasoning Budget |
+| ------------------------ | ----------------------- | ---------------- |
+| `claude-4.5-opus-high`   | `claude-opus-4-5`       | `high`           |
+| `claude-4.5-sonnet-high` | `claude-sonnet-4-5`     | `high`           |
+| `claude-4.5-haiku`       | `claude-haiku-4-5`      | -                |
+
+Model names are automatically normalized when requests come from Cursor.
 
 ## How It Works
 
@@ -119,6 +188,7 @@ For requests to be accepted as Claude Code, the proxy adds:
 | --------------------- | ------ | ------------------------------------------------------- |
 | `/analytics`          | GET    | Usage stats (add `?period=hour\|day\|week\|month\|all`) |
 | `/analytics/requests` | GET    | Recent requests (add `?limit=N`)                        |
+| `/analytics/reset`    | POST   | Clear all analytics data                                |
 | `/budget`             | GET    | Current budget settings                                 |
 | `/budget`             | POST   | Update budget settings                                  |
 

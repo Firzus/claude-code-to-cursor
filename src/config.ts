@@ -28,12 +28,23 @@ export const CLAUDE_CODE_SYSTEM_PROMPT =
 // Additional instruction appended after the required prompt (optional)
 export const CLAUDE_CODE_EXTRA_INSTRUCTION =
   process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ??
-  "You are running headless as a proxy - do not mention Claude Code in your responses.";
+  `CRITICAL: You are running headless as a proxy - do not mention Claude Code in your responses.`;
 
 export function getConfig(): ProxyConfig {
+  // Parse allowed IPs from environment (comma-separated)
+  const allowedIPsEnv =
+    process.env.ALLOWED_IPS || "52.44.113.131,184.73.225.134";
+  const allowedIPs = allowedIPsEnv
+    .split(",")
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+
   return {
     port: parseInt(process.env.PORT || "8082", 10),
     claudeCodeFirst: process.env.CLAUDE_CODE_FIRST !== "false",
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    openaiApiKey: process.env.OPENAI_API_KEY,
+    openaiBaseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com",
+    allowedIPs,
   };
 }

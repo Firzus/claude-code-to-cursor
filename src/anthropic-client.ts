@@ -8,6 +8,7 @@ import {
 import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest, checkBudget, type RequestSource } from "./db";
 import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
+import { logger } from "./logger";
 
 type RequestResult =
   | { success: true; response: Response; source: RequestSource }
@@ -21,6 +22,16 @@ type RequestResult =
  */
 function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   const prepared = { ...body };
+
+  // Claude Code API doesn't support reasoning_budget - remove it
+  // This must be removed before sending to Claude Code to avoid errors
+  if ("reasoning_budget" in prepared) {
+    const budgetValue = prepared.reasoning_budget;
+    delete prepared.reasoning_budget;
+    logger.verbose(
+      `   [Debug] Removed reasoning_budget (${budgetValue}) - not supported by Claude Code API`
+    );
+  }
 
   // Build system prompts array - required Claude Code prompt first
   const systemPrompts: ContentBlock[] = [
@@ -42,6 +53,22 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   }
 
   prepared.system = systemPrompts;
+
+  // Log the final system prompt that will be sent to Claude Code (verbose to file)
+  const finalSystemContent = systemPrompts
+    .map((block) =>
+      block.type === "text" ? block.text : JSON.stringify(block)
+    )
+    .join("\n\n");
+  logger.verbose(
+    `\n📋 [Final Claude Code System Prompt] (${finalSystemContent.length} chars):`
+  );
+  logger.verbose(
+    finalSystemContent
+      .split("\n")
+      .map((l: string) => `   ${l}`)
+      .join("\n")
+  );
 
   // Strip TTL from cache_control objects (Claude Code doesn't support it)
   const stripTtl = (content: ContentBlock[] | undefined) => {
@@ -91,11 +118,45 @@ async function makeClaudeCodeRequestWithOAuth(
     // Prepare the body with required Claude Code modifications
     const preparedBody = prepareClaudeCodeBody(body);
 
-    // Build beta headers - use our complete set plus any existing ones
+    // Verify reasoning_budget was removed
+    if ("reasoning_budget" in preparedBody) {
+      logger.verbose(
+        `   [WARN] reasoning_budget still present after prepareClaudeCodeBody! Removing now.`
+      );
+      delete preparedBody.reasoning_budget;
+    }
+
+    // Debug: log the model name being sent
+    logger.verbose(
+      `   [Debug] Sending model to Claude Code: "${preparedBody.model}"`
+    );
+    logger.verbose(
+      `   [Debug] Request body keys: ${Object.keys(preparedBody).join(", ")}`
+    );
+
+    // Build beta headers - merge Claude Code headers with any existing ones from Cursor
     const existingBetas = headers["anthropic-beta"] || "";
-    const allBetas = existingBetas
-      ? `${CLAUDE_CODE_BETA_HEADERS},${existingBetas}`
-      : CLAUDE_CODE_BETA_HEADERS;
+    // Combine: Claude Code headers first, then any additional ones from Cursor
+    // Use Set to deduplicate if there are overlaps
+    const betaSet = new Set<string>();
+
+    // Add Claude Code required headers
+    for (const beta of CLAUDE_CODE_BETA_HEADERS.split(",")) {
+      betaSet.add(beta.trim());
+    }
+
+    // Add any existing betas from Cursor
+    if (existingBetas) {
+      for (const beta of existingBetas.split(",")) {
+        betaSet.add(beta.trim());
+      }
+    }
+
+    const allBetas = Array.from(betaSet).join(",");
+
+    console.log(
+      `   [Debug] Beta headers - Original: "${existingBetas}", Merged: "${allBetas}"`
+    );
 
     const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}`, {
       method: "POST",
@@ -141,11 +202,9 @@ async function makeClaudeCodeRequestWithOAuth(
         .clone()
         .json()
         .catch(() => ({}))) as { error?: { message?: string } };
-      if (
-        errorBody?.error?.message?.includes(
-          "only authorized for use with Claude Code"
-        )
-      ) {
+      const errorMessage = errorBody?.error?.message || "";
+
+      if (errorMessage.includes("only authorized for use with Claude Code")) {
         console.log("OAuth token not authorized for direct API use");
         return {
           success: false,
@@ -153,10 +212,11 @@ async function makeClaudeCodeRequestWithOAuth(
           shouldFallback: true,
         };
       }
+
       console.log("Claude Code 400 error:", JSON.stringify(errorBody));
       return {
         success: false,
-        error: errorBody?.error?.message || "Bad request",
+        error: errorMessage || "Bad request",
         shouldFallback: true,
       };
     }
@@ -183,6 +243,15 @@ async function makeDirectApiRequest(
   apiKey: string
 ): Promise<RequestResult> {
   try {
+    // Remove reasoning_budget - direct API may not support it in all contexts
+    const preparedBody = { ...body };
+    if ("reasoning_budget" in preparedBody) {
+      logger.verbose(
+        `   [Debug] Removing reasoning_budget (${preparedBody.reasoning_budget}) from direct API request`
+      );
+      delete preparedBody.reasoning_budget;
+    }
+
     const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}`, {
       method: "POST",
       headers: {
@@ -190,7 +259,7 @@ async function makeDirectApiRequest(
         "x-api-key": apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(preparedBody),
     });
 
     return { success: true, response, source: "api_key" };
@@ -258,13 +327,15 @@ async function extractUsageFromResponse(
 export async function proxyRequest(
   endpoint: string,
   body: AnthropicRequest,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  userAPIKey?: string
 ): Promise<Response> {
   const config = getConfig();
   const startTime = Date.now();
   const model = body.model;
   const stream = body.stream || false;
 
+  // Always try Claude Code first (if enabled), then fall back to API key
   if (config.claudeCodeFirst) {
     const claudeResult = await makeClaudeCodeRequest(endpoint, body, headers);
 
@@ -279,7 +350,32 @@ export async function proxyRequest(
       );
     }
 
-    if (claudeResult.shouldFallback && config.anthropicApiKey) {
+    if (!claudeResult.shouldFallback) {
+      recordRequest({
+        model,
+        source: "error",
+        inputTokens: 0,
+        outputTokens: 0,
+        stream,
+        error: claudeResult.error,
+      });
+
+      return new Response(
+        JSON.stringify({
+          type: "error",
+          error: {
+            type: "api_error",
+            message: claudeResult.error,
+          },
+        } satisfies AnthropicError),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fallback to API key (Claude Code failed)
+    // Prefer user-provided API key, then fall back to config API key
+    const fallbackApiKey = userAPIKey || config.anthropicApiKey;
+    if (fallbackApiKey) {
       // Check budget before using API key
       const budgetError = checkBudget();
       if (budgetError) {
@@ -301,16 +397,21 @@ export async function proxyRequest(
         );
       }
 
-      console.log(`↓ Falling back to direct Anthropic API`);
+      const apiKeySource = userAPIKey ? "user-provided" : "configured";
+      console.log(
+        `↓ Falling back to direct Anthropic API (${apiKeySource} key)`
+      );
       const apiResult = await makeDirectApiRequest(
         endpoint,
         body,
         headers,
-        config.anthropicApiKey
+        fallbackApiKey
       );
 
       if (apiResult.success) {
-        console.log(`✓ Request served via direct Anthropic API`);
+        console.log(
+          `✓ Request served via direct Anthropic API (${apiKeySource} key)`
+        );
         return extractUsageFromResponse(
           apiResult.response,
           model,
@@ -338,23 +439,13 @@ export async function proxyRequest(
       );
     }
 
-    recordRequest({
-      model,
-      source: "error",
-      inputTokens: 0,
-      outputTokens: 0,
-      stream,
-      error: claudeResult.error,
-    });
-
+    // No API key available and Claude Code failed
     return new Response(
       JSON.stringify({
         type: "error",
         error: {
           type: "authentication_error",
-          message:
-            claudeResult.error +
-            (config.anthropicApiKey ? "" : " (no fallback API key configured)"),
+          message: "Claude Code request failed (no fallback API key available)",
         },
       } satisfies AnthropicError),
       { status: 401, headers: { "Content-Type": "application/json" } }

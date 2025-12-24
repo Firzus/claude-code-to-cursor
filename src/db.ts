@@ -6,7 +6,8 @@ import { Database } from "bun:sqlite";
 import { join } from "node:path";
 import { calculateCost } from "./pricing";
 
-const DB_PATH = process.env.CCPROXY_DB_PATH || join(process.cwd(), "ccproxy.db");
+const DB_PATH =
+  process.env.CCPROXY_DB_PATH || join(process.cwd(), "ccproxy.db");
 
 let db: Database | null = null;
 
@@ -38,8 +39,12 @@ function initSchema() {
   `);
 
   // Create indexes for common queries
-  database.run(`CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`);
-  database.run(`CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`);
+  database.run(
+    `CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`
+  );
+  database.run(
+    `CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`
+  );
 
   // Budget settings table
   database.run(`
@@ -78,7 +83,11 @@ export interface RequestRecord {
  */
 export function recordRequest(record: RequestRecord): void {
   const database = getDb();
-  const estimatedCost = calculateCost(record.model, record.inputTokens, record.outputTokens);
+  const estimatedCost = calculateCost(
+    record.model,
+    record.inputTokens,
+    record.outputTokens
+  );
 
   database.run(
     `INSERT INTO requests (timestamp, model, source, input_tokens, output_tokens, estimated_cost, stream, latency_ms, error)
@@ -110,7 +119,9 @@ export interface BudgetSettings {
  */
 export function getBudgetSettings(): BudgetSettings {
   const database = getDb();
-  const row = database.query(`SELECT * FROM budget_settings WHERE id = 1`).get() as {
+  const row = database
+    .query(`SELECT * FROM budget_settings WHERE id = 1`)
+    .get() as {
     hourly_limit: number | null;
     daily_limit: number | null;
     weekly_limit: number | null;
@@ -147,7 +158,7 @@ export function updateBudgetSettings(settings: Partial<BudgetSettings>): void {
       settings.dailyLimit ?? current.dailyLimit,
       settings.weeklyLimit ?? current.weeklyLimit,
       settings.monthlyLimit ?? current.monthlyLimit,
-      (settings.enabled ?? current.enabled) ? 1 : 0,
+      settings.enabled ?? current.enabled ? 1 : 0,
     ]
   );
 }
@@ -158,7 +169,9 @@ export function updateBudgetSettings(settings: Partial<BudgetSettings>): void {
 export function getApiKeyCostSince(since: number): number {
   const database = getDb();
   const result = database
-    .query(`SELECT COALESCE(SUM(estimated_cost), 0) as total FROM requests WHERE source = 'api_key' AND timestamp >= ?`)
+    .query(
+      `SELECT COALESCE(SUM(estimated_cost), 0) as total FROM requests WHERE source = 'api_key' AND timestamp >= ?`
+    )
     .get(since) as { total: number };
   return result.total;
 }
@@ -179,28 +192,36 @@ export function checkBudget(): string | null {
   if (settings.hourlyLimit !== null) {
     const hourlySpend = getApiKeyCostSince(hourAgo);
     if (hourlySpend >= settings.hourlyLimit) {
-      return `Hourly budget exceeded: $${hourlySpend.toFixed(2)} / $${settings.hourlyLimit.toFixed(2)}`;
+      return `Hourly budget exceeded: $${hourlySpend.toFixed(
+        2
+      )} / $${settings.hourlyLimit.toFixed(2)}`;
     }
   }
 
   if (settings.dailyLimit !== null) {
     const dailySpend = getApiKeyCostSince(dayAgo);
     if (dailySpend >= settings.dailyLimit) {
-      return `Daily budget exceeded: $${dailySpend.toFixed(2)} / $${settings.dailyLimit.toFixed(2)}`;
+      return `Daily budget exceeded: $${dailySpend.toFixed(
+        2
+      )} / $${settings.dailyLimit.toFixed(2)}`;
     }
   }
 
   if (settings.weeklyLimit !== null) {
     const weeklySpend = getApiKeyCostSince(weekAgo);
     if (weeklySpend >= settings.weeklyLimit) {
-      return `Weekly budget exceeded: $${weeklySpend.toFixed(2)} / $${settings.weeklyLimit.toFixed(2)}`;
+      return `Weekly budget exceeded: $${weeklySpend.toFixed(
+        2
+      )} / $${settings.weeklyLimit.toFixed(2)}`;
     }
   }
 
   if (settings.monthlyLimit !== null) {
     const monthlySpend = getApiKeyCostSince(monthAgo);
     if (monthlySpend >= settings.monthlyLimit) {
-      return `Monthly budget exceeded: $${monthlySpend.toFixed(2)} / $${settings.monthlyLimit.toFixed(2)}`;
+      return `Monthly budget exceeded: $${monthlySpend.toFixed(
+        2
+      )} / $${settings.monthlyLimit.toFixed(2)}`;
     }
   }
 
@@ -223,7 +244,10 @@ export interface AnalyticsSummary {
 /**
  * Get analytics summary for a time period
  */
-export function getAnalytics(since: number, until: number = Date.now()): AnalyticsSummary {
+export function getAnalytics(
+  since: number,
+  until: number = Date.now()
+): AnalyticsSummary {
   const database = getDb();
 
   const totals = database
@@ -313,3 +337,21 @@ export function getRecentRequests(limit: number = 100): Array<{
   }));
 }
 
+/**
+ * Reset all analytics data (clear requests table)
+ */
+export function resetAnalytics(): { deletedCount: number } {
+  const database = getDb();
+  const countResult = database
+    .query(`SELECT COUNT(*) as count FROM requests`)
+    .get() as { count: number };
+  const deletedCount = countResult.count;
+
+  database.run(`DELETE FROM requests`);
+
+  // Reset auto-increment counter
+  database.run(`DELETE FROM sqlite_sequence WHERE name = 'requests'`);
+
+  console.log(`✓ Reset analytics: deleted ${deletedCount} records`);
+  return { deletedCount };
+}

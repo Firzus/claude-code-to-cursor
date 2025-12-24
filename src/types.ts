@@ -59,6 +59,7 @@ export interface AnthropicRequest {
   metadata?: { user_id?: string };
   tools?: Tool[];
   tool_choice?: ToolChoice;
+  reasoning_budget?: number | string;
 }
 
 export interface Tool {
@@ -98,4 +99,7 @@ export interface ProxyConfig {
   port: number;
   claudeCodeFirst: boolean;
   anthropicApiKey?: string;
+  openaiApiKey?: string;
+  openaiBaseUrl: string;
+  allowedIPs: string[];
 }
