@@ -8,7 +8,8 @@ export const CLAUDE_CREDENTIALS_PATH = join(
   ".credentials.json"
 );
 export const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-export const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/oauth/token";
+export const ANTHROPIC_TOKEN_URL =
+  "https://console.anthropic.com/v1/oauth/token";
 export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 // Required beta headers for Claude Code OAuth
 export const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
