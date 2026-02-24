@@ -54,6 +54,19 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
     );
   }
 
+  // Pass through tools to Claude Code API so the model can make structured tool calls
+  // Tools should already be in Anthropic format (converted by openaiToAnthropic)
+  if (prepared.tools) {
+    logger.verbose(
+      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API`
+    );
+  }
+  if (prepared.tool_choice) {
+    logger.verbose(
+      `   [Debug] Passing tool_choice to Claude Code API: ${JSON.stringify(prepared.tool_choice)}`
+    );
+  }
+
   // Build system prompts array - required Claude Code prompt first
   const systemPrompts: ContentBlock[] = [
     { type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT },
@@ -254,6 +267,40 @@ async function makeClaudeCodeRequestWithOAuth(
           error: "OAuth not authorized for API",
           shouldFallback: true,
         };
+      }
+
+      // If the error is related to tools, retry without tools
+      const isToolError =
+        errorMessage.includes("tool") ||
+        errorMessage.includes("tools") ||
+        errorMessage.includes("tool_choice") ||
+        errorMessage.includes("input_schema");
+
+      if (isToolError && preparedBody.tools) {
+        console.log(
+          `   [Debug] Claude Code rejected tools (${errorMessage}), retrying without tools...`
+        );
+        delete preparedBody.tools;
+        delete preparedBody.tool_choice;
+
+        const retryResponse = await fetch(`${ANTHROPIC_API_URL}${endpoint}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token.accessToken}`,
+            "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+            "User-Agent": "claude-code/1.0.85",
+          },
+          body: JSON.stringify(preparedBody),
+        });
+
+        if (retryResponse.ok || (retryResponse.status !== 400 && retryResponse.status !== 401 && retryResponse.status !== 403)) {
+          console.log(`   [Debug] Retry without tools succeeded (status: ${retryResponse.status})`);
+          return { success: true, response: retryResponse, source: "claude_code" };
+        }
+
+        console.log(`   [Debug] Retry without tools also failed (status: ${retryResponse.status})`);
       }
 
       console.log("Claude Code 400 error:", JSON.stringify(errorBody));

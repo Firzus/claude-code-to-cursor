@@ -148,6 +148,11 @@ function checkIPWhitelist(req: Request): {
   ip?: string;
   reason?: string;
 } {
+  // If whitelist is empty (disabled), allow all requests
+  if (config.allowedIPs.length === 0) {
+    return { allowed: true, ip: "all" };
+  }
+
   // Only enforce IP whitelist when requests come through tunnel (have CF headers)
   const cfRay = req.headers.get("cf-ray");
   const cfConnectingIp = req.headers.get("cf-connecting-ip");

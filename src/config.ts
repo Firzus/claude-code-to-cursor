@@ -33,12 +33,16 @@ export const CLAUDE_CODE_EXTRA_INSTRUCTION =
 
 export function getConfig(): ProxyConfig {
   // Parse allowed IPs from environment (comma-separated)
+  // Set to "disabled" to allow all IPs (tunnel URL acts as the secret)
   const allowedIPsEnv =
     process.env.ALLOWED_IPS || "52.44.113.131,184.73.225.134";
-  const allowedIPs = allowedIPsEnv
-    .split(",")
-    .map((ip) => ip.trim())
-    .filter(Boolean);
+  const allowedIPs =
+    allowedIPsEnv.trim().toLowerCase() === "disabled"
+      ? []
+      : allowedIPsEnv
+          .split(",")
+          .map((ip) => ip.trim())
+          .filter(Boolean);
 
   return {
     port: parseInt(process.env.PORT || "8082", 10),

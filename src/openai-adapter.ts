@@ -45,6 +45,8 @@ export interface OpenAIToolCall {
 export interface OpenAIChatRequest {
   model: string;
   messages: OpenAIMessage[];
+  /** OpenAI Responses API format - alias for messages */
+  input?: OpenAIMessage[];
   max_tokens?: number;
   max_completion_tokens?: number;
   temperature?: number;
@@ -112,14 +114,20 @@ export interface OpenAIStreamChunk {
  * - claude-4.5-opus-high-thinking → claude-opus-4-5 (with reasoning_budget: high)
  * - claude-4.5-sonnet-high → claude-sonnet-4-5 (with reasoning_budget: high)
  * - claude-4.5-haiku → claude-haiku-4-5
+ * - claude-4.6-opus-high-thinking → claude-opus-4-6 (with reasoning_budget: high)
  */
 export function normalizeModelName(model: string): { model: string; reasoningBudget?: string } {
-  // Handle Cursor's format: claude-4.5-{model}-{budget} or claude-4.5-{model}-{budget}-thinking
-  const match = model.match(/^claude-4\.5-(opus|sonnet|haiku)(?:-(high|medium|low))?(?:-thinking)?$/);
+  // Handle Cursor's format: claude-{version}-(opus|sonnet|haiku)[-budget][-thinking]
+  // Supports any version like 4.5, 4.6, 5.0, etc.
+  const match = model.match(/^claude-(\d+\.\d+)-(opus|sonnet|haiku)(?:-(high|medium|low))?(?:-thinking)?$/);
   if (match) {
-    const [, modelType, budget] = match;
+    const version = match[1]!;
+    const modelType = match[2]!;
+    const budget = match[3];
+    // Convert version "4.5" → "4-5", "4.6" → "4-6"
+    const normalizedVersion = version.replace(".", "-");
     return {
-      model: `claude-${modelType}-4-5`,
+      model: `claude-${modelType}-${normalizedVersion}`,
       reasoningBudget: budget || undefined,
     };
   }
@@ -201,7 +209,49 @@ function convertContent(
   return blocks;
 }
 
+/**
+ * Map non-Claude model names to Claude equivalents
+ * Cursor may send OpenAI/other model names when using Override Base URL
+ */
+function mapModelToClaude(model: string): string {
+  const lower = model.toLowerCase();
+  
+  // Already a Claude model
+  if (lower.startsWith("claude")) return model;
+  
+  // Map known non-Claude models to Claude equivalents
+  // GPT-5.x / GPT-4.x -> claude-sonnet-4-5
+  if (lower.startsWith("gpt-5") || lower.startsWith("gpt-4")) return "claude-sonnet-4-5";
+  // o1/o3/o4 reasoning models -> claude-sonnet-4-5 
+  if (/^o[134]/.test(lower)) return "claude-sonnet-4-5";
+  // Gemini -> claude-sonnet-4-5
+  if (lower.startsWith("gemini")) return "claude-sonnet-4-5";
+  
+  // Default fallback
+  console.log(`   [Warning] Unknown model "${model}", mapping to claude-sonnet-4-5`);
+  return "claude-sonnet-4-5";
+}
+
 export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest {
+  // Normalize: Responses API uses `input` instead of `messages`
+  if (!request.messages && request.input) {
+    console.log(`   [Debug] Detected Responses API format: converting 'input' to 'messages'`);
+    request.messages = request.input;
+  }
+  
+  // Safety check: if still no messages, use empty array
+  if (!request.messages) {
+    console.log(`   [Warning] No 'messages' or 'input' found in request, using empty array`);
+    request.messages = [];
+  }
+
+  // Map non-Claude models to Claude equivalents
+  const originalModel = request.model;
+  request.model = mapModelToClaude(request.model);
+  if (originalModel !== request.model) {
+    console.log(`   [Debug] Model mapping: "${originalModel}" → "${request.model}"`);
+  }
+
   const messages: AnthropicMessage[] = [];
   let system: string | ContentBlock[] | undefined;
 
