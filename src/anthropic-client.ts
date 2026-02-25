@@ -529,16 +529,43 @@ export async function proxyRequest(
       );
     }
 
-    // No API key available and Claude Code failed
+    // No API key available and Claude Code failed - propagate original error
+    const isClientError =
+      claudeResult.error.includes("too long") ||
+      claudeResult.error.includes("invalid") ||
+      claudeResult.error.includes("Bad request");
+
+    recordRequest({
+      model,
+      source: "error",
+      inputTokens: 0,
+      outputTokens: 0,
+      stream,
+      error: claudeResult.error,
+    });
+
+    logger.debug(
+      `   [Debug] Error response: ${JSON.stringify({
+        type: "error",
+        error: {
+          type: isClientError ? "invalid_request_error" : "api_error",
+          message: `${claudeResult.error} (no fallback API key available)`,
+        },
+      })}`
+    );
+
     return new Response(
       JSON.stringify({
         type: "error",
         error: {
-          type: "authentication_error",
-          message: "Claude Code request failed (no fallback API key available)",
+          type: isClientError ? "invalid_request_error" : "api_error",
+          message: `${claudeResult.error} (no fallback API key available)`,
         },
       } satisfies AnthropicError),
-      { status: 401, headers: { "Content-Type": "application/json" } }
+      {
+        status: isClientError ? 400 : 502,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 

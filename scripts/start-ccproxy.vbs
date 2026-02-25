@@ -1,7 +1,23 @@
 Set WshShell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
 
-' Start the proxy (invisible, with full path to bun and logging)
-WshShell.Run "cmd /c ""cd /d C:\Users\User\Documents\repository\ccproxy && C:\Users\User\.bun\bin\bun.exe run index.ts >> ccproxy-startup.log 2>&1""", 0, False
+Dim logFile
+logFile = "C:\Users\User\Documents\repository\ccproxy\ccproxy-startup.log"
+
+' Truncate startup log if over 5MB
+If fso.FileExists(logFile) Then
+    Dim f
+    Set f = fso.GetFile(logFile)
+    If f.Size > 5242880 Then
+        Set ts = fso.CreateTextFile(logFile, True)
+        ts.WriteLine "[" & Now & "] Startup log truncated (was " & f.Size & " bytes)"
+        ts.Close
+    End If
+    Set f = Nothing
+End If
+
+' Start the proxy with auto-restart loop (invisible, with logging)
+WshShell.Run "cmd /c ""cd /d C:\Users\User\Documents\repository\ccproxy && scripts\restart-loop.bat >> ccproxy-startup.log 2>&1""", 0, False
 
 ' Wait 3 seconds for proxy to be ready
 WScript.Sleep 3000
