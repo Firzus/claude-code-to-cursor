@@ -1,8 +1,8 @@
 @echo off
 echo Starting ccproxy + Cloudflare tunnel...
 
-:: Start the proxy
-start "ccproxy" /MIN cmd /c "cd /d C:\Users\User\Documents\repository\ccproxy && bun run index.ts"
+:: Start the proxy (full path to bun)
+start "ccproxy" /MIN cmd /c "cd /d C:\Users\User\Documents\repository\ccproxy && C:\Users\User\.bun\bin\bun.exe run index.ts"
 
 :: Wait for proxy to be ready
 timeout /t 3 /nobreak >nul

@@ -14,6 +14,7 @@ coverage
 logs
 _.log
 api.log
+ccproxy-startup.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
