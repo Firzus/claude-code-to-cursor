@@ -1,111 +1,66 @@
----
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
----
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+## What is ccproxy
 
-## APIs
+A Bun-based HTTP proxy that routes Anthropic API requests through a Claude Code OAuth subscription, with automatic fallback to a direct API key when subscription limits are hit (429/403). It exposes both Anthropic-native (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) endpoints, making it usable with Cursor IDE and similar tools.
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+## Commands
 
-## Testing
-
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+```bash
+bun run index.ts          # Start the proxy (port 8082)
+bun --hot run index.ts    # Start with hot reload (dev)
+bunx tsc --noEmit         # Type check (strict mode, has known errors in openai-adapter.ts)
+bun test                  # Run tests
 ```
 
-## Frontend
+## Bun-only — no Node/npm/vite
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+- Use `bun` / `bun install` / `bun run` / `bunx` exclusively
+- Bun auto-loads `.env` — no dotenv
+- Use Bun built-in APIs: `Bun.serve()`, `Bun.file()`, `bun:sqlite`, `Bun.spawn()`
+- No runtime npm dependencies — everything uses Bun's built-in APIs
+- Don't use express, ws, better-sqlite3, pg, ioredis, or vite
 
-Server:
+## Architecture
 
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
+```
+index.ts                    ← HTTP server (Bun.serve), routing, IP whitelist, streaming
+src/
+  config.ts                 ← Env vars, OAuth constants, Claude Code system prompt
+  oauth.ts                  ← Token loading (macOS Keychain or file), refresh, caching
+  anthropic-client.ts       ← Core proxy: Claude Code request → fallback to API key
+  openai-adapter.ts         ← OpenAI ↔ Anthropic format conversion (messages, tools, streaming)
+  openai-passthrough.ts     ← Direct forwarding for non-Claude models (GPT, Gemini, etc.)
+  tool-call-translator.ts   ← Fixes Claude Code tool call XML to Cursor's expected format
+  db.ts                     ← SQLite analytics: request logging, budget enforcement, cost tracking
+  pricing.ts                ← Per-model token cost calculations
+  logger.ts                 ← File logger with auto-truncation (50 MB api.log, 5 MB startup log)
+  types.ts                  ← Shared type definitions
+scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart, task scheduler)
 ```
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+## Request flow
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+1. Request hits `index.ts` → IP whitelist check (via `cf-connecting-ip` for Cloudflare tunnels)
+2. For `/v1/chat/completions`: OpenAI format converted to Anthropic via `openai-adapter.ts`
+3. Non-Claude models (GPT, Gemini) routed directly to OpenAI/OpenRouter via `openai-passthrough.ts`
+4. Claude requests go through `anthropic-client.ts`:
+   - Tries Claude Code OAuth first (requires system prompt prefix + beta headers)
+   - On 429/403, falls back to direct `ANTHROPIC_API_KEY`
+   - Rate limit results are cached to skip Claude Code temporarily
+5. Response streamed back; tool calls translated via `tool-call-translator.ts`
+6. Request recorded in SQLite for analytics/budget tracking
 
-With the following `frontend.tsx`:
+## Key constraints
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
+- The Claude Code system prompt in `config.ts` (`CLAUDE_CODE_SYSTEM_PROMPT`) must start with the exact string `"You are Claude Code, Anthropic's official CLI for Claude."` — this is required for OAuth to work
+- Beta headers (`CLAUDE_CODE_BETA_HEADERS`) must include both `claude-code-20250219` and `oauth-2025-04-20`
+- `reasoning_budget` must be stripped from requests before sending to Claude Code API
+- `cache_control.ttl` must be stripped (Claude Code API doesn't accept it)
+- Token refresh uses a 5-minute expiry buffer
 
-// import .css files directly and it works
-import './index.css';
+## Environment variables
 
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+See `.env.example`. Key ones: `ANTHROPIC_API_KEY` (fallback), `PORT` (default 8082), `CLAUDE_CODE_FIRST` (default true), `OPENAI_API_KEY` (for non-Claude models), `ALLOWED_IPS` (comma-separated, or `"disabled"`).
