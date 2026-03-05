@@ -314,6 +314,14 @@ const server = Bun.serve({
         );
         console.log(`   Temperature: ${openaiBody.temperature || "not set"}`);
         console.log(`   Messages Count: ${openaiBody.messages?.length || 0}`);
+        // Log ALL top-level keys to understand what Cursor sends
+        const allKeys = Object.keys(openaiBody);
+        console.log(`   All Request Keys: ${allKeys.join(", ")}`);
+        logger.info(`   All Request Keys: ${allKeys.join(", ")}`);
+        if ((openaiBody as any).reasoning_effort) {
+          console.log(`   Reasoning Effort: ${(openaiBody as any).reasoning_effort}`);
+          logger.info(`   Reasoning Effort: ${(openaiBody as any).reasoning_effort}`);
+        }
 
         // Log the FULL raw request body to file for debugging tool call format
         logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);

@@ -59,6 +59,8 @@ export interface OpenAIChatRequest {
   tools?: OpenAITool[];
   tool_choice?: "none" | "auto" | "required" | { type: "function"; function: { name: string } };
   stream_options?: { include_usage?: boolean };
+  /** OpenAI reasoning_effort field — Cursor sends this when thinking is toggled */
+  reasoning_effort?: "low" | "medium" | "high";
 }
 
 export interface OpenAIChatResponse {
@@ -450,16 +452,19 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     result.tool_choice = request.tool_choice as unknown as typeof result.tool_choice;
   }
   
-  // Convert reasoning_budget to Anthropic's thinking parameter
-  if (normalized.reasoningBudget) {
+  // Determine thinking budget: prefer reasoning_effort from request body (Cursor's toggle),
+  // fall back to model name suffix (-thinking)
+  const thinkingBudget = request.reasoning_effort || normalized.reasoningBudget;
+
+  if (thinkingBudget) {
     const budgetMap: Record<string, number> = {
       high: 16384,
       medium: 8192,
       low: 4096,
     };
-    const budgetTokens = typeof normalized.reasoningBudget === "string"
-      ? budgetMap[normalized.reasoningBudget] || 8192
-      : Number(normalized.reasoningBudget) || 8192;
+    const budgetTokens = typeof thinkingBudget === "string"
+      ? budgetMap[thinkingBudget] || 8192
+      : Number(thinkingBudget) || 8192;
 
     result.thinking = {
       type: "enabled",
@@ -471,7 +476,8 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     if (result.max_tokens < budgetTokens + 1024) {
       result.max_tokens = budgetTokens + 4096;
     }
-    console.log(`   [Debug] Thinking enabled: budget_tokens=${budgetTokens}, max_tokens=${result.max_tokens}`);
+    const source = request.reasoning_effort ? "reasoning_effort" : "model name";
+    console.log(`   [Debug] Thinking enabled (${source}): budget_tokens=${budgetTokens}, max_tokens=${result.max_tokens}`);
   }
 
   return result;
