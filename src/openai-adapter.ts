@@ -105,6 +105,11 @@ export interface OpenAIStreamChunk {
     };
     finish_reason: "stop" | "length" | "content_filter" | "tool_calls" | null;
   }[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  } | null;
 }
 
 /**
@@ -586,6 +591,32 @@ export function createOpenAIToolCallChunk(
   const result = `data: ${JSON.stringify(chunk)}\n\n`;
   logger.verbose(`   [EMIT TOOL CALL CHUNK] index=${toolCallIndex}, id=${toolCallId || '-'}, name=${functionName || '-'}, args=${functionArgs ? functionArgs.slice(0, 200) : '-'}, finish=${finishReason || '-'}`);
   return result;
+}
+
+/**
+ * Create a final OpenAI stream chunk with usage information.
+ * OpenAI sends this as the last chunk before [DONE] with an empty choices array.
+ */
+export function createOpenAIStreamUsageChunk(
+  id: string,
+  model: string,
+  promptTokens: number,
+  completionTokens: number,
+): string {
+  const chunk: OpenAIStreamChunk = {
+    id: `chatcmpl-${id}`,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [],
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+    },
+  };
+
+  return `data: ${JSON.stringify(chunk)}\n\n`;
 }
 
 export interface ParsedToolCall {

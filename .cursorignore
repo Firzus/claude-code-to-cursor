@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Lockfile (gros, binaire, pas utile au contexte IA)
+bun.lock
+
+# Logs
+*.log
+api.log
+ccproxy-startup.log
+
+# Base de données SQLite (binaire)
+*.db
+*.db-shm
+*.db-wal
+
+# Fichiers d'environnement (secrets)
+.env
+.env.*
+
+# Git
+.git/
+
+# Build / output
+out/
+dist/
+*.tgz
+
+# Caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# Coverage
+coverage/
+*.lcov
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE (sauf .cursor/rules qui peut être utile)
+.idea/
+.vscode/
+
+# Scripts Windows d'automatisation (pas de logique métier)
+scripts/

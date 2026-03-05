@@ -6,6 +6,7 @@ import {
   anthropicToOpenai,
   createOpenAIStreamChunk,
   createOpenAIStreamStart,
+  createOpenAIStreamUsageChunk,
   createOpenAIToolCallChunk,
   parseXMLToolCalls,
   type OpenAIChatRequest,
@@ -548,6 +549,8 @@ const server = Bun.serve({
                 name: string;
                 inputJson: string;
               } | null = null; // Current tool_use block being streamed
+              let usageInputTokens = 0; // Track input tokens from message_start
+              let usageOutputTokens = 0; // Track output tokens from message_delta
 
               // Helper to safely enqueue data
               const safeEnqueue = (data: Uint8Array) => {
@@ -613,17 +616,28 @@ const server = Bun.serve({
                         );
                       }
 
-                      // Handle message_start - send OpenAI start chunk
-                      if (event.type === "message_start" && !sentStart) {
-                        safeEnqueue(
-                          new TextEncoder().encode(
-                            createOpenAIStreamStart(streamId, openaiBody.model)
-                          )
-                        );
-                        sentStart = true;
-                        console.log(
-                          `   [Debug] Sent OpenAI stream start chunk`
-                        );
+                      // Handle message_start - send OpenAI start chunk and capture usage
+                      if (event.type === "message_start") {
+                        if (!sentStart) {
+                          safeEnqueue(
+                            new TextEncoder().encode(
+                              createOpenAIStreamStart(streamId, openaiBody.model)
+                            )
+                          );
+                          sentStart = true;
+                          console.log(
+                            `   [Debug] Sent OpenAI stream start chunk`
+                          );
+                        }
+                        // Capture input_tokens from message_start
+                        if (event.message?.usage?.input_tokens) {
+                          usageInputTokens = event.message.usage.input_tokens;
+                          const cacheRead = event.message.usage.cache_read_input_tokens || 0;
+                          const cacheCreation = event.message.usage.cache_creation_input_tokens || 0;
+                          console.log(
+                            `   [Debug] Usage: input_tokens=${usageInputTokens} (cache_read=${cacheRead}, cache_creation=${cacheCreation})`
+                          );
+                        }
                       }
 
                       // Handle content_block_start - ensure we've sent start
@@ -1051,6 +1065,16 @@ const server = Bun.serve({
                         lastChunkTime = Date.now();
                       }
 
+                      // Handle message_delta - capture output_tokens usage
+                      if (event.type === "message_delta") {
+                        if (event.usage?.output_tokens) {
+                          usageOutputTokens = event.usage.output_tokens;
+                          console.log(
+                            `   [Debug] Usage: output_tokens=${usageOutputTokens}`
+                          );
+                        }
+                      }
+
                       // Handle message_stop
                       if (event.type === "message_stop") {
                         // Flush any remaining tool call buffer (force flush)
@@ -1124,6 +1148,22 @@ const server = Bun.serve({
                             )
                           )
                         );
+                        // Send usage chunk before [DONE] so Cursor can display remaining context
+                        if (usageInputTokens > 0 || usageOutputTokens > 0) {
+                          safeEnqueue(
+                            new TextEncoder().encode(
+                              createOpenAIStreamUsageChunk(
+                                streamId,
+                                openaiBody.model,
+                                usageInputTokens,
+                                usageOutputTokens,
+                              )
+                            )
+                          );
+                          console.log(
+                            `   [Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, total=${usageInputTokens + usageOutputTokens}`
+                          );
+                        }
                         safeEnqueue(
                           new TextEncoder().encode("data: [DONE]\n\n")
                         );
