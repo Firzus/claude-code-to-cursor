@@ -58,6 +58,7 @@ export interface OpenAIChatRequest {
   user?: string;
   tools?: OpenAITool[];
   tool_choice?: "none" | "auto" | "required" | { type: "function"; function: { name: string } };
+  stream_options?: { include_usage?: boolean };
 }
 
 export interface OpenAIChatResponse {
@@ -115,25 +116,29 @@ export interface OpenAIStreamChunk {
 /**
  * Normalize Cursor model names to Anthropic format
  * Examples:
- * - claude-4.5-opus-high → claude-opus-4-5 (with reasoning_budget: high)
- * - claude-4.5-opus-high-thinking → claude-opus-4-5 (with reasoning_budget: high)
- * - claude-4.5-sonnet-high → claude-sonnet-4-5 (with reasoning_budget: high)
+ * - claude-4.5-opus-high → claude-opus-4-5 (no thinking, -high is ignored without -thinking)
+ * - claude-4.5-opus-high-thinking → claude-opus-4-5 (with thinking: high)
+ * - claude-4.5-sonnet-high → claude-sonnet-4-5 (no thinking)
  * - claude-4.5-haiku → claude-haiku-4-5
- * - claude-4.6-opus-high-thinking → claude-opus-4-6 (with reasoning_budget: high)
+ * - claude-4.6-opus-high-thinking → claude-opus-4-6 (with thinking: high)
+ * - claude-4.6-opus-thinking → claude-opus-4-6 (with thinking: medium)
  */
 export function normalizeModelName(model: string): { model: string; reasoningBudget?: string } {
   // Handle Cursor's format: claude-{version}-(opus|sonnet|haiku)[-budget][-thinking]
   // Supports any version like 4.5, 4.6, 5.0, etc.
-  const match = model.match(/^claude-(\d+\.\d+)-(opus|sonnet|haiku)(?:-(high|medium|low))?(?:-thinking)?$/);
+  // Only enable thinking when "-thinking" suffix is explicitly present
+  const match = model.match(/^claude-(\d+\.\d+)-(opus|sonnet|haiku)(?:-(high|medium|low))?(-thinking)?$/);
   if (match) {
     const version = match[1]!;
     const modelType = match[2]!;
     const budget = match[3];
+    const hasThinking = !!match[4]; // "-thinking" suffix present
     // Convert version "4.5" → "4-5", "4.6" → "4-6"
     const normalizedVersion = version.replace(".", "-");
     return {
       model: `claude-${modelType}-${normalizedVersion}`,
-      reasoningBudget: budget || undefined,
+      // Only set reasoningBudget if -thinking suffix is present
+      reasoningBudget: hasThinking ? (budget || "medium") : undefined,
     };
   }
   
@@ -445,11 +450,30 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     result.tool_choice = request.tool_choice as unknown as typeof result.tool_choice;
   }
   
-  // Add reasoning_budget if present (Anthropic expects it as a number or specific string)
+  // Convert reasoning_budget to Anthropic's thinking parameter
   if (normalized.reasoningBudget) {
-    result.reasoning_budget = normalized.reasoningBudget;
+    const budgetMap: Record<string, number> = {
+      high: 16384,
+      medium: 8192,
+      low: 4096,
+    };
+    const budgetTokens = typeof normalized.reasoningBudget === "string"
+      ? budgetMap[normalized.reasoningBudget] || 8192
+      : Number(normalized.reasoningBudget) || 8192;
+
+    result.thinking = {
+      type: "enabled",
+      budget_tokens: budgetTokens,
+    };
+    // Anthropic requires temperature=1 when thinking is enabled
+    result.temperature = 1;
+    // Ensure max_tokens is large enough (budget_tokens + output space)
+    if (result.max_tokens < budgetTokens + 1024) {
+      result.max_tokens = budgetTokens + 4096;
+    }
+    console.log(`   [Debug] Thinking enabled: budget_tokens=${budgetTokens}, max_tokens=${result.max_tokens}`);
   }
-  
+
   return result;
 }
 

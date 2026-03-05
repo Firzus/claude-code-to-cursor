@@ -549,13 +549,31 @@ const server = Bun.serve({
                 name: string;
                 inputJson: string;
               } | null = null; // Current tool_use block being streamed
+              let inThinkingBlock = false; // Track if we're inside a thinking block (skip output)
               let usageInputTokens = 0; // Track input tokens from message_start
               let usageOutputTokens = 0; // Track output tokens from message_delta
+              // Per OpenAI spec: when stream_options.include_usage is set,
+              // all intermediate chunks must have "usage": null
+              const includeUsageNull = !!openaiBody.stream_options?.include_usage;
 
-              // Helper to safely enqueue data
+              // Helper to safely enqueue data, automatically injecting
+              // "usage": null on SSE JSON chunks when include_usage is set
               const safeEnqueue = (data: Uint8Array) => {
                 try {
                   if (!cancelled) {
+                    if (includeUsageNull) {
+                      // Check if this is an SSE chunk that needs usage: null
+                      const str = new TextDecoder().decode(data);
+                      if (str.startsWith('data: {') && !str.includes('"usage"')) {
+                        // Inject "usage":null before the last } in the JSON
+                        const injected = str.replace(
+                          /\}\s*\n\n$/,
+                          ',"usage":null}\n\n'
+                        );
+                        controller.enqueue(new TextEncoder().encode(injected));
+                        return;
+                      }
+                    }
                     controller.enqueue(data);
                   }
                 } catch {
@@ -666,6 +684,14 @@ const server = Bun.serve({
                         currentBlockIndex = event.index ?? currentBlockIndex;
                         blockTextSent = false;
 
+                        // Skip thinking blocks - internal reasoning, not for Cursor
+                        if (block?.type === "thinking") {
+                          inThinkingBlock = true;
+                          logger.verbose(`   [Debug] Thinking block started (will be hidden from Cursor)`);
+                          continue;
+                        }
+                        inThinkingBlock = false;
+
                         if (block?.type === "text" && block.text) {
                           const textContent = block.text;
                           logger.verbose(
@@ -706,6 +732,11 @@ const server = Bun.serve({
 
                       // Handle content_block_stop - reset block tracking and finalize tool calls
                       if (event.type === "content_block_stop") {
+                        if (inThinkingBlock) {
+                          inThinkingBlock = false;
+                          logger.verbose(`   [Debug] Thinking block ended`);
+                          continue;
+                        }
                         logger.verbose(
                           `   [Debug] content_block_stop for index ${event.index}`
                         );
@@ -737,6 +768,12 @@ const server = Bun.serve({
 
                         blockTextSent = false;
                         currentBlockIndex = -1;
+                      }
+
+                      // Skip deltas for thinking blocks
+                      if (event.type === "content_block_delta" && inThinkingBlock) {
+                        logger.verbose(`   [Debug] Skipping thinking delta`);
+                        continue;
                       }
 
                       // Handle input_json_delta for tool_use blocks

@@ -60,6 +60,10 @@ export interface AnthropicRequest {
   tools?: Tool[];
   tool_choice?: ToolChoice;
   reasoning_budget?: number | string;
+  thinking?: {
+    type: "enabled" | "disabled";
+    budget_tokens: number;
+  };
 }
 
 export interface Tool {

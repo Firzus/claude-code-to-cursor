@@ -44,14 +44,22 @@ function getRateLimitResetMinutes(): number | null {
 function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   const prepared = { ...body };
 
-  // Claude Code API doesn't support reasoning_budget - remove it
-  // This must be removed before sending to Claude Code to avoid errors
+  // Convert reasoning_budget to thinking parameter if not already converted
   if ("reasoning_budget" in prepared) {
-    const budgetValue = prepared.reasoning_budget;
+    if (!prepared.thinking) {
+      const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
+      const val = prepared.reasoning_budget;
+      const budgetTokens = typeof val === "string"
+        ? budgetMap[val] || 8192
+        : Number(val) || 8192;
+      prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
+      prepared.temperature = 1;
+      if (prepared.max_tokens < budgetTokens + 1024) {
+        prepared.max_tokens = budgetTokens + 4096;
+      }
+      logger.verbose(`   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
+    }
     delete prepared.reasoning_budget;
-    logger.verbose(
-      `   [Debug] Removed reasoning_budget (${budgetValue}) - not supported by Claude Code API`
-    );
   }
 
   // Pass through tools to Claude Code API so the model can make structured tool calls
@@ -333,12 +341,22 @@ async function makeDirectApiRequest(
   apiKey: string
 ): Promise<RequestResult> {
   try {
-    // Remove reasoning_budget - direct API may not support it in all contexts
+    // Convert reasoning_budget to thinking parameter for direct API
     const preparedBody = { ...body };
     if ("reasoning_budget" in preparedBody) {
-      logger.verbose(
-        `   [Debug] Removing reasoning_budget (${preparedBody.reasoning_budget}) from direct API request`
-      );
+      if (!preparedBody.thinking) {
+        const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
+        const val = preparedBody.reasoning_budget;
+        const budgetTokens = typeof val === "string"
+          ? budgetMap[val] || 8192
+          : Number(val) || 8192;
+        preparedBody.thinking = { type: "enabled", budget_tokens: budgetTokens };
+        preparedBody.temperature = 1;
+        if (preparedBody.max_tokens < budgetTokens + 1024) {
+          preparedBody.max_tokens = budgetTokens + 4096;
+        }
+        logger.verbose(`   [Debug] Direct API: converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
+      }
       delete preparedBody.reasoning_budget;
     }
 

@@ -57,7 +57,7 @@ scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart
 
 - The Claude Code system prompt in `config.ts` (`CLAUDE_CODE_SYSTEM_PROMPT`) must start with the exact string `"You are Claude Code, Anthropic's official CLI for Claude."` — this is required for OAuth to work
 - Beta headers (`CLAUDE_CODE_BETA_HEADERS`) must include both `claude-code-20250219` and `oauth-2025-04-20`
-- `reasoning_budget` must be stripped from requests before sending to Claude Code API
+- `reasoning_budget` is converted to `thinking: { type: "enabled", budget_tokens: N }` with `temperature: 1` (required by the API for extended thinking)
 - `cache_control.ttl` must be stripped (Claude Code API doesn't accept it)
 - Token refresh uses a 5-minute expiry buffer
 
