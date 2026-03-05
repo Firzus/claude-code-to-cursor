@@ -43,6 +43,3 @@ desktop.ini
 # IDE (sauf .cursor/rules qui peut être utile)
 .idea/
 .vscode/
-
-# Scripts Windows d'automatisation (pas de logique métier)
-scripts/

@@ -12,7 +12,7 @@ A Bun-based HTTP proxy that routes Anthropic API requests through a Claude Code 
 bun run index.ts          # Start the proxy (port 8082)
 bun --hot run index.ts    # Start with hot reload (dev)
 bunx tsc --noEmit         # Type check (strict mode, has known errors in openai-adapter.ts)
-bun test                  # Run tests
+bun test                  # Run tests (no test files currently exist)
 ```
 
 ## Bun-only — no Node/npm/vite
@@ -60,6 +60,36 @@ scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart
 - `reasoning_budget` is converted to `thinking: { type: "enabled", budget_tokens: N }` with `temperature: 1` (required by the API for extended thinking)
 - `cache_control.ttl` must be stripped (Claude Code API doesn't accept it)
 - Token refresh uses a 5-minute expiry buffer
+- `api.log` is deleted and recreated each time the proxy starts (see `logger.ts`)
+- The `User-Agent` header sent to Anthropic is hardcoded as `"claude-code/1.0.85"` in `anthropic-client.ts`
+
+## Model name normalization
+
+`openai-adapter.ts` handles two key model transformations:
+
+1. **Cursor format → Anthropic format** (`normalizeModelName`): `claude-4.5-opus-high-thinking` → `claude-opus-4-5` with `thinking.budget_tokens=16384`. The `-thinking` suffix enables extended thinking; without it, budget suffixes like `-high` are ignored.
+
+2. **Non-Claude → Claude mapping** (`mapModelToClaude`): GPT, Gemini, o1/o3/o4 models are all mapped to `claude-sonnet-4-5`. This allows Cursor's "Override Base URL" to work regardless of model selection.
+
+## API endpoints
+
+- `POST /v1/messages` — Anthropic-native proxy
+- `POST /v1/chat/completions` — OpenAI-compatible proxy (converts formats)
+- `GET /v1/models` — Lists available models (both Anthropic and Cursor formats)
+- `GET /health` or `GET /` — Health check / status
+- `GET /analytics?period=day|hour|week|month|all` — Usage analytics
+- `GET /analytics/requests?limit=100` — Recent request log
+- `POST /analytics/reset` — Clear analytics data
+- `GET /budget` — Budget settings
+- `POST /budget` — Update budget settings (budget only applies to API key requests, not Claude Code)
+
+## Streaming pipeline (OpenAI-compatible)
+
+The streaming path in `index.ts` is the most complex part of the codebase. It reads Anthropic SSE events (`content_block_start`, `content_block_delta`, `message_delta`, etc.) and converts them to OpenAI `chat.completion.chunk` SSE format in real-time. Key behaviors:
+- Accumulates text to detect and translate XML tool calls mid-stream
+- Converts Anthropic `tool_use` content blocks into OpenAI `tool_calls` delta format
+- Emits a usage chunk with token counts before `[DONE]` when `stream_options.include_usage` is set
+- Handles `thinking` blocks by silently consuming them (not forwarded to client)
 
 ## Environment variables
 
