@@ -490,8 +490,10 @@ export function anthropicToOpenai(
   let content = anthropicResponse.content
     ?.map((block: any) => {
       if (block.type === "text") return block.text;
-      if (block.type === "tool_use")
-        return `[Tool: ${block.name}]`;
+      if (block.type === "tool_use") {
+        const name = block.name?.startsWith("mcp_") ? block.name.slice(4) : block.name;
+        return `[Tool: ${name}]`;
+      }
       return "";
     })
     .join("") || "";

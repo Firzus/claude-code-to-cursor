@@ -3,6 +3,7 @@ import {
   CLAUDE_CODE_BETA_HEADERS,
   CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_EXTRA_INSTRUCTION,
+  CLAUDE_CODE_USER_AGENT,
   getConfig,
 } from "./config";
 import { getValidToken, clearCachedToken } from "./oauth";
@@ -62,17 +63,46 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
     delete prepared.reasoning_budget;
   }
 
-  // Pass through tools to Claude Code API so the model can make structured tool calls
-  // Tools should already be in Anthropic format (converted by openaiToAnthropic)
-  if (prepared.tools) {
+  // Prefix tool names with mcp_ for Claude Code API compatibility
+  const TOOL_PREFIX = "mcp_";
+  if (prepared.tools && Array.isArray(prepared.tools)) {
+    prepared.tools = prepared.tools.map((tool: any) => ({
+      ...tool,
+      name: tool.name ? `${TOOL_PREFIX}${tool.name}` : tool.name,
+    }));
     logger.verbose(
-      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API`
+      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (prefixed with mcp_)`
     );
   }
   if (prepared.tool_choice) {
+    // Prefix tool name in tool_choice if it's a specific tool
+    if (prepared.tool_choice.type === "tool" && prepared.tool_choice.name) {
+      prepared.tool_choice = {
+        ...prepared.tool_choice,
+        name: `${TOOL_PREFIX}${prepared.tool_choice.name}`,
+      };
+    }
     logger.verbose(
       `   [Debug] Passing tool_choice to Claude Code API: ${JSON.stringify(prepared.tool_choice)}`
     );
+  }
+
+  // Prefix tool names in messages (tool_use and tool_result blocks)
+  if (prepared.messages && Array.isArray(prepared.messages)) {
+    prepared.messages = prepared.messages.map((msg: any) => {
+      if (msg.content && Array.isArray(msg.content)) {
+        msg = {
+          ...msg,
+          content: msg.content.map((block: any) => {
+            if ((block.type === "tool_use" || block.type === "tool_result") && block.name) {
+              return { ...block, name: `${TOOL_PREFIX}${block.name}` };
+            }
+            return block;
+          }),
+        };
+      }
+      return msg;
+    });
   }
 
   // Build system prompts array - required Claude Code prompt first
@@ -194,14 +224,14 @@ async function makeClaudeCodeRequestWithOAuth(
       `   [Debug] Using Claude Code beta headers: "${CLAUDE_CODE_BETA_HEADERS}"`
     );
 
-    const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}`, {
+    const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}?beta=true`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token.accessToken}`,
         "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
-        "User-Agent": "claude-code/1.0.85",
+        "User-Agent": CLAUDE_CODE_USER_AGENT,
       },
       body: JSON.stringify(preparedBody),
     });
@@ -291,21 +321,21 @@ async function makeClaudeCodeRequestWithOAuth(
         delete preparedBody.tools;
         delete preparedBody.tool_choice;
 
-        const retryResponse = await fetch(`${ANTHROPIC_API_URL}${endpoint}`, {
+        const retryResponse = await fetch(`${ANTHROPIC_API_URL}${endpoint}?beta=true`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token.accessToken}`,
             "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
             "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
-            "User-Agent": "claude-code/1.0.85",
+            "User-Agent": CLAUDE_CODE_USER_AGENT,
           },
           body: JSON.stringify(preparedBody),
         });
 
         if (retryResponse.ok || (retryResponse.status !== 400 && retryResponse.status !== 401 && retryResponse.status !== 403)) {
           console.log(`   [Debug] Retry without tools succeeded (status: ${retryResponse.status})`);
-          return { success: true, response: retryResponse, source: "claude_code" };
+          return { success: true, response: stripMcpPrefixFromResponse(retryResponse), source: "claude_code" };
         }
 
         console.log(`   [Debug] Retry without tools also failed (status: ${retryResponse.status})`);
@@ -319,11 +349,45 @@ async function makeClaudeCodeRequestWithOAuth(
       };
     }
 
-    return { success: true, response, source: "claude_code" };
+    // Strip mcp_ prefix from tool names in streaming/non-streaming responses
+    const strippedResponse = stripMcpPrefixFromResponse(response);
+    return { success: true, response: strippedResponse, source: "claude_code" };
   } catch (error) {
     console.error("Claude Code OAuth request failed:", error);
     return { success: false, error: String(error), shouldFallback: true };
   }
+}
+
+/**
+ * Wraps a response to strip the "mcp_" prefix from tool names.
+ * This reverses the prefixing done in prepareClaudeCodeBody.
+ */
+function stripMcpPrefixFromResponse(response: Response): Response {
+  if (!response.body) return response;
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      let text = decoder.decode(value, { stream: true });
+      // Strip mcp_ prefix from tool names in JSON responses
+      text = text.replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
+      controller.enqueue(encoder.encode(text));
+    },
+  });
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 }
 
 async function makeClaudeCodeRequest(

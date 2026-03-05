@@ -2,24 +2,33 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ProxyConfig } from "./types";
 
-export const CLAUDE_CREDENTIALS_PATH = join(
-  homedir(),
-  ".claude",
-  ".credentials.json"
-);
+// OAuth credentials persistence (own directory, not Claude Code's)
+export const CCPROXY_AUTH_DIR = join(homedir(), ".ccproxy");
+export const CCPROXY_AUTH_PATH = join(CCPROXY_AUTH_DIR, "auth.json");
+
 export const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 export const ANTHROPIC_TOKEN_URL =
   "https://console.anthropic.com/v1/oauth/token";
+export const ANTHROPIC_AUTHORIZE_URL =
+  "https://claude.ai/oauth/authorize";
+export const OAUTH_REDIRECT_URI =
+  "https://console.anthropic.com/oauth/code/callback";
+export const OAUTH_SCOPES = "org:create_api_key user:profile user:inference";
 export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 // Required beta headers for Claude Code OAuth
 export const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
 export const ANTHROPIC_BETA_CLAUDE_CODE = "claude-code-20250219";
 
-// Combined beta header string for Claude Code OAuth requests (minimal required set)
+export const ANTHROPIC_BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14";
+
+// Combined beta header string for Claude Code OAuth requests
 export const CLAUDE_CODE_BETA_HEADERS = [
-  ANTHROPIC_BETA_CLAUDE_CODE,
   ANTHROPIC_BETA_OAUTH,
+  ANTHROPIC_BETA_INTERLEAVED_THINKING,
 ].join(",");
+
+// Centralized User-Agent for all Claude Code requests
+export const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.2 (external, cli)";
 
 // System prompt prefix that identifies requests as coming from Claude Code
 // This exact string is required for Claude Code OAuth to work - do not modify

@@ -1,17 +1,15 @@
-export interface ClaudeCredentials {
-  claudeAiOauth: {
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: number;
-    scopes: string[];
-  };
+export interface CcproxyAuth {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  scopes: string[];
+  obtainedAt: number;
 }
 
 export interface TokenInfo {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
-  isExpired: boolean;
 }
 
 export interface TokenRefreshResponse {

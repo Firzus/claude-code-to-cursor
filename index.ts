@@ -1,5 +1,11 @@
-import { getConfig, CLAUDE_CREDENTIALS_PATH } from "./src/config";
-import { loadCredentials, getValidToken } from "./src/oauth";
+import { getConfig, CCPROXY_AUTH_PATH } from "./src/config";
+import {
+  hasCredentials,
+  getValidToken,
+  generatePKCE,
+  getAuthorizationURL,
+  exchangeCode,
+} from "./src/oauth";
 import { proxyRequest } from "./src/anthropic-client";
 import {
   openaiToAnthropic,
@@ -41,12 +47,26 @@ function shouldPassthroughToOpenAI(model: string): boolean {
   return !normalized.includes("claude");
 }
 
+// PKCE state storage (module-level, TTL 10 min)
+const pkceStore = new Map<
+  string,
+  { codeVerifier: string; createdAt: number }
+>();
+const PKCE_TTL_MS = 10 * 60 * 1000;
+
+function cleanPkceStore() {
+  const now = Date.now();
+  for (const [key, val] of pkceStore) {
+    if (now - val.createdAt > PKCE_TTL_MS) pkceStore.delete(key);
+  }
+}
+
 async function checkCredentials(): Promise<boolean> {
-  const creds = await loadCredentials();
-  if (!creds?.claudeAiOauth) {
-    console.log("\n⚠️  No Claude Code credentials found.");
-    console.log(`   Expected at: ${CLAUDE_CREDENTIALS_PATH}`);
-    console.log("   Run 'claude /login' to authenticate.\n");
+  if (!hasCredentials()) {
+    console.log("\n⚠️  No OAuth credentials found.");
+    console.log(
+      `   >>> To authenticate: open http://localhost:${config.port}/login`
+    );
 
     if (config.anthropicApiKey) {
       console.log("✓ Fallback ANTHROPIC_API_KEY is configured");
@@ -57,7 +77,7 @@ async function checkCredentials(): Promise<boolean> {
     return false;
   }
 
-  console.log("✓ Claude Code credentials loaded");
+  console.log("✓ OAuth credentials loaded");
 
   const token = await getValidToken();
   if (token) {
@@ -188,6 +208,29 @@ function checkIPWhitelist(req: Request): {
   };
 }
 
+function htmlResult(message: string, success: boolean): string {
+  const color = success ? "#238636" : "#da3633";
+  const icon = success ? "&#10003;" : "&#10007;";
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ccproxy — ${success ? "Success" : "Error"}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;background:#0d1117;color:#e6edf3}
+.badge{display:inline-block;font-size:1.4em;padding:6px 14px;border-radius:6px;background:${color};color:#fff;margin-bottom:14px}
+code{background:#161b22;padding:2px 6px;border-radius:4px;font-size:0.9em}</style>
+</head><body><div class="badge">${icon}</div><p>${message}</p></body></html>`;
+}
+
+// Global error handlers to prevent silent crashes from unhandled errors
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+  logger.error(`[FATAL] Uncaught exception: ${err.stack || err}`);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled rejection:", reason);
+  logger.error(`[FATAL] Unhandled rejection: ${reason}`);
+});
+
 const server = Bun.serve({
   port: config.port,
   idleTimeout: 255, // 255 seconds for streaming responses
@@ -235,6 +278,7 @@ const server = Bun.serve({
         claudeCode: {
           authenticated: !!token,
           expiresAt: token?.expiresAt,
+          ...(token ? {} : { loginUrl: `http://localhost:${config.port}/login` }),
         },
         fallback: !!config.anthropicApiKey,
         openaiPassthrough: {
@@ -714,10 +758,15 @@ const server = Bun.serve({
                             `   [Debug] tool_use block started: id=${block.id}, name=${block.name}`
                           );
 
+                          // Strip mcp_ prefix from tool names in responses
+                          const toolName = block.name?.startsWith("mcp_")
+                            ? block.name.slice(4)
+                            : block.name;
+
                           // Store current tool call info for accumulating input
                           currentToolCall = {
                             id: block.id,
-                            name: block.name,
+                            name: toolName,
                             inputJson: "",
                           };
 
@@ -729,7 +778,7 @@ const server = Bun.serve({
                                 openaiBody.model,
                                 toolCallIndex,
                                 block.id,
-                                block.name,
+                                toolName,
                                 undefined,
                                 null
                               )
@@ -1428,6 +1477,92 @@ const server = Bun.serve({
       }
     }
 
+    // ---------- OAuth login flow ----------
+    if (url.pathname === "/login" && req.method === "GET") {
+      cleanPkceStore();
+      const { codeVerifier, codeChallenge } = await generatePKCE();
+      const state = crypto.randomUUID();
+      pkceStore.set(state, { codeVerifier, createdAt: Date.now() });
+      const authURL = getAuthorizationURL(codeChallenge, state);
+
+      return new Response(
+        `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ccproxy — Login</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:480px;margin:60px auto;padding:0 20px;background:#0d1117;color:#e6edf3}
+  h1{font-size:1.4em}
+  a{color:#58a6ff}
+  .step{margin:18px 0}
+  input[type=text]{width:100%;padding:8px;border:1px solid #30363d;border-radius:6px;background:#161b22;color:#e6edf3;font-size:14px;box-sizing:border-box}
+  button{background:#238636;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin-top:8px}
+  button:hover{background:#2ea043}
+  .note{color:#8b949e;font-size:0.85em}
+</style>
+</head><body>
+<h1>ccproxy — Anthropic OAuth Login</h1>
+<div class="step"><strong>Step 1:</strong> <a href="${authURL}" target="_blank" rel="noopener">Open Anthropic authorization page</a></div>
+<div class="step"><strong>Step 2:</strong> Authorize, then copy the code shown on the page.</div>
+<div class="step"><strong>Step 3:</strong> Paste it below:
+<form method="POST" action="/oauth/callback">
+  <input type="hidden" name="state" value="${state}">
+  <input type="text" name="code" placeholder="Paste authorization code here" required autofocus>
+  <button type="submit">Submit</button>
+</form>
+</div>
+<p class="note">The code is single-use and expires in a few minutes.</p>
+</body></html>`,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } }
+      );
+    }
+
+    if (url.pathname === "/oauth/callback" && req.method === "POST") {
+      try {
+        const formData = await req.formData();
+        const code = formData.get("code") as string | null;
+        const state = formData.get("state") as string | null;
+
+        if (!code || !state) {
+          return new Response(htmlResult("Missing code or state parameter.", false), {
+            status: 400,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+
+        cleanPkceStore();
+        const pkce = pkceStore.get(state);
+        if (!pkce) {
+          return new Response(
+            htmlResult("Invalid or expired state. Please go back to /login and try again.", false),
+            { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } }
+          );
+        }
+        pkceStore.delete(state);
+
+        const auth = await exchangeCode(code, pkce.codeVerifier, state);
+        const expiresIn = Math.round(
+          (auth.expiresAt - Date.now()) / 1000 / 60
+        );
+        console.log(
+          `✓ OAuth login successful — token expires in ${expiresIn} minutes`
+        );
+
+        return new Response(
+          htmlResult(
+            `Authentication successful! Token expires in ${expiresIn} minutes.<br>Credentials saved to <code>${CCPROXY_AUTH_PATH}</code>.<br>You can close this page.`,
+            true
+          ),
+          { headers: { "Content-Type": "text/html; charset=utf-8" } }
+        );
+      } catch (error) {
+        console.error("OAuth callback error:", error);
+        return new Response(
+          htmlResult(`Authentication failed: ${String(error)}`, false),
+          { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } }
+        );
+      }
+    }
+
     return Response.json(
       {
         type: "error",
@@ -1459,7 +1594,8 @@ console.log(
   `   OpenAI:     http://localhost:${server.port}/v1/chat/completions`
 );
 console.log(`   Analytics:  http://localhost:${server.port}/analytics`);
-console.log(`   Budget:     http://localhost:${server.port}/budget\n`);
+console.log(`   Budget:     http://localhost:${server.port}/budget`);
+console.log(`   Login:      http://localhost:${server.port}/login\n`);
 
 await checkCredentials();
 

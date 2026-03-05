@@ -29,7 +29,7 @@ bun test                  # Run tests (no test files currently exist)
 index.ts                    ← HTTP server (Bun.serve), routing, IP whitelist, streaming
 src/
   config.ts                 ← Env vars, OAuth constants, Claude Code system prompt
-  oauth.ts                  ← Token loading (macOS Keychain or file), refresh, caching
+  oauth.ts                  ← OAuth PKCE login, token exchange, refresh, persistence (~/.ccproxy/auth.json)
   anthropic-client.ts       ← Core proxy: Claude Code request → fallback to API key
   openai-adapter.ts         ← OpenAI ↔ Anthropic format conversion (messages, tools, streaming)
   openai-passthrough.ts     ← Direct forwarding for non-Claude models (GPT, Gemini, etc.)
@@ -59,9 +59,10 @@ scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart
 - Beta headers (`CLAUDE_CODE_BETA_HEADERS`) must include both `claude-code-20250219` and `oauth-2025-04-20`
 - `reasoning_budget` is converted to `thinking: { type: "enabled", budget_tokens: N }` with `temperature: 1` (required by the API for extended thinking)
 - `cache_control.ttl` must be stripped (Claude Code API doesn't accept it)
-- Token refresh uses a 5-minute expiry buffer
+- OAuth credentials are stored in `~/.ccproxy/auth.json` (not Claude Code's credentials)
+- Token refresh persists rotated tokens to disk (no 5-minute buffer, exact expiry like OpenCode)
 - `api.log` is deleted and recreated each time the proxy starts (see `logger.ts`)
-- The `User-Agent` header sent to Anthropic is hardcoded as `"claude-code/1.0.85"` in `anthropic-client.ts`
+- The `User-Agent` header is centralized as `CLAUDE_CODE_USER_AGENT` in `config.ts`
 
 ## Model name normalization
 
@@ -76,7 +77,9 @@ scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart
 - `POST /v1/messages` — Anthropic-native proxy
 - `POST /v1/chat/completions` — OpenAI-compatible proxy (converts formats)
 - `GET /v1/models` — Lists available models (both Anthropic and Cursor formats)
-- `GET /health` or `GET /` — Health check / status
+- `GET /health` or `GET /` — Health check / status (includes `loginUrl` if not authenticated)
+- `GET /login` — OAuth PKCE login page (generates auth URL, accepts code via form)
+- `POST /oauth/callback` — Receives authorization code from login form, exchanges for tokens
 - `GET /analytics?period=day|hour|week|month|all` — Usage analytics
 - `GET /analytics/requests?limit=100` — Recent request log
 - `POST /analytics/reset` — Clear analytics data
