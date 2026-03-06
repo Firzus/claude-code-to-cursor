@@ -292,9 +292,8 @@ const server = Bun.serve({
           {
             error: {
               type: "authentication_error",
-              message: `Unauthorized: ${
-                ipCheck.reason || "IP not whitelisted"
-              }`,
+              message: `Unauthorized: ${ipCheck.reason || "IP not whitelisted"
+                }`,
             },
           },
           { status: 403 }
@@ -333,8 +332,7 @@ const server = Bun.serve({
         }
 
         console.log(
-          `\n→ Model: "${body.model}" | ${
-            body.stream ? "stream" : "sync"
+          `\n→ Model: "${body.model}" | ${body.stream ? "stream" : "sync"
           } | max_tokens=${body.max_tokens}`
         );
 
@@ -381,13 +379,13 @@ const server = Bun.serve({
         console.log(`   Model: "${openaiBody.model}"`);
         console.log(`   Stream: ${openaiBody.stream || false}`);
         console.log(
-          `   Max Tokens: ${
-            openaiBody.max_tokens ||
-            openaiBody.max_completion_tokens ||
-            "not set"
+          `   Max Tokens: ${openaiBody.max_tokens ||
+          openaiBody.max_completion_tokens ||
+          "not set"
           }`
         );
         console.log(`   Temperature: ${openaiBody.temperature || "not set"}`);
+        console.log(`   Stream Options: ${JSON.stringify(openaiBody.stream_options) || "not set"}`);
         console.log(`   Messages Count: ${openaiBody.messages?.length || 0}`);
         // Log ALL top-level keys to understand what Cursor sends
         const allKeys = Object.keys(openaiBody);
@@ -442,8 +440,7 @@ const server = Bun.serve({
         // Passthrough to OpenAI/OpenRouter for non-Claude models
         if (shouldPassthroughToOpenAI(openaiBody.model)) {
           console.log(
-            `\n→ [OpenAI Passthrough] ${openaiBody.model} | ${
-              openaiBody.stream ? "stream" : "sync"
+            `\n→ [OpenAI Passthrough] ${openaiBody.model} | ${openaiBody.stream ? "stream" : "sync"
             }`
           );
 
@@ -472,10 +469,8 @@ const server = Bun.serve({
         }
 
         console.log(
-          `\n→ [OpenAI→Anthropic] Original: "${
-            openaiBody.model
-          }" → Normalized: "${anthropicBody.model}" | ${
-            anthropicBody.stream ? "stream" : "sync"
+          `\n→ [OpenAI→Anthropic] Original: "${openaiBody.model
+          }" → Normalized: "${anthropicBody.model}" | ${anthropicBody.stream ? "stream" : "sync"
           } | max_tokens=${anthropicBody.max_tokens}`
         );
         if (anthropicBody.reasoning_budget) {
@@ -488,17 +483,17 @@ const server = Bun.serve({
             typeof anthropicBody.system === "string"
               ? anthropicBody.system
               : Array.isArray(anthropicBody.system)
-              ? anthropicBody.system
+                ? anthropicBody.system
                   .map((block) =>
                     block &&
-                    typeof block === "object" &&
-                    "type" in block &&
-                    block.type === "text"
+                      typeof block === "object" &&
+                      "type" in block &&
+                      block.type === "text"
                       ? block.text
                       : JSON.stringify(block)
                   )
                   .join("\n")
-              : String(anthropicBody.system);
+                : String(anthropicBody.system);
           logger.verbose(
             `\n📋 [Anthropic System Prompt] (${systemContent.length} chars):`
           );
@@ -520,17 +515,17 @@ const server = Bun.serve({
               typeof msg.content === "string"
                 ? msg.content
                 : Array.isArray(msg.content)
-                ? msg.content
+                  ? msg.content
                     .map((block) =>
                       block &&
-                      typeof block === "object" &&
-                      "type" in block &&
-                      block.type === "text"
+                        typeof block === "object" &&
+                        "type" in block &&
+                        block.type === "text"
                         ? block.text
                         : JSON.stringify(block)
                     )
                     .join("\n")
-                : JSON.stringify(msg.content);
+                  : JSON.stringify(msg.content);
             // Log full content (no truncation in verbose mode for debugging tool calls)
             logger.verbose(
               `   [${idx}] ${msg.role} (${content.length} chars):`
@@ -635,6 +630,9 @@ const server = Bun.serve({
               let inThinkingBlock = false; // Track if we're inside a thinking block (skip output)
               let usageInputTokens = 0; // Track input tokens from message_start
               let usageOutputTokens = 0; // Track output tokens from message_delta
+              let usageCacheReadTokens = 0; // Track cache read tokens from message_start
+              let usageCacheCreationTokens = 0; // Track cache creation tokens from message_start
+              let messageStopped = false; // Track if message_stop was received
               // Per OpenAI spec: when stream_options.include_usage is set,
               // all intermediate chunks must have "usage": null
               const includeUsageNull = !!openaiBody.stream_options?.include_usage;
@@ -679,6 +677,27 @@ const server = Bun.serve({
                     console.log(
                       `   [Debug] Stream ended after ${chunkCount} chunks`
                     );
+                    // If message_stop was not received, send usage + [DONE] as fallback
+                    if (!messageStopped) {
+                      console.log(
+                        `   [Debug] Stream ended without message_stop, sending fallback usage chunk`
+                      );
+                      safeEnqueue(
+                        new TextEncoder().encode(
+                          createOpenAIStreamUsageChunk(
+                            streamId,
+                            openaiBody.model,
+                            usageInputTokens,
+                            usageOutputTokens,
+                            usageCacheReadTokens,
+                            usageCacheCreationTokens,
+                          )
+                        )
+                      );
+                      safeEnqueue(
+                        new TextEncoder().encode("data: [DONE]\n\n")
+                      );
+                    }
                     break;
                   }
 
@@ -700,7 +719,8 @@ const server = Bun.serve({
                     if (!line.startsWith("data: ")) continue;
                     const data = line.slice(6);
                     if (data === "[DONE]") {
-                      safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                      // Don't forward Anthropic's [DONE] - we send our own [DONE]
+                      // after the usage chunk in the message_stop handler
                       continue;
                     }
 
@@ -708,8 +728,7 @@ const server = Bun.serve({
                       const event = JSON.parse(data);
                       if (chunkCount === 1) {
                         console.log(
-                          `   [Debug] First event type: ${
-                            event.type
+                          `   [Debug] First event type: ${event.type
                           }, full event: ${JSON.stringify(event).substring(
                             0,
                             200
@@ -731,12 +750,12 @@ const server = Bun.serve({
                           );
                         }
                         // Capture input_tokens from message_start
-                        if (event.message?.usage?.input_tokens) {
+                        if (event.message?.usage?.input_tokens !== undefined) {
                           usageInputTokens = event.message.usage.input_tokens;
-                          const cacheRead = event.message.usage.cache_read_input_tokens || 0;
-                          const cacheCreation = event.message.usage.cache_creation_input_tokens || 0;
+                          usageCacheReadTokens = event.message.usage.cache_read_input_tokens || 0;
+                          usageCacheCreationTokens = event.message.usage.cache_creation_input_tokens || 0;
                           console.log(
-                            `   [Debug] Usage: input_tokens=${usageInputTokens} (cache_read=${cacheRead}, cache_creation=${cacheCreation})`
+                            `   [Debug] Usage: input_tokens=${usageInputTokens} (cache_read=${usageCacheReadTokens}, cache_creation=${usageCacheCreationTokens})`
                           );
                         }
                       }
@@ -758,8 +777,7 @@ const server = Bun.serve({
                         // Log content_block_start for debugging (tool_use blocks come here)
                         const block = event.content_block;
                         logger.verbose(
-                          `   [Debug] content_block_start: type=${
-                            block?.type
+                          `   [Debug] content_block_start: type=${block?.type
                           }, block=${JSON.stringify(block)}`
                         );
 
@@ -908,8 +926,7 @@ const server = Bun.serve({
 
                         // Log all text chunks for debugging (especially tool calls)
                         logger.verbose(
-                          `   [Debug] content_block_delta chunk (${
-                            text.length
+                          `   [Debug] content_block_delta chunk (${text.length
                           } chars): ${JSON.stringify(text)}`
                         );
 
@@ -1068,8 +1085,7 @@ const server = Bun.serve({
 
                             if (parsedToolCalls.length > 0) {
                               logger.verbose(
-                                `   [Debug] Parsed ${
-                                  parsedToolCalls.length
+                                `   [Debug] Parsed ${parsedToolCalls.length
                                 } tool call(s) from XML:\n${JSON.stringify(
                                   parsedToolCalls,
                                   null,
@@ -1163,13 +1179,11 @@ const server = Bun.serve({
                           text = translateToolCalls(text);
                           if (text !== originalText) {
                             logger.verbose(
-                              `   [Debug] Translated tool call format in chunk:\n     Original (${
-                                originalText.length
+                              `   [Debug] Translated tool call format in chunk:\n     Original (${originalText.length
                               } chars):\n${originalText
                                 .split("\n")
                                 .map((l: string) => `       ${l}`)
-                                .join("\n")}\n     Translated (${
-                                text.length
+                                .join("\n")}\n     Translated (${text.length
                               } chars):\n${text
                                 .split("\n")
                                 .map((l: string) => `       ${l}`)
@@ -1192,7 +1206,7 @@ const server = Bun.serve({
 
                       // Handle message_delta - capture output_tokens usage
                       if (event.type === "message_delta") {
-                        if (event.usage?.output_tokens) {
+                        if (event.usage?.output_tokens !== undefined) {
                           usageOutputTokens = event.usage.output_tokens;
                           console.log(
                             `   [Debug] Usage: output_tokens=${usageOutputTokens}`
@@ -1202,6 +1216,7 @@ const server = Bun.serve({
 
                       // Handle message_stop
                       if (event.type === "message_stop") {
+                        messageStopped = true;
                         // Flush any remaining tool call buffer (force flush)
                         if (toolCallBuffer) {
                           const parsedToolCalls =
@@ -1269,26 +1284,37 @@ const server = Bun.serve({
                               streamId,
                               openaiBody.model,
                               undefined,
-                              finishReason as "stop" | "length"
+                              finishReason as "stop" | "length",
+                              {
+                                prompt_tokens: usageInputTokens,
+                                completion_tokens: usageOutputTokens,
+                                total_tokens: usageInputTokens + usageOutputTokens,
+                                prompt_tokens_details: {
+                                  cached_tokens: usageCacheReadTokens,
+                                },
+                                completion_tokens_details: {
+                                  reasoning_tokens: 0,
+                                },
+                              }
                             )
                           )
                         );
-                        // Send usage chunk before [DONE] so Cursor can display remaining context
-                        if (usageInputTokens > 0 || usageOutputTokens > 0) {
-                          safeEnqueue(
-                            new TextEncoder().encode(
-                              createOpenAIStreamUsageChunk(
-                                streamId,
-                                openaiBody.model,
-                                usageInputTokens,
-                                usageOutputTokens,
-                              )
+                        // Always send usage chunk before [DONE] so Cursor can display remaining context
+                        safeEnqueue(
+                          new TextEncoder().encode(
+                            createOpenAIStreamUsageChunk(
+                              streamId,
+                              openaiBody.model,
+                              usageInputTokens,
+                              usageOutputTokens,
+                              usageCacheReadTokens,
+                              usageCacheCreationTokens,
                             )
-                          );
-                          console.log(
-                            `   [Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, total=${usageInputTokens + usageOutputTokens}`
-                          );
-                        }
+                          )
+                        );
+                        console.log(
+                          `   [Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, total=${usageInputTokens + usageOutputTokens}`
+                        );
                         safeEnqueue(
                           new TextEncoder().encode("data: [DONE]\n\n")
                         );
