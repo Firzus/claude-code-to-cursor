@@ -209,44 +209,31 @@ function checkIPWhitelist(req: Request): {
 }
 
 function htmlResult(message: string, success: boolean): string {
-  const accentColor = success ? "#00e5a0" : "#ff4d6a";
-  const accentGlow = success ? "rgba(0,229,160,0.15)" : "rgba(255,77,106,0.15)";
   const iconSVG = success
-    ? `<svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="23" stroke="${accentColor}" stroke-width="2" opacity="0.3"/><circle cx="24" cy="24" r="18" fill="${accentGlow}"/><path d="M16 24.5L21.5 30L33 18" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-    : `<svg width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="23" stroke="${accentColor}" stroke-width="2" opacity="0.3"/><circle cx="24" cy="24" r="18" fill="${accentGlow}"/><path d="M18 18L30 30M30 18L18 30" stroke="${accentColor}" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+    ? `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12.5l2.5 2.5 5-5"/></svg>`
+    : `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>`;
 
   return `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ccproxy — ${success ? "Success" : "Error"}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  :root{--accent:${accentColor};--glow:${accentGlow};--bg:#08090c;--surface:#0f1117;--border:rgba(255,255,255,0.06);--text:#c8cdd5;--text-dim:#5a6170}
-  body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
-  body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 0%,var(--glow),transparent 70%);pointer-events:none;z-index:0}
-  /* Noise texture overlay */
-  body::after{content:'';position:fixed;inset:0;opacity:0.03;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");pointer-events:none;z-index:0}
-  .card{position:relative;z-index:1;width:min(460px,90vw);background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:48px 40px;text-align:center;
-    box-shadow:0 0 80px -20px var(--glow),0 40px 60px -30px rgba(0,0,0,0.6);
-    animation:slideUp 0.6s cubic-bezier(0.16,1,0.3,1) both}
-  @keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
-  .icon{margin-bottom:24px;animation:pop 0.5s 0.3s cubic-bezier(0.34,1.56,0.64,1) both}
-  @keyframes pop{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}
-  h2{font-size:1.5rem;font-weight:700;color:#fff;margin-bottom:12px;letter-spacing:-0.02em}
-  .msg{font-size:0.92rem;line-height:1.7;color:var(--text);font-weight:300}
-  .msg code{font-family:'JetBrains Mono',monospace;background:rgba(255,255,255,0.05);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-size:0.82em;color:var(--accent)}
-  .divider{width:40px;height:2px;background:var(--accent);margin:20px auto;border-radius:2px;opacity:0.4}
-  .back{display:inline-block;margin-top:24px;font-size:0.82rem;color:var(--text-dim);text-decoration:none;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;transition:color 0.2s}
-  .back:hover{color:var(--accent)}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#ededed;min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .card{width:min(420px,90vw);text-align:center;animation:fadeIn .4s ease both}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .icon{margin-bottom:20px;opacity:${success ? '1' : '0.7'}}
+  h2{font-size:1.25rem;font-weight:500;color:#fff;margin-bottom:16px;letter-spacing:-.02em}
+  .msg{font-size:.875rem;line-height:1.7;color:#888}
+  .msg code{font-family:'SF Mono',SFMono-Regular,Menlo,monospace;background:#111;border:1px solid #222;padding:2px 6px;border-radius:4px;font-size:.8em;color:#ededed}
+  .back{display:inline-block;margin-top:28px;font-size:.8rem;color:#666;text-decoration:none;transition:color .15s}
+  .back:hover{color:#fff}
 </style>
 </head><body>
 <div class="card">
   <div class="icon">${iconSVG}</div>
-  <h2>${success ? "Authentication Successful" : "Authentication Failed"}</h2>
-  <div class="divider"></div>
+  <h2>${success ? "Authenticated" : "Authentication Failed"}</h2>
   <div class="msg">${message}</div>
-  <a href="/login" class="back">&larr; back to login</a>
+  <a href="/login" class="back">&larr; Back to login</a>
 </div>
 </body></html>`;
 }
@@ -1546,159 +1533,72 @@ const server = Bun.serve({
         `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ccproxy — Login</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  :root{
-    --accent:#00e5a0;--accent-dim:rgba(0,229,160,0.12);--accent-glow:rgba(0,229,160,0.08);
-    --bg:#08090c;--surface:#0f1117;--surface-2:#141820;--surface-hover:#181d27;
-    --border:rgba(255,255,255,0.06);--border-accent:rgba(0,229,160,0.2);
-    --text:#c8cdd5;--text-bright:#eef1f5;--text-dim:#454d5e;
-    --danger:#ff4d6a;--warning:#fbbf24
-  }
-  html{height:100%}
-  body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;overflow-x:hidden;padding:20px}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#ededed;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
 
-  /* Ambient background */
-  body::before{content:'';position:fixed;top:-40%;left:-20%;width:140%;height:100%;
-    background:radial-gradient(ellipse 50% 40% at 30% 20%,rgba(0,229,160,0.04),transparent 60%),
-               radial-gradient(ellipse 40% 50% at 70% 80%,rgba(99,102,241,0.03),transparent 60%);
-    pointer-events:none;z-index:0;animation:drift 20s ease-in-out infinite alternate}
-  @keyframes drift{0%{transform:translate(0,0) rotate(0deg)}100%{transform:translate(2%,-3%) rotate(1deg)}}
+  .wrapper{width:min(460px,100%)}
 
-  /* Grain overlay */
-  body::after{content:'';position:fixed;inset:0;opacity:0.025;
-    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    pointer-events:none;z-index:0}
+  .header{margin-bottom:32px;animation:fadeIn .4s ease both}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 
-  .wrapper{position:relative;z-index:1;width:min(520px,100%)}
+  .logo{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .logo svg{width:20px;height:20px}
+  .logo-text{font-size:.9375rem;font-weight:600;color:#fff;letter-spacing:-.01em}
+  .subtitle{font-size:.8125rem;color:#666}
 
-  /* Header */
-  .header{text-align:center;margin-bottom:40px;animation:fadeIn 0.6s cubic-bezier(0.16,1,0.3,1) both}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  .card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:12px;overflow:hidden;animation:fadeIn .5s .05s ease both}
 
-  .logo{display:inline-flex;align-items:center;gap:10px;margin-bottom:16px}
-  .logo-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#00b87a);display:flex;align-items:center;justify-content:center;
-    box-shadow:0 0 24px rgba(0,229,160,0.2)}
-  .logo-icon svg{width:20px;height:20px}
-  .logo-text{font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:600;color:var(--text-bright);letter-spacing:-0.02em}
-  .logo-tag{font-size:0.65rem;font-family:'JetBrains Mono',monospace;color:var(--accent);background:var(--accent-dim);
-    padding:2px 8px;border-radius:20px;margin-left:4px;font-weight:500;letter-spacing:0.04em}
-
-  .subtitle{font-size:0.88rem;color:var(--text-dim);font-weight:300;letter-spacing:0.02em}
-
-  /* Card */
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:0;overflow:hidden;
-    box-shadow:0 0 0 1px rgba(255,255,255,0.02),0 40px 80px -20px rgba(0,0,0,0.5),0 0 120px -40px var(--accent-glow);
-    animation:slideUp 0.7s 0.1s cubic-bezier(0.16,1,0.3,1) both}
-  @keyframes slideUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-
-  /* Steps */
-  .steps{padding:36px 36px 0}
-  .step{display:flex;gap:16px;margin-bottom:28px;position:relative}
+  .steps{padding:24px 24px 0}
+  .step{display:flex;gap:12px;margin-bottom:20px;position:relative}
   .step:last-child{margin-bottom:0}
+  .step:not(:last-child)::after{content:'';position:absolute;left:13px;top:32px;bottom:-8px;width:1px;background:#1a1a1a}
 
-  /* Step connector line */
-  .step:not(:last-child)::after{content:'';position:absolute;left:17px;top:40px;bottom:-12px;width:1px;
-    background:linear-gradient(to bottom,var(--border-accent) 0%,transparent 100%)}
+  .step-num{flex-shrink:0;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:.75rem;font-weight:500;background:#111;color:#888;border:1px solid #222}
+  .step-content{flex:1;padding-top:3px}
+  .step-title{font-size:.8125rem;font-weight:500;color:#ededed;margin-bottom:4px}
+  .step-desc{font-size:.75rem;color:#666;line-height:1.5}
 
-  .step-num{flex-shrink:0;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    font-family:'JetBrains Mono',monospace;font-size:0.78rem;font-weight:600;
-    background:var(--accent-dim);color:var(--accent);border:1px solid var(--border-accent);
-    transition:all 0.3s ease}
-  .step:hover .step-num{background:var(--accent);color:var(--bg);box-shadow:0 0 20px rgba(0,229,160,0.25)}
+  .auth-link{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:7px 14px;
+    background:transparent;border:1px solid #333;border-radius:6px;color:#ededed;
+    font-size:.8125rem;font-weight:500;text-decoration:none;transition:all .15s}
+  .auth-link:hover{background:#111;border-color:#444}
+  .auth-link svg{width:14px;height:14px;transition:transform .15s}
+  .auth-link:hover svg{transform:translateX(2px)}
 
-  .step-content{flex:1;padding-top:6px}
-  .step-title{font-size:0.92rem;font-weight:500;color:var(--text-bright);margin-bottom:6px;letter-spacing:-0.01em}
-  .step-desc{font-size:0.82rem;color:var(--text-dim);line-height:1.6;font-weight:300}
+  .form-area{padding:20px 24px 24px;margin-top:20px;border-top:1px solid #1a1a1a}
+  .input-label{display:block;font-size:.75rem;font-weight:500;color:#888;margin-bottom:8px}
 
-  /* Auth link button */
-  .auth-link{display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:10px 20px;
-    background:linear-gradient(135deg,rgba(0,229,160,0.12),rgba(0,229,160,0.06));
-    border:1px solid var(--border-accent);border-radius:10px;color:var(--accent);
-    font-family:'JetBrains Mono',monospace;font-size:0.82rem;font-weight:500;
-    text-decoration:none;transition:all 0.25s ease;letter-spacing:0.01em}
-  .auth-link:hover{background:linear-gradient(135deg,rgba(0,229,160,0.2),rgba(0,229,160,0.1));
-    box-shadow:0 0 30px rgba(0,229,160,0.12);transform:translateY(-1px)}
-  .auth-link:active{transform:translateY(0)}
-  .auth-link svg{width:16px;height:16px;transition:transform 0.25s ease}
-  .auth-link:hover svg{transform:translateX(3px)}
+  input[type=text]{width:100%;padding:10px 12px;background:#000;border:1px solid #333;border-radius:8px;
+    color:#ededed;font-family:inherit;font-size:.875rem;outline:none;transition:border-color .15s}
+  input[type=text]::placeholder{color:#444}
+  input[type=text]:hover{border-color:#444}
+  input[type=text]:focus{border-color:#ededed;box-shadow:0 0 0 1px #ededed}
 
-  /* Form area */
-  .form-area{padding:28px 36px 36px;margin-top:28px;border-top:1px solid var(--border);
-    background:linear-gradient(to bottom,rgba(255,255,255,0.01),transparent)}
-  .input-group{position:relative;margin-bottom:16px}
-  .input-label{display:block;font-size:0.72rem;font-family:'JetBrains Mono',monospace;font-weight:500;
-    color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px}
-
-  .input-wrapper{position:relative;display:flex;align-items:center}
-  .input-icon{position:absolute;left:14px;color:var(--text-dim);transition:color 0.2s}
-  .input-icon svg{width:18px;height:18px}
-
-  input[type=text]{width:100%;padding:14px 16px 14px 44px;
-    background:var(--surface-2);border:1px solid var(--border);border-radius:12px;
-    color:var(--text-bright);font-family:'JetBrains Mono',monospace;font-size:0.88rem;
-    outline:none;transition:all 0.25s ease;letter-spacing:0.01em}
-  input[type=text]::placeholder{color:var(--text-dim);font-family:'JetBrains Mono',monospace;font-weight:400}
-  input[type=text]:hover{border-color:rgba(255,255,255,0.1);background:var(--surface-hover)}
-  input[type=text]:focus{border-color:var(--accent);background:var(--surface-hover);
-    box-shadow:0 0 0 3px var(--accent-dim),0 0 24px -4px rgba(0,229,160,0.1)}
-  input[type=text]:focus ~ .input-focus-ring{opacity:1}
-  input[type=text]:focus + .input-icon{color:var(--accent)}
-
-  .submit-btn{width:100%;padding:14px 24px;border:none;border-radius:12px;cursor:pointer;
-    font-family:'Outfit',sans-serif;font-size:0.92rem;font-weight:600;letter-spacing:0.02em;
-    background:linear-gradient(135deg,var(--accent),#00c98b);color:#08090c;
-    transition:all 0.25s ease;position:relative;overflow:hidden}
-  .submit-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,transparent,rgba(255,255,255,0.15));
-    opacity:0;transition:opacity 0.25s ease}
-  .submit-btn:hover{box-shadow:0 0 40px rgba(0,229,160,0.25);transform:translateY(-1px)}
-  .submit-btn:hover::before{opacity:1}
-  .submit-btn:active{transform:translateY(0);box-shadow:0 0 20px rgba(0,229,160,0.15)}
-  .submit-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;box-shadow:none}
-
-  /* Loading state */
-  .submit-btn.loading{pointer-events:none;color:transparent}
-  .submit-btn.loading::after{content:'';position:absolute;width:20px;height:20px;
-    border:2px solid rgba(8,9,12,0.3);border-top-color:#08090c;border-radius:50%;
-    animation:spin 0.6s linear infinite;top:50%;left:50%;margin:-10px 0 0 -10px}
+  .submit-btn{width:100%;padding:10px 16px;border:none;border-radius:8px;cursor:pointer;
+    font-family:inherit;font-size:.875rem;font-weight:500;margin-top:12px;
+    background:#ededed;color:#000;transition:background .15s;position:relative}
+  .submit-btn:hover{background:#fff}
+  .submit-btn:active{background:#ccc}
+  .submit-btn:disabled{opacity:.5;cursor:not-allowed}
+  .submit-btn.loading{color:transparent;pointer-events:none}
+  .submit-btn.loading::after{content:'';position:absolute;width:16px;height:16px;
+    border:2px solid #666;border-top-color:#000;border-radius:50%;
+    animation:spin .5s linear infinite;top:50%;left:50%;margin:-8px 0 0 -8px}
   @keyframes spin{to{transform:rotate(360deg)}}
 
-  /* Footer note */
-  .footer{text-align:center;margin-top:24px;animation:fadeIn 0.6s 0.3s cubic-bezier(0.16,1,0.3,1) both}
-  .footer-note{display:inline-flex;align-items:center;gap:6px;font-size:0.75rem;
-    color:var(--text-dim);font-family:'JetBrains Mono',monospace;letter-spacing:0.02em}
-  .footer-note svg{width:14px;height:14px;opacity:0.5}
-
-  /* Pulse dot */
-  .pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);
-    margin-right:4px;animation:pulse 2s ease-in-out infinite}
-  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 4px var(--accent)}50%{opacity:0.4;box-shadow:none}}
-
-  /* Status badge */
-  .status{display:inline-flex;align-items:center;gap:6px;padding:4px 12px 4px 8px;
-    background:var(--accent-dim);border:1px solid var(--border-accent);border-radius:20px;
-    font-size:0.7rem;font-family:'JetBrains Mono',monospace;color:var(--accent);margin-top:10px}
-
-  /* Mobile */
-  @media(max-width:540px){
-    .steps{padding:28px 24px 0}
-    .form-area{padding:24px}
-    .step{gap:12px}
-  }
+  .footer{text-align:center;margin-top:20px;animation:fadeIn .4s .15s ease both}
+  .footer-note{font-size:.75rem;color:#444}
 </style>
 </head><body>
 <div class="wrapper">
   <div class="header">
     <div class="logo">
-      <div class="logo-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#08090c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-        </svg>
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
       <span class="logo-text">ccproxy</span>
-      <span class="logo-tag">OAuth</span>
     </div>
     <p class="subtitle">Connect your Anthropic account via OAuth PKCE</p>
   </div>
@@ -1709,7 +1609,7 @@ const server = Bun.serve({
         <div class="step-num">1</div>
         <div class="step-content">
           <div class="step-title">Authorize with Anthropic</div>
-          <div class="step-desc">You'll be redirected to Claude's OAuth consent screen to grant access.</div>
+          <div class="step-desc">Open the consent page to grant access to your account.</div>
           <a href="${authURL}" target="_blank" rel="noopener" class="auth-link" id="authLink">
             Open authorization page
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
@@ -1720,7 +1620,7 @@ const server = Bun.serve({
         <div class="step-num">2</div>
         <div class="step-content">
           <div class="step-title">Copy the authorization code</div>
-          <div class="step-desc">After approving, a single-use code will appear on the Anthropic callback page.</div>
+          <div class="step-desc">After approving, copy the code from the callback page.</div>
         </div>
       </div>
       <div class="step">
@@ -1735,45 +1635,23 @@ const server = Bun.serve({
     <div class="form-area">
       <form method="POST" action="/oauth/callback" id="authForm">
         <input type="hidden" name="state" value="${state}">
-        <div class="input-group">
-          <label class="input-label" for="codeInput">Authorization Code</label>
-          <div class="input-wrapper">
-            <input type="text" id="codeInput" name="code" placeholder="Paste code here…" required autofocus autocomplete="off" spellcheck="false">
-            <div class="input-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            </div>
-          </div>
-        </div>
+        <label class="input-label" for="codeInput">Authorization Code</label>
+        <input type="text" id="codeInput" name="code" placeholder="Paste code here..." required autofocus autocomplete="off" spellcheck="false">
         <button type="submit" class="submit-btn" id="submitBtn">Authenticate</button>
       </form>
     </div>
   </div>
 
   <div class="footer">
-    <div class="footer-note">
-      <span class="pulse"></span>
-      Code expires in ~10 minutes · single-use only
-    </div>
+    <p class="footer-note">Code expires in ~10 minutes &middot; single-use only</p>
   </div>
 </div>
 
 <script>
-  // Form submission feedback
   document.getElementById('authForm').addEventListener('submit', function() {
-    const btn = document.getElementById('submitBtn');
+    var btn = document.getElementById('submitBtn');
     btn.classList.add('loading');
     btn.disabled = true;
-  });
-
-  // Auto-paste detection
-  const input = document.getElementById('codeInput');
-  input.addEventListener('paste', function() {
-    setTimeout(() => {
-      if (input.value.trim().length > 10) {
-        input.style.borderColor = 'var(--accent)';
-        input.style.boxShadow = '0 0 0 3px var(--accent-dim)';
-      }
-    }, 50);
   });
 </script>
 </body></html>`,

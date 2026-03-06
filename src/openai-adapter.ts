@@ -291,7 +291,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
   logger.verbose(`\n=== OPENAI TO ANTHROPIC CONVERSION ===`);
   logger.verbose(`Total incoming messages: ${request.messages.length}`);
   for (let i = 0; i < request.messages.length; i++) {
-    const msg = request.messages[i];
+    const msg = request.messages[i]!;
     const hasToolCalls = (msg as OpenAIMessage).tool_calls?.length || 0;
     const hasToolCallId = (msg as OpenAIMessage).tool_call_id || null;
     const contentPreview = typeof msg.content === "string"
@@ -401,7 +401,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
   // Log converted messages summary
   logger.verbose(`\nConverted to ${messages.length} Anthropic messages:`);
   for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
+    const msg = messages[i]!;
     if (Array.isArray(msg.content)) {
       const types = msg.content.map((b: ContentBlock) => b.type).join(", ");
       logger.verbose(`  [${i}] role=${msg.role}, content=[${types}]`);
@@ -412,7 +412,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
 
   // Ensure messages alternate properly (Anthropic requirement)
   // If first message isn't user, prepend an empty user message
-  if (messages.length > 0 && messages[0].role !== "user") {
+  if (messages.length > 0 && messages[0]!.role !== "user") {
     messages.unshift({ role: "user", content: "Continue." });
   }
 
@@ -449,7 +449,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
   // (name, description, input_schema) not OpenAI format (type: "function", function: {...})
   if (request.tools && request.tools.length > 0) {
     // Check if it's OpenAI format (has type: "function") or Anthropic format (has name directly)
-    const firstTool = request.tools[0] as Record<string, unknown>;
+    const firstTool = request.tools[0] as unknown as Record<string, unknown>;
     if (firstTool.type === "function" && firstTool.function) {
       // OpenAI format - convert to Anthropic
       result.tools = request.tools.map((tool) => {
@@ -709,20 +709,20 @@ export function parseXMLToolCalls(text: string): ParsedToolCall[] {
   // Match <invoke name="...">...</invoke> format
   const invokeMatches = text.matchAll(/<invoke\s+name=["']([^"']+)["']>([\s\S]*?)<\/invoke>/gi);
   for (const match of invokeMatches) {
-    const name = match[1];
-    const content = match[2];
+    const name = match[1]!;
+    const content = match[2]!;
     const args: Record<string, unknown> = {};
 
     // Extract parameters
     const paramMatches = content.matchAll(/<parameter\s+name=["']([^"']+)["']>([^<]*)<\/parameter>/gi);
     for (const paramMatch of paramMatches) {
-      const paramName = paramMatch[1];
-      let paramValue: unknown = paramMatch[2];
+      const paramName = paramMatch[1]!;
+      let paramValue: string | unknown = paramMatch[2]!;
 
       // Try to parse JSON values (arrays, objects)
       try {
-        if (paramValue.startsWith("[") || paramValue.startsWith("{")) {
-          paramValue = JSON.parse(paramValue);
+        if ((paramValue as string).startsWith("[") || (paramValue as string).startsWith("{")) {
+          paramValue = JSON.parse(paramValue as string);
         }
       } catch {
         // Keep as string
@@ -737,16 +737,16 @@ export function parseXMLToolCalls(text: string): ParsedToolCall[] {
   // Match <search_files>...</search_files> format
   const searchFilesMatches = text.matchAll(/<search_files>([\s\S]*?)<\/search_files>/gi);
   for (const match of searchFilesMatches) {
-    const content = match[1];
+    const content = match[1]!;
     const args: Record<string, unknown> = {};
 
     const pathMatch = content.match(/<path>([^<]*)<\/path>/i);
     const regexMatch = content.match(/<regex>([^<]*)<\/regex>/i);
     const patternMatch = content.match(/<file_pattern>([^<]*)<\/file_pattern>/i);
 
-    if (pathMatch) args.path = pathMatch[1].trim();
-    if (regexMatch) args.pattern = regexMatch[1].trim();
-    if (patternMatch) args.glob = patternMatch[1].trim();
+    if (pathMatch) args.path = pathMatch[1]!.trim();
+    if (regexMatch) args.pattern = regexMatch[1]!.trim();
+    if (patternMatch) args.glob = patternMatch[1]!.trim();
 
     toolCalls.push({ name: "grep", arguments: args });
   }
@@ -754,17 +754,17 @@ export function parseXMLToolCalls(text: string): ParsedToolCall[] {
   // Match <read_file>...</read_file> format
   const readFileMatches = text.matchAll(/<read_file>([\s\S]*?)<\/read_file>/gi);
   for (const match of readFileMatches) {
-    const content = match[1];
+    const content = match[1]!;
     const args: Record<string, unknown> = {};
 
     const pathMatch = content.match(/<path>([^<]*)<\/path>/i);
     const startMatch = content.match(/<start_line>(\d+)<\/start_line>/i);
     const endMatch = content.match(/<end_line>(\d+)<\/end_line>/i);
 
-    if (pathMatch) args.target_file = pathMatch[1].trim();
-    if (startMatch) args.offset = parseInt(startMatch[1]);
+    if (pathMatch) args.target_file = pathMatch[1]!.trim();
+    if (startMatch) args.offset = parseInt(startMatch[1]!);
     if (endMatch && startMatch) {
-      args.limit = parseInt(endMatch[1]) - parseInt(startMatch[1]) + 1;
+      args.limit = parseInt(endMatch[1]!) - parseInt(startMatch[1]!) + 1;
     }
 
     toolCalls.push({ name: "read_file", arguments: args });
@@ -773,14 +773,14 @@ export function parseXMLToolCalls(text: string): ParsedToolCall[] {
   // Match <grep>...</grep> format
   const grepMatches = text.matchAll(/<grep>([\s\S]*?)<\/grep>/gi);
   for (const match of grepMatches) {
-    const content = match[1];
+    const content = match[1]!;
     const args: Record<string, unknown> = {};
 
     const patternMatch = content.match(/<pattern>([^<]*)<\/pattern>/i);
     const pathMatch = content.match(/<path>([^<]*)<\/path>/i);
 
-    if (patternMatch) args.pattern = patternMatch[1].trim();
-    if (pathMatch) args.path = pathMatch[1].trim();
+    if (patternMatch) args.pattern = patternMatch[1]!.trim();
+    if (pathMatch) args.path = pathMatch[1]!.trim();
 
     toolCalls.push({ name: "grep", arguments: args });
   }
