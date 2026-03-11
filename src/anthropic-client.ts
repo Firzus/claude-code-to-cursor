@@ -55,8 +55,8 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
         : Number(val) || 8192;
       prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
       prepared.temperature = 1;
-      if (prepared.max_tokens < budgetTokens + 1024) {
-        prepared.max_tokens = budgetTokens + 4096;
+      if (prepared.max_tokens < budgetTokens + 4096) {
+        prepared.max_tokens = budgetTokens + 16384;
       }
       logger.verbose(`   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
     }
@@ -416,8 +416,8 @@ async function makeDirectApiRequest(
           : Number(val) || 8192;
         preparedBody.thinking = { type: "enabled", budget_tokens: budgetTokens };
         preparedBody.temperature = 1;
-        if (preparedBody.max_tokens < budgetTokens + 1024) {
-          preparedBody.max_tokens = budgetTokens + 4096;
+        if (preparedBody.max_tokens < budgetTokens + 4096) {
+          preparedBody.max_tokens = budgetTokens + 16384;
         }
         logger.verbose(`   [Debug] Direct API: converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
       }

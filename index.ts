@@ -605,7 +605,7 @@ const server = Bun.serve({
               let toolCallBuffer = ""; // Buffer for tool calls that span multiple chunks
               let inToolCall = false;
               let lastChunkTime = Date.now();
-              const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds if buffering
+              const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds to prevent Cloudflare/Cursor timeout
               let currentBlockIndex = -1; // Track which content block we're processing
               let blockTextSent = false; // Track if we've sent text from content_block_start
               let toolCallIndex = 0; // Track tool call index for OpenAI format
@@ -649,6 +649,21 @@ const server = Bun.serve({
                   cancelled = true;
                 }
               };
+
+              // Global heartbeat timer: sends SSE comments while reader.read() blocks
+              // This keeps the connection alive through Cloudflare/Cursor even when
+              // Anthropic is slow to generate (e.g. long tool call content)
+              const heartbeatTimer = setInterval(() => {
+                if (cancelled || messageStopped) {
+                  clearInterval(heartbeatTimer);
+                  return;
+                }
+                const elapsed = Date.now() - lastChunkTime;
+                if (elapsed >= HEARTBEAT_INTERVAL) {
+                  safeEnqueue(new TextEncoder().encode(`: heartbeat\n\n`));
+                  lastChunkTime = Date.now();
+                }
+              }, HEARTBEAT_INTERVAL);
 
               try {
                 logger.verbose(`   [Debug] Starting to read stream...`);
@@ -775,7 +790,6 @@ const server = Bun.serve({
                         // Skip thinking blocks - internal reasoning, not for Cursor
                         if (block?.type === "thinking") {
                           inThinkingBlock = true;
-                          logger.verbose(`   [Debug] Thinking block started (will be hidden from Cursor)`);
                           continue;
                         }
                         inThinkingBlock = false;
@@ -834,26 +848,28 @@ const server = Bun.serve({
                           `   [Debug] content_block_stop for index ${event.index}`
                         );
 
-                        // If we were building a tool call, send the final arguments chunk
+                        // Finalize tool call — arguments already streamed incrementally
                         if (currentToolCall) {
-                          logger.verbose(
-                            `   [Debug] Finalizing tool call: ${currentToolCall.name} with args: ${currentToolCall.inputJson}`
+                          console.log(
+                            `   [Debug] Tool call done: ${currentToolCall.name} (${currentToolCall.inputJson.length} chars)`
                           );
 
-                          // Send the arguments chunk
-                          safeEnqueue(
-                            new TextEncoder().encode(
-                              createOpenAIToolCallChunk(
-                                streamId,
-                                openaiBody.model,
-                                toolCallIndex,
-                                undefined,
-                                undefined,
-                                currentToolCall.inputJson || "{}",
-                                null
+                          // If no arguments were streamed at all, send empty object
+                          if (!currentToolCall.inputJson) {
+                            safeEnqueue(
+                              new TextEncoder().encode(
+                                createOpenAIToolCallChunk(
+                                  streamId,
+                                  openaiBody.model,
+                                  toolCallIndex,
+                                  undefined,
+                                  undefined,
+                                  "{}",
+                                  null
+                                )
                               )
-                            )
-                          );
+                            );
+                          }
 
                           toolCallIndex++;
                           currentToolCall = null;
@@ -863,13 +879,12 @@ const server = Bun.serve({
                         currentBlockIndex = -1;
                       }
 
-                      // Skip deltas for thinking blocks
+                      // Skip deltas for thinking blocks (heartbeat timer handles keepalive)
                       if (event.type === "content_block_delta" && inThinkingBlock) {
-                        logger.verbose(`   [Debug] Skipping thinking delta`);
                         continue;
                       }
 
-                      // Handle input_json_delta for tool_use blocks
+                      // Handle input_json_delta for tool_use blocks — stream incrementally
                       if (
                         event.type === "content_block_delta" &&
                         event.delta?.type === "input_json_delta" &&
@@ -877,10 +892,24 @@ const server = Bun.serve({
                       ) {
                         const jsonChunk = event.delta.partial_json || "";
                         currentToolCall.inputJson += jsonChunk;
-                        logger.verbose(
-                          `   [Debug] input_json_delta: "${jsonChunk}" (total: ${currentToolCall.inputJson.length} chars)`
-                        );
-                        // Don't send anything yet - accumulate until content_block_stop
+                        // Stream arguments incrementally in OpenAI format to keep
+                        // the connection alive (prevents Cloudflare/Cursor timeout)
+                        if (jsonChunk) {
+                          safeEnqueue(
+                            new TextEncoder().encode(
+                              createOpenAIToolCallChunk(
+                                streamId,
+                                openaiBody.model,
+                                toolCallIndex,
+                                undefined,
+                                undefined,
+                                jsonChunk,
+                                null
+                              )
+                            )
+                          );
+                          lastChunkTime = Date.now();
+                        }
                         continue;
                       }
 
@@ -1333,6 +1362,9 @@ const server = Bun.serve({
                   }
                 }
               } finally {
+                // Stop heartbeat timer
+                clearInterval(heartbeatTimer);
+
                 // Cancel upstream reader if still active
                 try {
                   if (!cancelled) {

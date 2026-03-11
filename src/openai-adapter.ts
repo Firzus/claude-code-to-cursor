@@ -493,8 +493,9 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     // Anthropic requires temperature=1 when thinking is enabled
     result.temperature = 1;
     // Ensure max_tokens is large enough (budget_tokens + output space)
-    if (result.max_tokens < budgetTokens + 1024) {
-      result.max_tokens = budgetTokens + 4096;
+    // Use 16384 tokens for output to support long responses (documentation, etc.)
+    if (result.max_tokens < budgetTokens + 4096) {
+      result.max_tokens = budgetTokens + 16384;
     }
     const source = request.reasoning_effort ? "reasoning_effort" : "model name";
     console.log(`   [Debug] Thinking enabled (${source}): budget_tokens=${budgetTokens}, max_tokens=${result.max_tokens}`);
