@@ -26,13 +26,15 @@ No test framework is configured. No linter/formatter is configured — TypeScrip
 3. For API routes: OAuth token injected via `src/anthropic-client.ts`, request forwarded to `https://api.anthropic.com`
 
 **Key modules** (`src/`):
-- `anthropic-client.ts` — Proxies to Anthropic API, injects OAuth bearer token and required system prompt prefix. Rate limit cache with soft expiry and configurable max duration
-- `openai-adapter.ts` — Bidirectional conversion between OpenAI chat format and Anthropic Messages format
+- `anthropic-client.ts` — Proxies to Anthropic API, injects OAuth bearer token and required system prompt prefix. Rate limit cache with soft expiry and configurable max duration. Prefixes all tool names with `mcp_` before sending to the API and strips the prefix from responses.
+- `openai-adapter.ts` — Bidirectional conversion between OpenAI chat format and Anthropic Messages format. Handles model name normalization, reasoning/thinking conversion, non-Claude model mapping (GPT/Gemini → Claude), and OpenAI Responses API `input` field aliasing.
 - `stream-handler.ts` — Transforms Anthropic SSE streams into OpenAI-compatible SSE format
 - `oauth.ts` — PKCE OAuth flow, token refresh, credential persistence to `~/.ccproxy/auth.json`
 - `config.ts` — Constants (OAuth URLs, beta headers, user-agent) and runtime config from env vars
 - `middleware.ts` — CORS headers, IP whitelist validation
 - `db.ts` — SQLite analytics database (Bun built-in), schema auto-initialization
+- `types.ts` — Shared TypeScript interfaces for Anthropic request/response types, OAuth tokens, and config
+- `html-templates.ts` — HTML pages for the OAuth login flow UI
 
 **Routes** (`src/routes/`):
 - `anthropic.ts` — `POST /v1/messages` (native Anthropic proxy)
@@ -51,7 +53,8 @@ No test framework is configured. No linter/formatter is configured — TypeScrip
 - **Runtime**: Bun exclusively — uses Bun.serve, Bun SQLite, Bun file I/O. No Node-specific APIs beyond `node:os` and `node:path`.
 - **No external dependencies**: Only `@types/bun` and `typescript` as dev/peer deps. HTTP calls use native `fetch()`.
 - **OAuth identity**: Requests must include the exact Claude Code system prompt prefix and specific beta headers (`config.ts`) or the API will reject them.
-- **Model normalization**: Both Anthropic format (`claude-opus-4-5-20250514`) and Cursor format (`claude-4.5-opus-high`) are supported and normalized internally.
+- **Model normalization**: Cursor format (`claude-4.6-opus-high`) is normalized to Anthropic format (`claude-opus-4-6`). Non-Claude models (GPT, Gemini, o1/o3) are mapped to `claude-sonnet-4-6`. The `-thinking` suffix and `reasoning_effort` field control extended thinking (budget: high=16384, medium=8192, low=4096 tokens).
+- **Tool name prefixing**: All tool names are prefixed with `mcp_` before sending to the Claude Code API (required for compatibility) and stripped back on response. This applies to `tools`, `tool_choice`, and tool blocks in messages.
 - **Logging**: Dual output to console and `api.log` (50MB rolling). Logger in `src/logger.ts`.
 - **Windows deployment**: Scripts in `scripts/` handle Windows Scheduled Task registration and restart loops.
 
