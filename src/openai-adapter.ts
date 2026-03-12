@@ -137,12 +137,13 @@ export interface OpenAIStreamChunk {
 /**
  * Normalize Cursor model names to Anthropic format
  * Examples:
- * - claude-4.5-opus-high → claude-opus-4-5 (no thinking, -high is ignored without -thinking)
- * - claude-4.5-opus-high-thinking → claude-opus-4-5 (with thinking: high)
- * - claude-4.5-sonnet-high → claude-sonnet-4-5 (no thinking)
- * - claude-4.5-haiku → claude-haiku-4-5
- * - claude-4.6-opus-high-thinking → claude-opus-4-6 (with thinking: high)
- * - claude-4.6-opus-thinking → claude-opus-4-6 (with thinking: medium)
+ * - claude-4.6-opus-high → claude-opus-4-6 (no thinking, -high is ignored without reasoning_effort)
+ * - claude-4.6-opus-high-thinking → claude-opus-4-6 (thinking via reasoning_effort in body, fallback: high)
+ * - claude-4.6-sonnet-high → claude-sonnet-4-6 (no thinking)
+ * - claude-4.6-sonnet-high-thinking → claude-sonnet-4-6 (thinking via reasoning_effort in body, fallback: high)
+ *
+ * Thinking is primarily controlled by the reasoning_effort field sent separately by Cursor.
+ * The -thinking suffix in the model name acts as a fallback budget (high=16384, medium=8192, low=4096).
  */
 export function normalizeModelName(model: string): { model: string; reasoningBudget?: string } {
   // Handle Cursor's format: claude-{version}-(opus|sonnet|haiku)[-budget][-thinking]
@@ -251,16 +252,16 @@ function mapModelToClaude(model: string): string {
   if (lower.startsWith("claude")) return model;
 
   // Map known non-Claude models to Claude equivalents
-  // GPT-5.x / GPT-4.x -> claude-sonnet-4-5
-  if (lower.startsWith("gpt-5") || lower.startsWith("gpt-4")) return "claude-sonnet-4-5";
-  // o1/o3/o4 reasoning models -> claude-sonnet-4-5 
-  if (/^o[134]/.test(lower)) return "claude-sonnet-4-5";
-  // Gemini -> claude-sonnet-4-5
-  if (lower.startsWith("gemini")) return "claude-sonnet-4-5";
+  // GPT-5.x / GPT-4.x -> claude-sonnet-4-6
+  if (lower.startsWith("gpt-5") || lower.startsWith("gpt-4")) return "claude-sonnet-4-6";
+  // o1/o3/o4 reasoning models -> claude-sonnet-4-6
+  if (/^o[134]/.test(lower)) return "claude-sonnet-4-6";
+  // Gemini -> claude-sonnet-4-6
+  if (lower.startsWith("gemini")) return "claude-sonnet-4-6";
 
   // Default fallback
-  console.log(`   [Warning] Unknown model "${model}", mapping to claude-sonnet-4-5`);
-  return "claude-sonnet-4-5";
+  console.log(`   [Warning] Unknown model "${model}", mapping to claude-sonnet-4-6`);
+  return "claude-sonnet-4-6";
 }
 
 export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest {

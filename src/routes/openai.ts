@@ -83,13 +83,11 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     const anthropicBody = openaiToAnthropic(openaiBody);
     const headers = extractHeaders(req);
 
-    console.log(
-      `\n→ [OpenAI→Anthropic] Original: "${openaiBody.model}" → Normalized: "${anthropicBody.model}" | ${anthropicBody.stream ? "stream" : "sync"
-      } | max_tokens=${anthropicBody.max_tokens}`
-    );
-    if (anthropicBody.reasoning_budget) {
-      console.log(`   Reasoning Budget: ${anthropicBody.reasoning_budget}`);
-    }
+    const thinkingEnabled = !!(anthropicBody as any).thinking;
+    const thinkingBudget = thinkingEnabled ? (anthropicBody as any).thinking.budget_tokens : null;
+    const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (${thinkingBudget} tokens)` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
+    console.log(`\n→ ${routeSummary}`);
+    logger.info(routeSummary);
 
     // Log the system prompt that will be sent to Claude Code (verbose to file)
     if (anthropicBody.system) {
