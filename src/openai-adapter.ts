@@ -4,7 +4,6 @@
  */
 
 import type { AnthropicRequest, AnthropicMessage, ContentBlock } from "./types";
-import { translateToolCalls, needsTranslation } from "./tool-call-translator";
 import { logger } from "./logger";
 
 export interface OpenAIMessage {
@@ -519,11 +518,6 @@ export function anthropicToOpenai(
     })
     .join("") || "";
 
-  // Translate tool calls if present in non-streaming response
-  if (needsTranslation(content)) {
-    content = translateToolCalls(content);
-  }
-
   return {
     id: `chatcmpl-${anthropicResponse.id || Date.now()}`,
     object: "chat.completion",
@@ -692,112 +686,4 @@ export function createOpenAIStreamUsageChunk(
   return `data: ${JSON.stringify(chunk)}\n\n`;
 }
 
-export interface ParsedToolCall {
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-/**
- * Parse XML tool calls from Claude Code output into structured format
- * Handles formats like:
- * - <invoke name="read_file"><parameter name="target_file">...</parameter></invoke>
- * - <search_files><path>...</path><regex>...</regex></search_files>
- * - <read_file><path>...</path></read_file>
- */
-export function parseXMLToolCalls(text: string): ParsedToolCall[] {
-  const toolCalls: ParsedToolCall[] = [];
-
-  // Match <invoke name="...">...</invoke> format
-  const invokeMatches = text.matchAll(/<invoke\s+name=["']([^"']+)["']>([\s\S]*?)<\/invoke>/gi);
-  for (const match of invokeMatches) {
-    const name = match[1]!;
-    const content = match[2]!;
-    const args: Record<string, unknown> = {};
-
-    // Extract parameters
-    const paramMatches = content.matchAll(/<parameter\s+name=["']([^"']+)["']>([^<]*)<\/parameter>/gi);
-    for (const paramMatch of paramMatches) {
-      const paramName = paramMatch[1]!;
-      let paramValue: string | unknown = paramMatch[2]!;
-
-      // Try to parse JSON values (arrays, objects)
-      try {
-        if ((paramValue as string).startsWith("[") || (paramValue as string).startsWith("{")) {
-          paramValue = JSON.parse(paramValue as string);
-        }
-      } catch {
-        // Keep as string
-      }
-
-      args[paramName] = paramValue;
-    }
-
-    toolCalls.push({ name, arguments: args });
-  }
-
-  // Match <search_files>...</search_files> format
-  const searchFilesMatches = text.matchAll(/<search_files>([\s\S]*?)<\/search_files>/gi);
-  for (const match of searchFilesMatches) {
-    const content = match[1]!;
-    const args: Record<string, unknown> = {};
-
-    const pathMatch = content.match(/<path>([^<]*)<\/path>/i);
-    const regexMatch = content.match(/<regex>([^<]*)<\/regex>/i);
-    const patternMatch = content.match(/<file_pattern>([^<]*)<\/file_pattern>/i);
-
-    if (pathMatch) args.path = pathMatch[1]!.trim();
-    if (regexMatch) args.pattern = regexMatch[1]!.trim();
-    if (patternMatch) args.glob = patternMatch[1]!.trim();
-
-    toolCalls.push({ name: "grep", arguments: args });
-  }
-
-  // Match <read_file>...</read_file> format
-  const readFileMatches = text.matchAll(/<read_file>([\s\S]*?)<\/read_file>/gi);
-  for (const match of readFileMatches) {
-    const content = match[1]!;
-    const args: Record<string, unknown> = {};
-
-    const pathMatch = content.match(/<path>([^<]*)<\/path>/i);
-    const startMatch = content.match(/<start_line>(\d+)<\/start_line>/i);
-    const endMatch = content.match(/<end_line>(\d+)<\/end_line>/i);
-
-    if (pathMatch) args.target_file = pathMatch[1]!.trim();
-    if (startMatch) args.offset = parseInt(startMatch[1]!);
-    if (endMatch && startMatch) {
-      args.limit = parseInt(endMatch[1]!) - parseInt(startMatch[1]!) + 1;
-    }
-
-    toolCalls.push({ name: "read_file", arguments: args });
-  }
-
-  // Match <grep>...</grep> format
-  const grepMatches = text.matchAll(/<grep>([\s\S]*?)<\/grep>/gi);
-  for (const match of grepMatches) {
-    const content = match[1]!;
-    const args: Record<string, unknown> = {};
-
-    const patternMatch = content.match(/<pattern>([^<]*)<\/pattern>/i);
-    const pathMatch = content.match(/<path>([^<]*)<\/path>/i);
-
-    if (patternMatch) args.pattern = patternMatch[1]!.trim();
-    if (pathMatch) args.path = pathMatch[1]!.trim();
-
-    toolCalls.push({ name: "grep", arguments: args });
-  }
-
-  return toolCalls;
-}
-
-/**
- * Check if text contains XML tool calls
- */
-export function hasXMLToolCalls(text: string): boolean {
-  return (
-    /<invoke\s+name=/i.test(text) ||
-    /<search_files>/i.test(text) ||
-    /<read_file>/i.test(text) ||
-    /<grep>/i.test(text)
-  );
-}
 

@@ -7,12 +7,7 @@ import {
   createOpenAIStreamStart,
   createOpenAIStreamUsageChunk,
   createOpenAIToolCallChunk,
-  parseXMLToolCalls,
 } from "./openai-adapter";
-import {
-  translateToolCalls,
-  needsTranslation,
-} from "./tool-call-translator";
 import { logger } from "./logger";
 
 /**
@@ -36,8 +31,6 @@ export function createOpenAIStreamFromAnthropic(
       const decoder = new TextDecoder();
       let buffer = "";
       let sentStart = false;
-      let toolCallBuffer = "";
-      let inToolCall = false;
       let lastChunkTime = Date.now();
       let currentBlockIndex = -1;
       let blockTextSent = false;
@@ -335,230 +328,11 @@ export function createOpenAIStreamFromAnthropic(
                   sentStart = true;
                 }
 
-                let text = event.delta.text;
+                const text = event.delta.text;
 
                 logger.verbose(
                   `   [Debug] content_block_delta chunk (${text.length} chars): ${JSON.stringify(text)}`
                 );
-
-                // Check for tool call markers
-                const hasToolCallMarkers =
-                  /<function_calls/i.test(text) ||
-                  /<invoke/i.test(text) ||
-                  /<\/invoke>/i.test(text) ||
-                  /<\/function_calls>/i.test(text) ||
-                  /<search_files/i.test(text) ||
-                  /<read_file/i.test(text) ||
-                  /<\/search_files>/i.test(text) ||
-                  /<\/read_file>/i.test(text) ||
-                  /<grep>/i.test(text) ||
-                  /<\/grep>/i.test(text);
-
-                const mightStartToolCall =
-                  !inToolCall &&
-                  (/<sea/i.test(text) ||
-                    /<rea/i.test(text) ||
-                    /<gre/i.test(text) ||
-                    /<inv/i.test(text) ||
-                    /<fun/i.test(text));
-
-                if (hasToolCallMarkers) {
-                  logger.verbose(
-                    `   [Debug] Detected tool call markers in chunk!`
-                  );
-                }
-
-                if (mightStartToolCall) {
-                  logger.verbose(
-                    `   [Debug] Detected potential tool call start in chunk!`
-                  );
-                }
-
-                if (
-                  hasToolCallMarkers ||
-                  inToolCall ||
-                  mightStartToolCall
-                ) {
-                  if (
-                    !inToolCall &&
-                    (mightStartToolCall || hasToolCallMarkers)
-                  ) {
-                    const toolCallStartMatch = text.match(/<[a-z]/i);
-                    if (
-                      toolCallStartMatch &&
-                      toolCallStartMatch.index !== undefined
-                    ) {
-                      const beforeToolCall = text.substring(
-                        0,
-                        toolCallStartMatch.index
-                      );
-                      const toolCallPart = text.substring(
-                        toolCallStartMatch.index
-                      );
-
-                      if (beforeToolCall) {
-                        safeEnqueue(
-                          new TextEncoder().encode(
-                            createOpenAIStreamChunk(
-                              streamId,
-                              model,
-                              beforeToolCall
-                            )
-                          )
-                        );
-                        logger.verbose(
-                          `   [Debug] Sent text before tool call: "${beforeToolCall}"`
-                        );
-                      }
-
-                      inToolCall = true;
-                      toolCallBuffer = toolCallPart;
-                      logger.verbose(
-                        `   [Debug] Started buffering tool call: "${toolCallPart.substring(0, 50)}..."`
-                      );
-                    } else {
-                      inToolCall = true;
-                      toolCallBuffer += text;
-                      logger.verbose(
-                        `   [Debug] Buffering entire chunk (no split point found)`
-                      );
-                    }
-                  } else if (inToolCall) {
-                    toolCallBuffer += text;
-                    logger.verbose(
-                      `   [Debug] Continuing to buffer tool call, total: ${toolCallBuffer.length} chars`
-                    );
-                  } else {
-                    inToolCall = true;
-                    toolCallBuffer += text;
-                  }
-
-                  // Check if we now have a complete tool call
-                  let completeToolCall = "";
-                  let remainingBuffer = "";
-
-                  const openMatch = toolCallBuffer.match(
-                    /<(search_files|read_file|grep|invoke|function_calls)/i
-                  );
-                  if (
-                    openMatch &&
-                    openMatch.index !== undefined &&
-                    openMatch[1]
-                  ) {
-                    const tagName = openMatch[1];
-                    const closeTag = `</${tagName}>`;
-
-                    const closeIndex = toolCallBuffer.indexOf(
-                      closeTag,
-                      openMatch.index
-                    );
-                    if (closeIndex !== -1) {
-                      completeToolCall = toolCallBuffer.substring(
-                        openMatch.index,
-                        closeIndex + closeTag.length
-                      );
-                      remainingBuffer = toolCallBuffer.substring(
-                        closeIndex + closeTag.length
-                      );
-                    }
-                  }
-
-                  if (completeToolCall) {
-                    const parsedToolCalls =
-                      parseXMLToolCalls(completeToolCall);
-
-                    toolCallBuffer = remainingBuffer;
-                    if (!toolCallBuffer) {
-                      inToolCall = false;
-                    }
-
-                    if (parsedToolCalls.length > 0) {
-                      logger.verbose(
-                        `   [Debug] Parsed ${parsedToolCalls.length} tool call(s) from XML:\n${JSON.stringify(parsedToolCalls, null, 2)}`
-                      );
-
-                      for (const [i, tc] of parsedToolCalls.entries()) {
-                        const toolCallId = `call_${Date.now()}_${i}`;
-
-                        safeEnqueue(
-                          new TextEncoder().encode(
-                            createOpenAIToolCallChunk(
-                              streamId,
-                              model,
-                              toolCallIndex,
-                              toolCallId,
-                              tc.name,
-                              undefined,
-                              null
-                            )
-                          )
-                        );
-
-                        safeEnqueue(
-                          new TextEncoder().encode(
-                            createOpenAIToolCallChunk(
-                              streamId,
-                              model,
-                              toolCallIndex,
-                              undefined,
-                              undefined,
-                              JSON.stringify(tc.arguments),
-                              null
-                            )
-                          )
-                        );
-
-                        toolCallIndex++;
-                      }
-                    } else {
-                      logger.verbose(
-                        `   [Debug] Could not parse tool call, sending as text: ${completeToolCall.substring(0, 100)}...`
-                      );
-                      safeEnqueue(
-                        new TextEncoder().encode(
-                          createOpenAIStreamChunk(
-                            streamId,
-                            model,
-                            completeToolCall
-                          )
-                        )
-                      );
-                    }
-                    continue;
-                  } else {
-                    const timeSinceLastChunk = Date.now() - lastChunkTime;
-                    if (timeSinceLastChunk > HEARTBEAT_INTERVAL) {
-                      safeEnqueue(
-                        new TextEncoder().encode(
-                          createOpenAIStreamChunk(
-                            streamId,
-                            model,
-                            ""
-                          )
-                        )
-                      );
-                      lastChunkTime = Date.now();
-                    }
-                    continue;
-                  }
-                }
-
-                // Translate any remaining tool calls in the text
-                if (needsTranslation(text)) {
-                  const originalText = text;
-                  text = translateToolCalls(text);
-                  if (text !== originalText) {
-                    logger.verbose(
-                      `   [Debug] Translated tool call format in chunk:\n     Original (${originalText.length} chars):\n${originalText
-                        .split("\n")
-                        .map((l: string) => `       ${l}`)
-                        .join("\n")}\n     Translated (${text.length} chars):\n${text
-                          .split("\n")
-                          .map((l: string) => `       ${l}`)
-                          .join("\n")}`
-                    );
-                  }
-                }
 
                 safeEnqueue(
                   new TextEncoder().encode(
@@ -581,61 +355,6 @@ export function createOpenAIStreamFromAnthropic(
               // Handle message_stop
               if (event.type === "message_stop") {
                 messageStopped = true;
-                // Flush any remaining tool call buffer
-                if (toolCallBuffer) {
-                  const parsedToolCalls =
-                    parseXMLToolCalls(toolCallBuffer);
-                  if (parsedToolCalls.length > 0) {
-                    for (const [i, tc] of parsedToolCalls.entries()) {
-                      const toolCallId = `call_${Date.now()}_${i}`;
-
-                      safeEnqueue(
-                        new TextEncoder().encode(
-                          createOpenAIToolCallChunk(
-                            streamId,
-                            model,
-                            toolCallIndex,
-                            toolCallId,
-                            tc.name,
-                            undefined,
-                            null
-                          )
-                        )
-                      );
-
-                      safeEnqueue(
-                        new TextEncoder().encode(
-                          createOpenAIToolCallChunk(
-                            streamId,
-                            model,
-                            toolCallIndex,
-                            undefined,
-                            undefined,
-                            JSON.stringify(tc.arguments),
-                            null
-                          )
-                        )
-                      );
-
-                      toolCallIndex++;
-                    }
-                    logger.verbose(
-                      `   [Debug] Flushed final tool call buffer: ${parsedToolCalls.length} tool calls`
-                    );
-                  } else {
-                    safeEnqueue(
-                      new TextEncoder().encode(
-                        createOpenAIStreamChunk(
-                          streamId,
-                          model,
-                          toolCallBuffer
-                        )
-                      )
-                    );
-                  }
-                  toolCallBuffer = "";
-                  inToolCall = false;
-                }
 
                 const finishReason =
                   toolCallIndex > 0 ? "tool_calls" : "stop";

@@ -26,12 +26,11 @@ No test framework is configured. No linter/formatter is configured — TypeScrip
 3. For API routes: OAuth token injected via `src/anthropic-client.ts`, request forwarded to `https://api.anthropic.com`
 
 **Key modules** (`src/`):
-- `anthropic-client.ts` — Proxies to Anthropic API, injects OAuth bearer token and required system prompt prefix
+- `anthropic-client.ts` — Proxies to Anthropic API, injects OAuth bearer token and required system prompt prefix. Rate limit cache with soft expiry and configurable max duration
 - `openai-adapter.ts` — Bidirectional conversion between OpenAI chat format and Anthropic Messages format
 - `stream-handler.ts` — Transforms Anthropic SSE streams into OpenAI-compatible SSE format
 - `oauth.ts` — PKCE OAuth flow, token refresh, credential persistence to `~/.ccproxy/auth.json`
 - `config.ts` — Constants (OAuth URLs, beta headers, user-agent) and runtime config from env vars
-- `tool-call-translator.ts` — Converts Claude tool calls to Cursor-compatible format
 - `middleware.ts` — CORS headers, IP whitelist validation
 - `db.ts` — SQLite analytics database (Bun built-in), schema auto-initialization
 
@@ -41,6 +40,11 @@ No test framework is configured. No linter/formatter is configured — TypeScrip
 - `models.ts` — `GET /v1/models` (available Claude models)
 - `analytics.ts` — `GET /analytics`, `GET /analytics/requests`, `POST /analytics/reset`
 - `auth.ts` — `GET /login`, `POST /oauth/callback`
+
+**Inline routes** (in `index.ts`):
+- `GET /health` or `GET /` — Health check with auth and rate limit status
+- `GET /rate-limit` — Current rate limit cache status
+- `POST /rate-limit/reset` — Manually clear the rate limit cache
 
 ## Key Conventions
 
@@ -57,4 +61,4 @@ To authenticate the proxy, open `http://localhost:8082/login` in a browser. This
 
 ## Environment Variables
 
-See `.env.example`. Key vars: `PORT`, `ALLOWED_IPS` (comma-separated or `"disabled"`), `CLAUDE_CODE_EXTRA_INSTRUCTION`.
+See `.env.example`. Key vars: `PORT`, `ALLOWED_IPS` (comma-separated or `"disabled"`), `CLAUDE_CODE_EXTRA_INSTRUCTION`, `RATE_LIMIT_MAX_CACHE_SECONDS` (default 900 = 15 min), `RATE_LIMIT_SOFT_SECONDS` (default 300 = 5 min).
