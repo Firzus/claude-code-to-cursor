@@ -38,7 +38,7 @@ src/
   pricing.ts                ← Per-model token cost calculations
   logger.ts                 ← File logger with auto-truncation (50 MB api.log, 5 MB startup log)
   types.ts                  ← Shared type definitions
-scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart, task scheduler)
+scripts/                    ← Windows automation (bat/ps1 for auto-restart, task scheduler)
 ```
 
 ## Request flow
@@ -56,7 +56,7 @@ scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart
 ## Key constraints
 
 - The Claude Code system prompt in `config.ts` (`CLAUDE_CODE_SYSTEM_PROMPT`) must start with the exact string `"You are Claude Code, Anthropic's official CLI for Claude."` — this is required for OAuth to work
-- Beta headers (`CLAUDE_CODE_BETA_HEADERS`) must include both `claude-code-20250219` and `oauth-2025-04-20`
+- Beta headers (`CLAUDE_CODE_BETA_HEADERS`) must include both `oauth-2025-04-20` and `interleaved-thinking-2025-05-14`
 - `reasoning_budget` is converted to `thinking: { type: "enabled", budget_tokens: N }` with `temperature: 1` (required by the API for extended thinking)
 - `cache_control.ttl` must be stripped (Claude Code API doesn't accept it)
 - OAuth credentials are stored in `~/.ccproxy/auth.json` (not Claude Code's credentials)
@@ -89,6 +89,7 @@ scripts/                    ← Windows automation (bat/ps1/vbs for auto-restart
 ## Streaming pipeline (OpenAI-compatible)
 
 The streaming path in `index.ts` is the most complex part of the codebase. It reads Anthropic SSE events (`content_block_start`, `content_block_delta`, `message_delta`, etc.) and converts them to OpenAI `chat.completion.chunk` SSE format in real-time. Key behaviors:
+
 - Accumulates text to detect and translate XML tool calls mid-stream
 - Converts Anthropic `tool_use` content blocks into OpenAI `tool_calls` delta format
 - Emits a usage chunk with token counts before `[DONE]` when `stream_options.include_usage` is set
@@ -97,3 +98,23 @@ The streaming path in `index.ts` is the most complex part of the codebase. It re
 ## Environment variables
 
 See `.env.example`. Key ones: `ANTHROPIC_API_KEY` (fallback), `PORT` (default 8082), `CLAUDE_CODE_FIRST` (default true), `OPENAI_API_KEY` (for non-Claude models), `ALLOWED_IPS` (comma-separated, or `"disabled"`).
+
+## Windows service management
+
+The proxy and tunnel run as Windows scheduled tasks triggered at logon. Each task uses a VBScript wrapper (`.vbs`) to launch the `.bat` script invisibly (no terminal window):
+
+- **`ccproxy`** — `run-ccproxy.vbs` → `run-ccproxy.bat` (kills stale bun on :8082, restart loop, logs to `ccproxy-startup.log`)
+- **`cloudflared-tunnel`** — `run-cloudflared.vbs` → `run-cloudflared.bat` (restart loop, logs to `cloudflared-startup.log`)
+
+```powershell
+# Install/update both tasks (run as Administrator)
+powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
+
+# Manual start
+schtasks /Run /TN ccproxy && schtasks /Run /TN cloudflared-tunnel
+
+# Check status
+powershell -Command "Get-ScheduledTask -TaskName ccproxy,cloudflared-tunnel | Select TaskName,State"
+```
+
+Log files are locked by the bat wrappers (stdout redirect) — to clean them, kill the cmd/bun/cloudflared processes first, delete the `.log` files, then restart the tasks.

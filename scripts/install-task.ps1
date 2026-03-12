@@ -14,8 +14,8 @@ $settings = New-ScheduledTaskSettingsSet `
 
 # ccproxy task — wrapper handles port-kill, restart loop, and log redirection
 $ccproxyAction = New-ScheduledTaskAction `
-    -Execute "cmd.exe" `
-    -Argument "/c `"$scriptsDir\run-ccproxy.bat`"" `
+    -Execute "wscript.exe" `
+    -Argument "`"$scriptsDir\run-ccproxy.vbs`"" `
     -WorkingDirectory $baseDir
 Register-ScheduledTask `
     -TaskName "ccproxy" `
@@ -28,8 +28,8 @@ Write-Host "[OK] Scheduled task 'ccproxy' registered."
 
 # cloudflared task — wrapper handles restart loop and log redirection
 $cfAction = New-ScheduledTaskAction `
-    -Execute "cmd.exe" `
-    -Argument "/c `"$scriptsDir\run-cloudflared.bat`"" `
+    -Execute "wscript.exe" `
+    -Argument "`"$scriptsDir\run-cloudflared.vbs`"" `
     -WorkingDirectory $baseDir
 Register-ScheduledTask `
     -TaskName "cloudflared-tunnel" `
