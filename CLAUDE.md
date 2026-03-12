@@ -51,6 +51,10 @@ No test framework is configured. No linter/formatter is configured — TypeScrip
 - **Logging**: Dual output to console and `api.log` (50MB rolling). Logger in `src/logger.ts`.
 - **Windows deployment**: Scripts in `scripts/` handle Windows Scheduled Task registration and restart loops.
 
+## Authentication
+
+To authenticate the proxy, open `http://localhost:8082/login` in a browser. This initiates the PKCE OAuth flow with Claude Code's OAuth provider. After successful login, credentials are persisted to `~/.ccproxy/auth.json` and automatically refreshed.
+
 ## Environment Variables
 
 See `.env.example`. Key vars: `PORT`, `ALLOWED_IPS` (comma-separated or `"disabled"`), `CLAUDE_CODE_EXTRA_INSTRUCTION`.
