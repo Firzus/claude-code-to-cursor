@@ -11,6 +11,7 @@ import {
   handleAnalyticsReset,
 } from "./src/routes/analytics";
 import { handleLogin, handleOAuthCallback } from "./src/routes/auth";
+import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
 import type { AnthropicError } from "./src/types";
 import { logger } from "./src/logger";
 
@@ -81,13 +82,15 @@ const server = Bun.serve({
     // --- Health check ---
     if (url.pathname === "/health" || url.pathname === "/") {
       const token = await getValidToken();
+      const rateLimit = getRateLimitStatus();
       return Response.json({
-        status: "ok",
+        status: rateLimit.isLimited ? "rate_limited" : "ok",
         claudeCode: {
           authenticated: !!token,
           expiresAt: token?.expiresAt,
           ...(token ? {} : { loginUrl: `http://localhost:${config.port}/login` }),
         },
+        rateLimit,
       });
     }
 
@@ -115,6 +118,17 @@ const server = Bun.serve({
 
     if (url.pathname === "/analytics/reset" && req.method === "POST") {
       return handleAnalyticsReset();
+    }
+
+    // --- Rate limit management ---
+    if (url.pathname === "/rate-limit" && req.method === "GET") {
+      return Response.json(getRateLimitStatus());
+    }
+
+    if (url.pathname === "/rate-limit/reset" && req.method === "POST") {
+      const result = clearRateLimitCache();
+      console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
+      return Response.json(result);
     }
 
     // --- OAuth login flow ---
@@ -157,6 +171,7 @@ console.log(
   `   OpenAI:     http://localhost:${server.port}/v1/chat/completions`
 );
 console.log(`   Analytics:  http://localhost:${server.port}/analytics`);
+console.log(`   Rate Limit: http://localhost:${server.port}/rate-limit`);
 console.log(`   Login:      http://localhost:${server.port}/login\n`);
 
 await checkCredentials();

@@ -14,25 +14,99 @@ type RequestResult =
   | { success: true; response: Response; source: "claude_code" }
   | { success: false; error: string };
 
-let rateLimitCache: { resetAt: number } | null = null;
+// Rate limit cache with soft expiry and max cap
+const RATE_LIMIT_MAX_CACHE_MS =
+  parseInt(process.env.RATE_LIMIT_MAX_CACHE_SECONDS || "900", 10) * 1000; // default 15 min
+const RATE_LIMIT_SOFT_MS =
+  parseInt(process.env.RATE_LIMIT_SOFT_SECONDS || "300", 10) * 1000; // default 5 min
+
+let rateLimitCache: {
+  resetAt: number;         // capped reset time
+  originalResetAt: number; // what the API actually said
+  cachedAt: number;        // when we cached it
+  probeInFlight: boolean;  // prevent concurrent probes during soft expiry
+} | null = null;
 
 function isRateLimited(): boolean {
   if (!rateLimitCache) return false;
-  if (Date.now() >= rateLimitCache.resetAt) {
+  const now = Date.now();
+
+  // Cache expired → clear
+  if (now >= rateLimitCache.resetAt) {
     rateLimitCache = null;
     return false;
   }
+
+  // Soft expiry reached → allow one probe request at a time
+  if (now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS) {
+    if (!rateLimitCache.probeInFlight) {
+      rateLimitCache.probeInFlight = true;
+      console.log("Rate limit soft expiry: allowing probe request");
+      return false;
+    }
+    // Another probe already in flight, still block
+    return true;
+  }
+
+  // Hard block period
   return true;
 }
 
-function cacheRateLimit(resetAt: number) {
-  rateLimitCache = { resetAt };
+function cacheRateLimit(apiResetAt: number) {
+  const now = Date.now();
+  const maxResetAt = now + RATE_LIMIT_MAX_CACHE_MS;
+  rateLimitCache = {
+    resetAt: Math.min(apiResetAt, maxResetAt),
+    originalResetAt: apiResetAt,
+    cachedAt: now,
+    probeInFlight: false,
+  };
+  const cappedMin = Math.ceil((rateLimitCache.resetAt - now) / 60000);
+  const originalMin = Math.ceil((apiResetAt - now) / 60000);
+  if (cappedMin < originalMin) {
+    console.log(`   Rate limit cached for ${cappedMin}m (API said ${originalMin}m, capped)`);
+  }
 }
 
 function getRateLimitResetMinutes(): number | null {
   if (!rateLimitCache) return null;
   const diff = rateLimitCache.resetAt - Date.now();
   return Math.ceil(diff / 1000 / 60);
+}
+
+export function clearRateLimitCache(): { cleared: boolean; wasLimited: boolean } {
+  const wasLimited = rateLimitCache !== null;
+  rateLimitCache = null;
+  return { cleared: true, wasLimited };
+}
+
+export function getRateLimitStatus(): {
+  isLimited: boolean;
+  resetAt: number | null;
+  originalResetAt: number | null;
+  minutesRemaining: number | null;
+  inSoftExpiry: boolean;
+  cachedAt: number | null;
+} {
+  if (!rateLimitCache) {
+    return { isLimited: false, resetAt: null, originalResetAt: null,
+             minutesRemaining: null, inSoftExpiry: false, cachedAt: null };
+  }
+  const now = Date.now();
+  if (now >= rateLimitCache.resetAt) {
+    rateLimitCache = null;
+    return { isLimited: false, resetAt: null, originalResetAt: null,
+             minutesRemaining: null, inSoftExpiry: false, cachedAt: null };
+  }
+  const softExpired = now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS;
+  return {
+    isLimited: true,
+    resetAt: rateLimitCache.resetAt,
+    originalResetAt: rateLimitCache.originalResetAt,
+    minutesRemaining: Math.ceil((rateLimitCache.resetAt - now) / 60000),
+    inSoftExpiry: softExpired,
+    cachedAt: rateLimitCache.cachedAt,
+  };
 }
 
 /**
@@ -338,6 +412,12 @@ async function makeClaudeCodeRequest(
         success: false,
         error: errorMessage || "Bad request",
       };
+    }
+
+    // If we were probing after soft expiry and succeeded, clear the cache
+    if (rateLimitCache) {
+      console.log("Rate limit probe succeeded, clearing cache");
+      rateLimitCache = null;
     }
 
     // Strip mcp_ prefix from tool names in streaming/non-streaming responses
