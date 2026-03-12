@@ -8,6 +8,7 @@ import {
   createOpenAIStreamUsageChunk,
   createOpenAIToolCallChunk,
 } from "./openai-adapter";
+import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 
 /**
@@ -18,7 +19,8 @@ export function createOpenAIStreamFromAnthropic(
   response: Response,
   streamId: string,
   model: string,
-  streamOptions?: { include_usage?: boolean }
+  streamOptions?: { include_usage?: boolean },
+  userToolNames?: Set<string>
 ): ReadableStream {
   const reader = response.body!.getReader();
   const HEARTBEAT_INTERVAL = 5000;
@@ -40,6 +42,9 @@ export function createOpenAIStreamFromAnthropic(
         name: string;
         inputJson: string;
       } | null = null;
+      let inInternalToolCall = false;
+      let internalToolCallJson = "";
+      let internalToolCallName = "";
       let inThinkingBlock = false;
       let usageInputTokens = 0;
       let usageOutputTokens = 0;
@@ -205,33 +210,48 @@ export function createOpenAIStreamFromAnthropic(
 
                 // Handle tool_use blocks
                 if (block?.type === "tool_use") {
-                  logger.verbose(
-                    `   [Debug] tool_use block started: id=${block.id}, name=${block.name}`
-                  );
-
                   const toolName = block.name?.startsWith("mcp_")
                     ? block.name.slice(4)
                     : block.name;
 
-                  currentToolCall = {
-                    id: block.id,
-                    name: toolName,
-                    inputJson: "",
-                  };
+                  // Check if this is a user tool (sent by Cursor) or a Claude Code internal tool
+                  // If userToolNames is undefined, no tools were sent → all tool calls are internal
+                  const isUserTool = userToolNames !== undefined && userToolNames.has(toolName);
 
-                  safeEnqueue(
-                    new TextEncoder().encode(
-                      createOpenAIToolCallChunk(
-                        streamId,
-                        model,
-                        toolCallIndex,
-                        block.id,
-                        toolName,
-                        undefined,
-                        null
+                  if (isUserTool) {
+                    logger.verbose(
+                      `   [Debug] tool_use block started (user tool): id=${block.id}, name=${toolName}`
+                    );
+
+                    currentToolCall = {
+                      id: block.id,
+                      name: toolName,
+                      inputJson: "",
+                    };
+
+                    safeEnqueue(
+                      new TextEncoder().encode(
+                        createOpenAIToolCallChunk(
+                          streamId,
+                          model,
+                          toolCallIndex,
+                          block.id,
+                          toolName,
+                          undefined,
+                          null
+                        )
                       )
-                    )
-                  );
+                    );
+                  } else {
+                    // Claude Code internal tool (CreatePlan, TodoWrite, etc.)
+                    // Buffer JSON and extract content as text at block end
+                    logger.verbose(
+                      `   [Debug] tool_use block started (internal tool, will extract text): id=${block.id}, name=${toolName}`
+                    );
+                    inInternalToolCall = true;
+                    internalToolCallJson = "";
+                    internalToolCallName = toolName;
+                  }
                 }
               }
 
@@ -242,6 +262,47 @@ export function createOpenAIStreamFromAnthropic(
                   logger.verbose(`   [Debug] Thinking block ended`);
                   continue;
                 }
+
+                if (inInternalToolCall) {
+                  inInternalToolCall = false;
+                  logger.verbose(`   [Debug] Internal tool call block ended: ${internalToolCallName}`);
+
+                  // Parse buffered JSON and extract readable text
+                  let extractedText: string | null = null;
+                  try {
+                    const parsed = internalToolCallJson ? JSON.parse(internalToolCallJson) : null;
+                    extractedText = formatInternalToolContent(internalToolCallName, parsed);
+                  } catch {
+                    logger.verbose(`   [Debug] Failed to parse internal tool JSON for ${internalToolCallName}`);
+                  }
+
+                  if (extractedText) {
+                    logger.info(`   Emitting extracted text from ${internalToolCallName} (${extractedText.length} chars)`);
+
+                    if (!sentStart) {
+                      safeEnqueue(
+                        new TextEncoder().encode(
+                          createOpenAIStreamStart(streamId, model)
+                        )
+                      );
+                      sentStart = true;
+                    }
+
+                    safeEnqueue(
+                      new TextEncoder().encode(
+                        createOpenAIStreamChunk(streamId, model, extractedText)
+                      )
+                    );
+                    lastChunkTime = Date.now();
+                  }
+
+                  internalToolCallJson = "";
+                  internalToolCallName = "";
+                  blockTextSent = false;
+                  currentBlockIndex = -1;
+                  continue;
+                }
+
                 logger.verbose(
                   `   [Debug] content_block_stop for index ${event.index}`
                 );
@@ -277,6 +338,14 @@ export function createOpenAIStreamFromAnthropic(
 
               // Skip deltas for thinking blocks
               if (event.type === "content_block_delta" && inThinkingBlock) {
+                continue;
+              }
+
+              // Buffer JSON deltas for internal tool calls (will be extracted as text at block end)
+              if (event.type === "content_block_delta" && inInternalToolCall) {
+                if (event.delta?.type === "input_json_delta" && event.delta.partial_json) {
+                  internalToolCallJson += event.delta.partial_json;
+                }
                 continue;
               }
 

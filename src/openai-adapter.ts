@@ -4,6 +4,7 @@
  */
 
 import type { AnthropicRequest, AnthropicMessage, ContentBlock } from "./types";
+import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 
 export interface OpenAIMessage {
@@ -513,6 +514,9 @@ export function anthropicToOpenai(
       if (block.type === "text") return block.text;
       if (block.type === "tool_use") {
         const name = block.name?.startsWith("mcp_") ? block.name.slice(4) : block.name;
+        // Try to extract readable content from internal tool calls
+        const extracted = formatInternalToolContent(name, block.input);
+        if (extracted) return extracted;
         return `[Tool: ${name}]`;
       }
       return "";

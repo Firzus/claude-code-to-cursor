@@ -214,11 +214,26 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         );
       }
 
+      // Collect user tool names so the stream handler can distinguish
+      // Cursor's tools from Claude Code internal tools (CreatePlan, etc.)
+      let userToolNames: Set<string> | undefined;
+      if (openaiBody.tools && openaiBody.tools.length > 0) {
+        userToolNames = new Set<string>();
+        for (const tool of openaiBody.tools) {
+          const t = tool as any;
+          const name = t.type === "function" && t.function?.name
+            ? t.function.name
+            : t.name;
+          if (name) userToolNames.add(name);
+        }
+      }
+
       const stream = createOpenAIStreamFromAnthropic(
         response,
         streamId,
         openaiBody.model,
-        openaiBody.stream_options
+        openaiBody.stream_options,
+        userToolNames
       );
 
       return new Response(stream, { headers: responseHeaders });

@@ -60,6 +60,8 @@ const server = Bun.serve({
       return new Response(null, { headers: corsHeaders() });
     }
 
+    logger.info(`[REQ] ${req.method} ${url.pathname}`);
+
     // IP whitelist for API endpoints
     if (
       url.pathname.startsWith("/v1/") ||
@@ -141,6 +143,7 @@ const server = Bun.serve({
     }
 
     // --- 404 ---
+    console.log(`[404] ${req.method} ${url.pathname}`);
     return Response.json(
       {
         type: "error",
