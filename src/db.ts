@@ -4,7 +4,6 @@
 
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
-import { calculateCost } from "./pricing";
 
 const DB_PATH =
   process.env.CCPROXY_DB_PATH || join(process.cwd(), "ccproxy.db");
@@ -31,7 +30,6 @@ function initSchema() {
       source TEXT NOT NULL CHECK (source IN ('claude_code', 'error')),
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
-      estimated_cost REAL NOT NULL DEFAULT 0,
       stream INTEGER NOT NULL DEFAULT 0,
       latency_ms INTEGER,
       error TEXT
@@ -66,22 +64,16 @@ export interface RequestRecord {
  */
 export function recordRequest(record: RequestRecord): void {
   const database = getDb();
-  const estimatedCost = calculateCost(
-    record.model,
-    record.inputTokens,
-    record.outputTokens
-  );
 
   database.run(
-    `INSERT INTO requests (timestamp, model, source, input_tokens, output_tokens, estimated_cost, stream, latency_ms, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO requests (timestamp, model, source, input_tokens, output_tokens, stream, latency_ms, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Date.now(),
       record.model,
       record.source,
       record.inputTokens,
       record.outputTokens,
-      estimatedCost,
       record.stream ? 1 : 0,
       record.latencyMs ?? null,
       record.error ?? null,
@@ -95,7 +87,6 @@ export interface AnalyticsSummary {
   errorRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  estimatedCost: number;
   periodStart: number;
   periodEnd: number;
 }
@@ -116,8 +107,7 @@ export function getAnalytics(
         SUM(CASE WHEN source = 'claude_code' THEN 1 ELSE 0 END) as claude_code_requests,
         SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_requests,
         SUM(input_tokens) as total_input_tokens,
-        SUM(output_tokens) as total_output_tokens,
-        SUM(estimated_cost) as total_cost
+        SUM(output_tokens) as total_output_tokens
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?`
     )
@@ -127,7 +117,6 @@ export function getAnalytics(
       error_requests: number;
       total_input_tokens: number;
       total_output_tokens: number;
-      total_cost: number;
     };
 
   return {
@@ -136,7 +125,6 @@ export function getAnalytics(
     errorRequests: totals.error_requests || 0,
     totalInputTokens: totals.total_input_tokens || 0,
     totalOutputTokens: totals.total_output_tokens || 0,
-    estimatedCost: totals.total_cost || 0,
     periodStart: since,
     periodEnd: until,
   };
@@ -152,7 +140,6 @@ export function getRecentRequests(limit: number = 100): Array<{
   source: RequestSource;
   inputTokens: number;
   outputTokens: number;
-  estimatedCost: number;
   stream: boolean;
   latencyMs: number | null;
   error: string | null;
@@ -160,7 +147,7 @@ export function getRecentRequests(limit: number = 100): Array<{
   const database = getDb();
   const rows = database
     .query(
-      `SELECT id, timestamp, model, source, input_tokens, output_tokens, estimated_cost, stream, latency_ms, error
+      `SELECT id, timestamp, model, source, input_tokens, output_tokens, stream, latency_ms, error
        FROM requests ORDER BY timestamp DESC LIMIT ?`
     )
     .all(limit) as Array<{
@@ -170,7 +157,6 @@ export function getRecentRequests(limit: number = 100): Array<{
       source: RequestSource;
       input_tokens: number;
       output_tokens: number;
-      estimated_cost: number;
       stream: number;
       latency_ms: number | null;
       error: string | null;
@@ -183,7 +169,6 @@ export function getRecentRequests(limit: number = 100): Array<{
     source: row.source,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
-    estimatedCost: row.estimated_cost,
     stream: row.stream === 1,
     latencyMs: row.latency_ms,
     error: row.error,

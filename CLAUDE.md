@@ -36,8 +36,7 @@ src/
   tool-call-translator.ts       ← Fixes Claude Code tool call XML to Cursor's expected format
   middleware.ts                 ← IP whitelist, request logging, header extraction, CORS
   html-templates.ts             ← OAuth login page and result page HTML
-  db.ts                         ← SQLite analytics: request logging, cost tracking
-  pricing.ts                    ← Per-model token cost calculations
+  db.ts                         ← SQLite analytics: request logging
   logger.ts                     ← File logger with auto-truncation (50 MB api.log, 5 MB startup log)
   types.ts                      ← Shared type definitions
   routes/

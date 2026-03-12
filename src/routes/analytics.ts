@@ -1,5 +1,4 @@
 import { getAnalytics, getRecentRequests, resetAnalytics } from "../db";
-import { formatCost } from "../pricing";
 
 export function handleAnalytics(url: URL): Response {
   const period = url.searchParams.get("period") || "day";
@@ -31,7 +30,6 @@ export function handleAnalytics(url: URL): Response {
   return Response.json({
     period,
     ...analytics,
-    estimatedCostFormatted: formatCost(analytics.estimatedCost),
   });
 }
 
