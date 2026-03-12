@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is ccproxy
 
-A Bun-based HTTP proxy that routes Anthropic API requests through a Claude Code OAuth subscription, with automatic fallback to a direct API key when subscription limits are hit (429/403). It exposes both Anthropic-native (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) endpoints, making it usable with Cursor IDE and similar tools.
+A Bun-based HTTP proxy that routes Anthropic API requests through a Claude Code OAuth subscription. It exposes both Anthropic-native (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) endpoints, making it usable with Cursor IDE and similar tools.
 
 ## Commands
 
@@ -26,32 +26,37 @@ bun test                  # Run tests (no test files currently exist)
 ## Architecture
 
 ```
-index.ts                    ← HTTP server (Bun.serve), routing, IP whitelist, streaming
+index.ts                        ← HTTP server (Bun.serve), routing, bootstrap (~140 lines)
 src/
-  config.ts                 ← Env vars, OAuth constants, Claude Code system prompt
-  oauth.ts                  ← OAuth PKCE login, token exchange, refresh, persistence (~/.ccproxy/auth.json)
-  anthropic-client.ts       ← Core proxy: Claude Code request → fallback to API key
-  openai-adapter.ts         ← OpenAI ↔ Anthropic format conversion (messages, tools, streaming)
-  openai-passthrough.ts     ← Direct forwarding for non-Claude models (GPT, Gemini, etc.)
-  tool-call-translator.ts   ← Fixes Claude Code tool call XML to Cursor's expected format
-  db.ts                     ← SQLite analytics: request logging, budget enforcement, cost tracking
-  pricing.ts                ← Per-model token cost calculations
-  logger.ts                 ← File logger with auto-truncation (50 MB api.log, 5 MB startup log)
-  types.ts                  ← Shared type definitions
-scripts/                    ← Windows automation (bat/ps1 for auto-restart, task scheduler)
+  config.ts                     ← Env vars, OAuth constants, Claude Code system prompt
+  oauth.ts                      ← OAuth PKCE login, token exchange, refresh, persistence (~/.ccproxy/auth.json)
+  anthropic-client.ts           ← Core proxy: Claude Code OAuth request, rate limit caching
+  openai-adapter.ts             ← OpenAI ↔ Anthropic format conversion (messages, tools, streaming)
+  stream-handler.ts             ← SSE streaming pipeline: Anthropic events → OpenAI chunks
+  tool-call-translator.ts       ← Fixes Claude Code tool call XML to Cursor's expected format
+  middleware.ts                 ← IP whitelist, request logging, header extraction, CORS
+  html-templates.ts             ← OAuth login page and result page HTML
+  db.ts                         ← SQLite analytics: request logging, cost tracking
+  pricing.ts                    ← Per-model token cost calculations
+  logger.ts                     ← File logger with auto-truncation (50 MB api.log, 5 MB startup log)
+  types.ts                      ← Shared type definitions
+  routes/
+    anthropic.ts                ← Handler for POST /v1/messages
+    openai.ts                   ← Handler for POST /v1/chat/completions
+    models.ts                   ← Handler for GET /v1/models
+    analytics.ts                ← Handlers for /analytics endpoints
+    auth.ts                     ← Handlers for /login and /oauth/callback + PKCE store
+scripts/                        ← Windows automation (bat/ps1 for auto-restart, task scheduler)
 ```
 
 ## Request flow
 
 1. Request hits `index.ts` → IP whitelist check (via `cf-connecting-ip` for Cloudflare tunnels)
 2. For `/v1/chat/completions`: OpenAI format converted to Anthropic via `openai-adapter.ts`
-3. Non-Claude models (GPT, Gemini) routed directly to OpenAI/OpenRouter via `openai-passthrough.ts`
-4. Claude requests go through `anthropic-client.ts`:
-   - Tries Claude Code OAuth first (requires system prompt prefix + beta headers)
-   - On 429/403, falls back to direct `ANTHROPIC_API_KEY`
-   - Rate limit results are cached to skip Claude Code temporarily
-5. Response streamed back; tool calls translated via `tool-call-translator.ts`
-6. Request recorded in SQLite for analytics/budget tracking
+3. All requests go through `anthropic-client.ts` → Claude Code OAuth (requires system prompt prefix + beta headers)
+4. Rate limit results are cached to skip retries temporarily
+5. Response streamed back via `stream-handler.ts`; tool calls translated via `tool-call-translator.ts`
+6. Request recorded in SQLite for analytics
 
 ## Key constraints
 
@@ -83,12 +88,10 @@ scripts/                    ← Windows automation (bat/ps1 for auto-restart, ta
 - `GET /analytics?period=day|hour|week|month|all` — Usage analytics
 - `GET /analytics/requests?limit=100` — Recent request log
 - `POST /analytics/reset` — Clear analytics data
-- `GET /budget` — Budget settings
-- `POST /budget` — Update budget settings (budget only applies to API key requests, not Claude Code)
 
 ## Streaming pipeline (OpenAI-compatible)
 
-The streaming path in `index.ts` is the most complex part of the codebase. It reads Anthropic SSE events (`content_block_start`, `content_block_delta`, `message_delta`, etc.) and converts them to OpenAI `chat.completion.chunk` SSE format in real-time. Key behaviors:
+The streaming logic lives in `stream-handler.ts`. It reads Anthropic SSE events (`content_block_start`, `content_block_delta`, `message_delta`, etc.) and converts them to OpenAI `chat.completion.chunk` SSE format in real-time. Key behaviors:
 
 - Accumulates text to detect and translate XML tool calls mid-stream
 - Converts Anthropic `tool_use` content blocks into OpenAI `tool_calls` delta format
@@ -97,7 +100,7 @@ The streaming path in `index.ts` is the most complex part of the codebase. It re
 
 ## Environment variables
 
-See `.env.example`. Key ones: `ANTHROPIC_API_KEY` (fallback), `PORT` (default 8082), `CLAUDE_CODE_FIRST` (default true), `OPENAI_API_KEY` (for non-Claude models), `ALLOWED_IPS` (comma-separated, or `"disabled"`).
+See `.env.example`. Key ones: `PORT` (default 8082), `ALLOWED_IPS` (comma-separated, or `"disabled"`), `CLAUDE_CODE_EXTRA_INSTRUCTION` (optional headless mode prompt).
 
 ## Windows service management
 

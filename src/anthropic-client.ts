@@ -4,16 +4,15 @@ import {
   CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_EXTRA_INSTRUCTION,
   CLAUDE_CODE_USER_AGENT,
-  getConfig,
 } from "./config";
 import { getValidToken, clearCachedToken } from "./oauth";
-import { recordRequest, checkBudget, type RequestSource } from "./db";
+import { recordRequest } from "./db";
 import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
 import { logger } from "./logger";
 
 type RequestResult =
-  | { success: true; response: Response; source: RequestSource }
-  | { success: false; error: string; shouldFallback: boolean };
+  | { success: true; response: Response; source: "claude_code" }
+  | { success: false; error: string };
 
 let rateLimitCache: { resetAt: number } | null = null;
 
@@ -172,7 +171,7 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   return prepared;
 }
 
-async function makeClaudeCodeRequestWithOAuth(
+async function makeClaudeCodeRequest(
   endpoint: string,
   body: AnthropicRequest,
   headers: Record<string, string>
@@ -184,8 +183,7 @@ async function makeClaudeCodeRequestWithOAuth(
     );
     return {
       success: false,
-      error: "Rate limited (cached)",
-      shouldFallback: true,
+      error: `Rate limited (cached, resets in ${minutes}m)`,
     };
   }
 
@@ -193,8 +191,7 @@ async function makeClaudeCodeRequestWithOAuth(
   if (!token) {
     return {
       success: false,
-      error: "No valid OAuth token",
-      shouldFallback: true,
+      error: "No valid OAuth token — visit /login to authenticate",
     };
   }
 
@@ -264,10 +261,8 @@ async function makeClaudeCodeRequestWithOAuth(
         cacheRateLimit(resetAt);
       }
 
-      console.log(
-        `Claude Code rate limited, will fallback to API key${resetInfo}`
-      );
-      return { success: false, error: "Rate limited", shouldFallback: true };
+      console.log(`Claude Code rate limited${resetInfo}`);
+      return { success: false, error: `Rate limited${resetInfo}` };
     }
 
     if (response.status === 401) {
@@ -275,8 +270,7 @@ async function makeClaudeCodeRequestWithOAuth(
       clearCachedToken();
       return {
         success: false,
-        error: "OAuth token invalid",
-        shouldFallback: true,
+        error: "OAuth token invalid — visit /login to re-authenticate",
       };
     }
 
@@ -286,7 +280,6 @@ async function makeClaudeCodeRequestWithOAuth(
       return {
         success: false,
         error: "Permission denied",
-        shouldFallback: true,
       };
     }
 
@@ -303,7 +296,6 @@ async function makeClaudeCodeRequestWithOAuth(
         return {
           success: false,
           error: "OAuth not authorized for API",
-          shouldFallback: true,
         };
       }
 
@@ -345,7 +337,6 @@ async function makeClaudeCodeRequestWithOAuth(
       return {
         success: false,
         error: errorMessage || "Bad request",
-        shouldFallback: true,
       };
     }
 
@@ -354,7 +345,7 @@ async function makeClaudeCodeRequestWithOAuth(
     return { success: true, response: strippedResponse, source: "claude_code" };
   } catch (error) {
     console.error("Claude Code OAuth request failed:", error);
-    return { success: false, error: String(error), shouldFallback: true };
+    return { success: false, error: String(error) };
   }
 }
 
@@ -390,64 +381,12 @@ function stripMcpPrefixFromResponse(response: Response): Response {
   });
 }
 
-async function makeClaudeCodeRequest(
-  endpoint: string,
-  body: AnthropicRequest,
-  headers: Record<string, string>
-): Promise<RequestResult> {
-  return makeClaudeCodeRequestWithOAuth(endpoint, body, headers);
-}
-
-async function makeDirectApiRequest(
-  endpoint: string,
-  body: AnthropicRequest,
-  headers: Record<string, string>,
-  apiKey: string
-): Promise<RequestResult> {
-  try {
-    // Convert reasoning_budget to thinking parameter for direct API
-    const preparedBody = { ...body };
-    if ("reasoning_budget" in preparedBody) {
-      if (!preparedBody.thinking) {
-        const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
-        const val = preparedBody.reasoning_budget;
-        const budgetTokens = typeof val === "string"
-          ? budgetMap[val] || 8192
-          : Number(val) || 8192;
-        preparedBody.thinking = { type: "enabled", budget_tokens: budgetTokens };
-        preparedBody.temperature = 1;
-        if (preparedBody.max_tokens < budgetTokens + 4096) {
-          preparedBody.max_tokens = budgetTokens + 16384;
-        }
-        logger.verbose(`   [Debug] Direct API: converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
-      }
-      delete preparedBody.reasoning_budget;
-    }
-
-    const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}`, {
-      method: "POST",
-      headers: {
-        ...headers,
-        "x-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(preparedBody),
-    });
-
-    return { success: true, response, source: "api_key" };
-  } catch (error) {
-    console.error("Direct API request failed:", error);
-    return { success: false, error: String(error), shouldFallback: false };
-  }
-}
-
 /**
  * Extract usage from response (for non-streaming)
  */
 async function extractUsageFromResponse(
   response: Response,
   model: string,
-  source: RequestSource,
   stream: boolean,
   startTime: number
 ): Promise<Response> {
@@ -456,7 +395,7 @@ async function extractUsageFromResponse(
   if (stream) {
     recordRequest({
       model,
-      source,
+      source: "claude_code",
       inputTokens: 0,
       outputTokens: 0,
       stream: true,
@@ -475,7 +414,7 @@ async function extractUsageFromResponse(
 
     recordRequest({
       model,
-      source,
+      source: "claude_code",
       inputTokens: usage.input_tokens || 0,
       outputTokens: usage.output_tokens || 0,
       stream: false,
@@ -485,7 +424,7 @@ async function extractUsageFromResponse(
     // If we can't parse, record with zeros
     recordRequest({
       model,
-      source,
+      source: "claude_code",
       inputTokens: 0,
       outputTokens: 0,
       stream: false,
@@ -499,213 +438,24 @@ async function extractUsageFromResponse(
 export async function proxyRequest(
   endpoint: string,
   body: AnthropicRequest,
-  headers: Record<string, string>,
-  userAPIKey?: string
+  headers: Record<string, string>
 ): Promise<Response> {
-  const config = getConfig();
   const startTime = Date.now();
   const model = body.model;
   const stream = body.stream || false;
 
-  // Always try Claude Code first (if enabled), then fall back to API key
-  if (config.claudeCodeFirst) {
-    const claudeResult = await makeClaudeCodeRequest(endpoint, body, headers);
+  const result = await makeClaudeCodeRequest(endpoint, body, headers);
 
-    if (claudeResult.success) {
-      console.log(`✓ Request served via Claude Code`);
-      return extractUsageFromResponse(
-        claudeResult.response,
-        model,
-        claudeResult.source,
-        stream,
-        startTime
-      );
-    }
-
-    if (!claudeResult.shouldFallback) {
-      recordRequest({
-        model,
-        source: "error",
-        inputTokens: 0,
-        outputTokens: 0,
-        stream,
-        error: claudeResult.error,
-      });
-
-      return new Response(
-        JSON.stringify({
-          type: "error",
-          error: {
-            type: "api_error",
-            message: claudeResult.error,
-          },
-        } satisfies AnthropicError),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Fallback to API key (Claude Code failed)
-    // Prefer user-provided API key, then fall back to config API key
-    const fallbackApiKey = userAPIKey || config.anthropicApiKey;
-    if (fallbackApiKey) {
-      // Check budget before using API key
-      const budgetError = checkBudget();
-      if (budgetError) {
-        console.log(`⚠ Budget limit reached: ${budgetError}`);
-        recordRequest({
-          model,
-          source: "error",
-          inputTokens: 0,
-          outputTokens: 0,
-          stream,
-          error: budgetError,
-        });
-        return new Response(
-          JSON.stringify({
-            type: "error",
-            error: { type: "rate_limit_error", message: budgetError },
-          } satisfies AnthropicError),
-          { status: 429, headers: { "Content-Type": "application/json" } }
-        );
-      }
-
-      const apiKeySource = userAPIKey ? "user-provided" : "configured";
-      console.log(
-        `↓ Falling back to direct Anthropic API (${apiKeySource} key)`
-      );
-      const apiResult = await makeDirectApiRequest(
-        endpoint,
-        body,
-        headers,
-        fallbackApiKey
-      );
-
-      if (apiResult.success) {
-        console.log(
-          `✓ Request served via direct Anthropic API (${apiKeySource} key)`
-        );
-        return extractUsageFromResponse(
-          apiResult.response,
-          model,
-          apiResult.source,
-          stream,
-          startTime
-        );
-      }
-
-      recordRequest({
-        model,
-        source: "error",
-        inputTokens: 0,
-        outputTokens: 0,
-        stream,
-        error: apiResult.error,
-      });
-
-      return new Response(
-        JSON.stringify({
-          type: "error",
-          error: { type: "api_error", message: apiResult.error },
-        } satisfies AnthropicError),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // No API key available and Claude Code failed - propagate original error
-    const isClientError =
-      claudeResult.error.includes("too long") ||
-      claudeResult.error.includes("invalid") ||
-      claudeResult.error.includes("Bad request");
-
-    recordRequest({
-      model,
-      source: "error",
-      inputTokens: 0,
-      outputTokens: 0,
-      stream,
-      error: claudeResult.error,
-    });
-
-    logger.debug(
-      `   [Debug] Error response: ${JSON.stringify({
-        type: "error",
-        error: {
-          type: isClientError ? "invalid_request_error" : "api_error",
-          message: `${claudeResult.error} (no fallback API key available)`,
-        },
-      })}`
-    );
-
-    return new Response(
-      JSON.stringify({
-        type: "error",
-        error: {
-          type: isClientError ? "invalid_request_error" : "api_error",
-          message: `${claudeResult.error} (no fallback API key available)`,
-        },
-      } satisfies AnthropicError),
-      {
-        status: isClientError ? 400 : 502,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+  if (result.success) {
+    console.log(`✓ Request served via Claude Code`);
+    return extractUsageFromResponse(result.response, model, stream, startTime);
   }
 
-  if (config.anthropicApiKey) {
-    // Check budget before using API key
-    const budgetError = checkBudget();
-    if (budgetError) {
-      console.log(`⚠ Budget limit reached: ${budgetError}`);
-      recordRequest({
-        model,
-        source: "error",
-        inputTokens: 0,
-        outputTokens: 0,
-        stream,
-        error: budgetError,
-      });
-      return new Response(
-        JSON.stringify({
-          type: "error",
-          error: { type: "rate_limit_error", message: budgetError },
-        } satisfies AnthropicError),
-        { status: 429, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const apiResult = await makeDirectApiRequest(
-      endpoint,
-      body,
-      headers,
-      config.anthropicApiKey
-    );
-    if (apiResult.success) {
-      return extractUsageFromResponse(
-        apiResult.response,
-        model,
-        apiResult.source,
-        stream,
-        startTime
-      );
-    }
-
-    recordRequest({
-      model,
-      source: "error",
-      inputTokens: 0,
-      outputTokens: 0,
-      stream,
-      error: apiResult.error,
-    });
-
-    return new Response(
-      JSON.stringify({
-        type: "error",
-        error: { type: "api_error", message: apiResult.error },
-      } satisfies AnthropicError),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
+  // Claude Code failed - return the error directly
+  const isClientError =
+    result.error.includes("too long") ||
+    result.error.includes("invalid") ||
+    result.error.includes("Bad request");
 
   recordRequest({
     model,
@@ -713,17 +463,30 @@ export async function proxyRequest(
     inputTokens: 0,
     outputTokens: 0,
     stream,
-    error: "No authentication method available",
+    error: result.error,
   });
+
+  logger.debug(
+    `   [Debug] Error response: ${JSON.stringify({
+      type: "error",
+      error: {
+        type: isClientError ? "invalid_request_error" : "api_error",
+        message: result.error,
+      },
+    })}`
+  );
 
   return new Response(
     JSON.stringify({
       type: "error",
       error: {
-        type: "authentication_error",
-        message: "No authentication method available",
+        type: isClientError ? "invalid_request_error" : "api_error",
+        message: result.error,
       },
     } satisfies AnthropicError),
-    { status: 401, headers: { "Content-Type": "application/json" } }
+    {
+      status: isClientError ? 400 : 502,
+      headers: { "Content-Type": "application/json" },
+    }
   );
 }

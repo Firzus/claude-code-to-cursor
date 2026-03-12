@@ -49,16 +49,12 @@ export function getConfig(): ProxyConfig {
     allowedIPsEnv.trim().toLowerCase() === "disabled"
       ? []
       : allowedIPsEnv
-          .split(",")
-          .map((ip) => ip.trim())
-          .filter(Boolean);
+        .split(",")
+        .map((ip) => ip.trim())
+        .filter(Boolean);
 
   return {
     port: parseInt(process.env.PORT || "8082", 10),
-    claudeCodeFirst: process.env.CLAUDE_CODE_FIRST !== "false",
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    openaiApiKey: process.env.OPENAI_API_KEY,
-    openaiBaseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com",
     allowedIPs,
   };
 }

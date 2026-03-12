@@ -1,5 +1,5 @@
 /**
- * SQLite database for analytics and rate limiting
+ * SQLite database for analytics
  */
 
 import { Database } from "bun:sqlite";
@@ -28,7 +28,7 @@ function initSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp INTEGER NOT NULL,
       model TEXT NOT NULL,
-      source TEXT NOT NULL CHECK (source IN ('claude_code', 'api_key', 'error')),
+      source TEXT NOT NULL CHECK (source IN ('claude_code', 'error')),
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
       estimated_cost REAL NOT NULL DEFAULT 0,
@@ -46,27 +46,10 @@ function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`
   );
 
-  // Budget settings table
-  database.run(`
-    CREATE TABLE IF NOT EXISTS budget_settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      hourly_limit REAL,
-      daily_limit REAL,
-      weekly_limit REAL,
-      monthly_limit REAL,
-      enabled INTEGER NOT NULL DEFAULT 0
-    )
-  `);
-
-  // Insert default budget settings if not exists
-  database.run(`
-    INSERT OR IGNORE INTO budget_settings (id, enabled) VALUES (1, 0)
-  `);
-
   console.log(`✓ Database initialized at ${DB_PATH}`);
 }
 
-export type RequestSource = "claude_code" | "api_key" | "error";
+export type RequestSource = "claude_code" | "error";
 
 export interface RequestRecord {
   model: string;
@@ -106,137 +89,13 @@ export function recordRequest(record: RequestRecord): void {
   );
 }
 
-export interface BudgetSettings {
-  hourlyLimit: number | null;
-  dailyLimit: number | null;
-  weeklyLimit: number | null;
-  monthlyLimit: number | null;
-  enabled: boolean;
-}
-
-/**
- * Get current budget settings
- */
-export function getBudgetSettings(): BudgetSettings {
-  const database = getDb();
-  const row = database
-    .query(`SELECT * FROM budget_settings WHERE id = 1`)
-    .get() as {
-    hourly_limit: number | null;
-    daily_limit: number | null;
-    weekly_limit: number | null;
-    monthly_limit: number | null;
-    enabled: number;
-  };
-
-  return {
-    hourlyLimit: row.hourly_limit,
-    dailyLimit: row.daily_limit,
-    weeklyLimit: row.weekly_limit,
-    monthlyLimit: row.monthly_limit,
-    enabled: row.enabled === 1,
-  };
-}
-
-/**
- * Update budget settings
- */
-export function updateBudgetSettings(settings: Partial<BudgetSettings>): void {
-  const database = getDb();
-  const current = getBudgetSettings();
-
-  database.run(
-    `UPDATE budget_settings SET
-      hourly_limit = ?,
-      daily_limit = ?,
-      weekly_limit = ?,
-      monthly_limit = ?,
-      enabled = ?
-     WHERE id = 1`,
-    [
-      settings.hourlyLimit ?? current.hourlyLimit,
-      settings.dailyLimit ?? current.dailyLimit,
-      settings.weeklyLimit ?? current.weeklyLimit,
-      settings.monthlyLimit ?? current.monthlyLimit,
-      settings.enabled ?? current.enabled ? 1 : 0,
-    ]
-  );
-}
-
-/**
- * Get estimated cost for a time period (only API key requests - Claude Code is "free")
- */
-export function getApiKeyCostSince(since: number): number {
-  const database = getDb();
-  const result = database
-    .query(
-      `SELECT COALESCE(SUM(estimated_cost), 0) as total FROM requests WHERE source = 'api_key' AND timestamp >= ?`
-    )
-    .get(since) as { total: number };
-  return result.total;
-}
-
-/**
- * Check if budget allows a request (returns null if allowed, error message if not)
- */
-export function checkBudget(): string | null {
-  const settings = getBudgetSettings();
-  if (!settings.enabled) return null;
-
-  const now = Date.now();
-  const hourAgo = now - 60 * 60 * 1000;
-  const dayAgo = now - 24 * 60 * 60 * 1000;
-  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-  const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
-
-  if (settings.hourlyLimit !== null) {
-    const hourlySpend = getApiKeyCostSince(hourAgo);
-    if (hourlySpend >= settings.hourlyLimit) {
-      return `Hourly budget exceeded: $${hourlySpend.toFixed(
-        2
-      )} / $${settings.hourlyLimit.toFixed(2)}`;
-    }
-  }
-
-  if (settings.dailyLimit !== null) {
-    const dailySpend = getApiKeyCostSince(dayAgo);
-    if (dailySpend >= settings.dailyLimit) {
-      return `Daily budget exceeded: $${dailySpend.toFixed(
-        2
-      )} / $${settings.dailyLimit.toFixed(2)}`;
-    }
-  }
-
-  if (settings.weeklyLimit !== null) {
-    const weeklySpend = getApiKeyCostSince(weekAgo);
-    if (weeklySpend >= settings.weeklyLimit) {
-      return `Weekly budget exceeded: $${weeklySpend.toFixed(
-        2
-      )} / $${settings.weeklyLimit.toFixed(2)}`;
-    }
-  }
-
-  if (settings.monthlyLimit !== null) {
-    const monthlySpend = getApiKeyCostSince(monthAgo);
-    if (monthlySpend >= settings.monthlyLimit) {
-      return `Monthly budget exceeded: $${monthlySpend.toFixed(
-        2
-      )} / $${settings.monthlyLimit.toFixed(2)}`;
-    }
-  }
-
-  return null;
-}
-
 export interface AnalyticsSummary {
   totalRequests: number;
   claudeCodeRequests: number;
-  apiKeyRequests: number;
   errorRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  estimatedApiKeyCost: number;
-  estimatedSavings: number; // Cost that would have been incurred if Claude Code requests used API key
+  estimatedCost: number;
   periodStart: number;
   periodEnd: number;
 }
@@ -255,35 +114,29 @@ export function getAnalytics(
       `SELECT
         COUNT(*) as total_requests,
         SUM(CASE WHEN source = 'claude_code' THEN 1 ELSE 0 END) as claude_code_requests,
-        SUM(CASE WHEN source = 'api_key' THEN 1 ELSE 0 END) as api_key_requests,
         SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_requests,
         SUM(input_tokens) as total_input_tokens,
         SUM(output_tokens) as total_output_tokens,
-        SUM(CASE WHEN source = 'api_key' THEN estimated_cost ELSE 0 END) as api_key_cost,
-        SUM(CASE WHEN source = 'claude_code' THEN estimated_cost ELSE 0 END) as claude_code_cost
+        SUM(estimated_cost) as total_cost
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?`
     )
     .get(since, until) as {
-    total_requests: number;
-    claude_code_requests: number;
-    api_key_requests: number;
-    error_requests: number;
-    total_input_tokens: number;
-    total_output_tokens: number;
-    api_key_cost: number;
-    claude_code_cost: number;
-  };
+      total_requests: number;
+      claude_code_requests: number;
+      error_requests: number;
+      total_input_tokens: number;
+      total_output_tokens: number;
+      total_cost: number;
+    };
 
   return {
     totalRequests: totals.total_requests || 0,
     claudeCodeRequests: totals.claude_code_requests || 0,
-    apiKeyRequests: totals.api_key_requests || 0,
     errorRequests: totals.error_requests || 0,
     totalInputTokens: totals.total_input_tokens || 0,
     totalOutputTokens: totals.total_output_tokens || 0,
-    estimatedApiKeyCost: totals.api_key_cost || 0,
-    estimatedSavings: totals.claude_code_cost || 0, // What we would have paid
+    estimatedCost: totals.total_cost || 0,
     periodStart: since,
     periodEnd: until,
   };
@@ -311,17 +164,17 @@ export function getRecentRequests(limit: number = 100): Array<{
        FROM requests ORDER BY timestamp DESC LIMIT ?`
     )
     .all(limit) as Array<{
-    id: number;
-    timestamp: number;
-    model: string;
-    source: RequestSource;
-    input_tokens: number;
-    output_tokens: number;
-    estimated_cost: number;
-    stream: number;
-    latency_ms: number | null;
-    error: string | null;
-  }>;
+      id: number;
+      timestamp: number;
+      model: string;
+      source: RequestSource;
+      input_tokens: number;
+      output_tokens: number;
+      estimated_cost: number;
+      stream: number;
+      latency_ms: number | null;
+      error: string | null;
+    }>;
 
   return rows.map((row) => ({
     id: row.id,

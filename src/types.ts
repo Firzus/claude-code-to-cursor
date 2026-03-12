@@ -99,9 +99,5 @@ export interface AnthropicError {
 
 export interface ProxyConfig {
   port: number;
-  claudeCodeFirst: boolean;
-  anthropicApiKey?: string;
-  openaiApiKey?: string;
-  openaiBaseUrl: string;
   allowedIPs: string[];
 }
