@@ -2,9 +2,7 @@
 # Run as Administrator: powershell -ExecutionPolicy Bypass -File scripts\install-task.ps1
 
 $baseDir = "C:\Users\User\Documents\repository\ccproxy"
-$bunExe = "C:\Users\User\.bun\bin\bun.exe"
-$cloudflaredExe = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
-$cloudflaredConfig = "C:\Users\User\.cloudflared\config.yml"
+$scriptsDir = "$baseDir\scripts"
 
 $trigger = New-ScheduledTaskTrigger -AtLogon
 $settings = New-ScheduledTaskSettingsSet `
@@ -14,31 +12,31 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 1)
 
-# ccproxy task — runs bun directly (no restart loop, service should not crash)
+# ccproxy task — wrapper handles port-kill, restart loop, and log redirection
 $ccproxyAction = New-ScheduledTaskAction `
-    -Execute $bunExe `
-    -Argument "run index.ts" `
+    -Execute "cmd.exe" `
+    -Argument "/c `"$scriptsDir\run-ccproxy.bat`"" `
     -WorkingDirectory $baseDir
 Register-ScheduledTask `
     -TaskName "ccproxy" `
     -Action $ccproxyAction `
     -Trigger $trigger `
     -Settings $settings `
-    -Description "Start ccproxy at login" `
+    -Description "Start ccproxy at login (with restart loop)" `
     -Force
 Write-Host "[OK] Scheduled task 'ccproxy' registered."
 
-# cloudflared task — runs cloudflared tunnel directly
+# cloudflared task — wrapper handles restart loop and log redirection
 $cfAction = New-ScheduledTaskAction `
-    -Execute $cloudflaredExe `
-    -Argument "tunnel --config $cloudflaredConfig run" `
+    -Execute "cmd.exe" `
+    -Argument "/c `"$scriptsDir\run-cloudflared.bat`"" `
     -WorkingDirectory $baseDir
 Register-ScheduledTask `
     -TaskName "cloudflared-tunnel" `
     -Action $cfAction `
     -Trigger $trigger `
     -Settings $settings `
-    -Description "Start Cloudflare tunnel at login" `
+    -Description "Start Cloudflare tunnel at login (with restart loop)" `
     -Force
 Write-Host "[OK] Scheduled task 'cloudflared-tunnel' registered."
 
