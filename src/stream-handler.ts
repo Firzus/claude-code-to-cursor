@@ -167,11 +167,14 @@ export function createOpenAIStreamFromAnthropic(
                   console.log(`   [Debug] Sent OpenAI stream start chunk`);
                 }
                 if (event.message?.usage?.input_tokens !== undefined) {
-                  usageInputTokens = event.message.usage.input_tokens;
                   usageCacheReadTokens = event.message.usage.cache_read_input_tokens || 0;
                   usageCacheCreationTokens = event.message.usage.cache_creation_input_tokens || 0;
+                  // Total input tokens = uncached + cache_read + cache_creation
+                  // Anthropic splits input_tokens into uncached only; we need the full total
+                  // so Cursor displays the correct "context used" percentage
+                  usageInputTokens = event.message.usage.input_tokens + usageCacheReadTokens + usageCacheCreationTokens;
                   console.log(
-                    `   [Debug] Usage: input_tokens=${usageInputTokens} (cache_read=${usageCacheReadTokens}, cache_creation=${usageCacheCreationTokens})`
+                    `   [Debug] Usage: input_tokens=${event.message.usage.input_tokens} + cache_read=${usageCacheReadTokens} + cache_creation=${usageCacheCreationTokens} = total prompt_tokens=${usageInputTokens}`
                   );
                 }
               }
