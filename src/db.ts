@@ -47,9 +47,9 @@ function initSchema() {
   console.log(`✓ Database initialized at ${DB_PATH}`);
 }
 
-export type RequestSource = "claude_code" | "error";
+type RequestSource = "claude_code" | "error";
 
-export interface RequestRecord {
+interface RequestRecord {
   model: string;
   source: RequestSource;
   inputTokens: number;
@@ -81,7 +81,7 @@ export function recordRequest(record: RequestRecord): void {
   );
 }
 
-export interface AnalyticsSummary {
+interface AnalyticsSummary {
   totalRequests: number;
   claudeCodeRequests: number;
   errorRequests: number;

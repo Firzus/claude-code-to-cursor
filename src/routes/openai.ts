@@ -1,5 +1,5 @@
 import { proxyRequest } from "../anthropic-client";
-import { logRequestDetails, extractHeaders } from "../middleware";
+import { logRequestDetails, corsHeaders } from "../middleware";
 import {
   openaiToAnthropic,
   anthropicToOpenai,
@@ -7,195 +7,135 @@ import {
 } from "../openai-adapter";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import { logger } from "../logger";
+import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
+
+function stringifyContent(
+  content: string | ContentBlock[] | null | undefined
+): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return JSON.stringify(content);
+  return content
+    .map((block) =>
+      block && typeof block === "object" && "type" in block && block.type === "text"
+        ? block.text
+        : JSON.stringify(block)
+    )
+    .join("\n");
+}
+
+function indentBlock(text: string, prefix = "      "): string {
+  return text
+    .split("\n")
+    .map((l: string) => `${prefix}${l}`)
+    .join("\n");
+}
+
+function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
+  const bodyStr = JSON.stringify(openaiBody, null, 2);
+  const truncatedBody =
+    bodyStr.length > 500
+      ? bodyStr.substring(0, 500) + "... [truncated]"
+      : bodyStr;
+
+  console.log(`\n📋 [Cursor Request Body]:`);
+  console.log(`   Model: "${openaiBody.model}"`);
+  console.log(`   Stream: ${openaiBody.stream || false}`);
+  console.log(
+    `   Max Tokens: ${openaiBody.max_tokens || openaiBody.max_completion_tokens || "not set"}`
+  );
+  console.log(`   Temperature: ${openaiBody.temperature || "not set"}`);
+  console.log(`   Stream Options: ${JSON.stringify(openaiBody.stream_options) || "not set"}`);
+  console.log(`   Messages Count: ${openaiBody.messages?.length || 0}`);
+
+  const allKeys = Object.keys(openaiBody);
+  console.log(`   All Request Keys: ${allKeys.join(", ")}`);
+  logger.info(`   All Request Keys: ${allKeys.join(", ")}`);
+
+  if (openaiBody.reasoning_effort) {
+    console.log(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
+    logger.info(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
+  }
+
+  logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
+  logger.verbose(bodyStr);
+
+  if (openaiBody.messages && openaiBody.messages.length > 0) {
+    logger.verbose(`\n📝 [Cursor Messages]:`);
+    openaiBody.messages.forEach((msg, idx) => {
+      const content =
+        typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      logger.verbose(`   [${idx}] ${msg.role} (${content.length} chars):`);
+      logger.verbose(`   ${indentBlock(content)}`);
+    });
+  }
+
+  console.log(`\n   Body Preview: ${truncatedBody}`);
+}
+
+function logAnthropicConversion(
+  openaiBody: OpenAIChatRequest,
+  anthropicBody: AnthropicRequest
+): void {
+  const thinkingEnabled = !!anthropicBody.thinking;
+  const thinkingBudget = thinkingEnabled ? anthropicBody.thinking!.budget_tokens : null;
+  const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (${thinkingBudget} tokens)` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
+  console.log(`\n→ ${routeSummary}`);
+  logger.info(routeSummary);
+
+  if (anthropicBody.system) {
+    const systemContent = stringifyContent(anthropicBody.system as string | ContentBlock[]);
+    logger.verbose(`\n📋 [Anthropic System Prompt] (${systemContent.length} chars):`);
+    logger.verbose(indentBlock(systemContent, "   "));
+  }
+
+  if (anthropicBody.messages && anthropicBody.messages.length > 0) {
+    logger.verbose(`\n📨 [Anthropic Messages] (${anthropicBody.messages.length}):`);
+    anthropicBody.messages.forEach((msg, idx) => {
+      const content = stringifyContent(msg.content);
+      logger.verbose(`   [${idx}] ${msg.role} (${content.length} chars):`);
+      logger.verbose(`   ${indentBlock(content)}`);
+    });
+  }
+
+  console.log(`\n📤 [Prepared Request Summary]:`);
+  console.log(`   System prompt present: ${!!anthropicBody.system}`);
+  if (anthropicBody.system) {
+    const sysPreview =
+      typeof anthropicBody.system === "string"
+        ? anthropicBody.system.substring(0, 100)
+        : `array (${(anthropicBody.system as ContentBlock[]).length} blocks)`;
+    console.log(`   System type: ${typeof anthropicBody.system}, preview: ${sysPreview}...`);
+  }
+}
 
 export async function handleOpenAIChatCompletions(req: Request): Promise<Response> {
   try {
     logRequestDetails(req, "OpenAI /v1/chat/completions");
     const openaiBody = (await req.json()) as OpenAIChatRequest;
 
-    // Log the request body from Cursor (truncated)
-    const bodyStr = JSON.stringify(openaiBody, null, 2);
-    const truncatedBody =
-      bodyStr.length > 500
-        ? bodyStr.substring(0, 500) + "... [truncated]"
-        : bodyStr;
+    logOpenAIRequest(openaiBody);
 
-    console.log(`\n📋 [Cursor Request Body]:`);
-    console.log(`   Model: "${openaiBody.model}"`);
-    console.log(`   Stream: ${openaiBody.stream || false}`);
-    console.log(
-      `   Max Tokens: ${openaiBody.max_tokens ||
-      openaiBody.max_completion_tokens ||
-      "not set"
-      }`
-    );
-    console.log(`   Temperature: ${openaiBody.temperature || "not set"}`);
-    console.log(`   Stream Options: ${JSON.stringify(openaiBody.stream_options) || "not set"}`);
-    console.log(`   Messages Count: ${openaiBody.messages?.length || 0}`);
-    const allKeys = Object.keys(openaiBody);
-    console.log(`   All Request Keys: ${allKeys.join(", ")}`);
-    logger.info(`   All Request Keys: ${allKeys.join(", ")}`);
-    if ((openaiBody as any).reasoning_effort) {
-      console.log(`   Reasoning Effort: ${(openaiBody as any).reasoning_effort}`);
-      logger.info(`   Reasoning Effort: ${(openaiBody as any).reasoning_effort}`);
-    }
-
-    // Log the FULL raw request body to file for debugging tool call format
-    logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
-    logger.verbose(JSON.stringify(openaiBody, null, 2));
-
-    // Log all messages, especially system messages (verbose to file)
-    if (openaiBody.messages && openaiBody.messages.length > 0) {
-      logger.verbose(`\n📝 [Cursor Messages]:`);
-      openaiBody.messages.forEach((msg, idx) => {
-        const content =
-          typeof msg.content === "string"
-            ? msg.content
-            : JSON.stringify(msg.content);
-
-        if (msg.role === "system") {
-          logger.verbose(
-            `   [${idx}] System Message (${content.length} chars):`
-          );
-          logger.verbose(
-            `   ${content
-              .split("\n")
-              .map((l: string) => `      ${l}`)
-              .join("\n")}`
-          );
-        } else {
-          logger.verbose(
-            `   [${idx}] ${msg.role} (${content.length} chars):`
-          );
-          logger.verbose(
-            `   ${content
-              .split("\n")
-              .map((l: string) => `      ${l}`)
-              .join("\n")}`
-          );
-        }
-      });
-    }
-
-    console.log(`\n   Body Preview: ${truncatedBody}`);
-
-    // Convert to Anthropic format
     const anthropicBody = openaiToAnthropic(openaiBody);
-    const headers = extractHeaders(req);
 
-    const thinkingEnabled = !!(anthropicBody as any).thinking;
-    const thinkingBudget = thinkingEnabled ? (anthropicBody as any).thinking.budget_tokens : null;
-    const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (${thinkingBudget} tokens)` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
-    console.log(`\n→ ${routeSummary}`);
-    logger.info(routeSummary);
+    logAnthropicConversion(openaiBody, anthropicBody);
 
-    // Log the system prompt that will be sent to Claude Code (verbose to file)
-    if (anthropicBody.system) {
-      const systemContent =
-        typeof anthropicBody.system === "string"
-          ? anthropicBody.system
-          : Array.isArray(anthropicBody.system)
-            ? anthropicBody.system
-              .map((block) =>
-                block &&
-                  typeof block === "object" &&
-                  "type" in block &&
-                  block.type === "text"
-                  ? block.text
-                  : JSON.stringify(block)
-              )
-              .join("\n")
-            : String(anthropicBody.system);
-      logger.verbose(
-        `\n📋 [Anthropic System Prompt] (${systemContent.length} chars):`
-      );
-      logger.verbose(
-        systemContent
-          .split("\n")
-          .map((l: string) => `   ${l}`)
-          .join("\n")
-      );
-    }
+    const response = await proxyRequest("/v1/messages", anthropicBody);
 
-    // Log Anthropic messages (verbose to file)
-    if (anthropicBody.messages && anthropicBody.messages.length > 0) {
-      logger.verbose(
-        `\n📨 [Anthropic Messages] (${anthropicBody.messages.length}):`
-      );
-      anthropicBody.messages.forEach((msg, idx) => {
-        const content =
-          typeof msg.content === "string"
-            ? msg.content
-            : Array.isArray(msg.content)
-              ? msg.content
-                .map((block) =>
-                  block &&
-                    typeof block === "object" &&
-                    "type" in block &&
-                    block.type === "text"
-                    ? block.text
-                    : JSON.stringify(block)
-                )
-                .join("\n")
-              : JSON.stringify(msg.content);
-        logger.verbose(
-          `   [${idx}] ${msg.role} (${content.length} chars):`
-        );
-        logger.verbose(
-          `   ${content
-            .split("\n")
-            .map((l: string) => `      ${l}`)
-            .join("\n")}`
-        );
-      });
-    }
-
-    // Log what we're about to send
-    console.log(`\n📤 [Prepared Request Summary]:`);
-    console.log(`   System prompt present: ${!!anthropicBody.system}`);
-    if (anthropicBody.system) {
-      const sysStr =
-        typeof anthropicBody.system === "string"
-          ? anthropicBody.system
-          : "array";
-      console.log(
-        `   System type: ${typeof anthropicBody.system}, preview: ${String(
-          sysStr
-        ).substring(0, 100)}...`
-      );
-    }
-
-    const response = await proxyRequest(
-      "/v1/messages",
-      anthropicBody,
-      headers
-    );
-
-    console.log(
-      `   [Debug] Response status: ${response.status}, ok: ${response.ok}`
-    );
+    console.log(`   [Debug] Response status: ${response.status}, ok: ${response.ok}`);
 
     if (!response.ok) {
       const errorText = await response
         .clone()
         .text()
         .catch(() => "Unable to read error");
-      console.log(
-        `   [Debug] Error response: ${errorText.substring(0, 500)}`
-      );
+      console.log(`   [Debug] Error response: ${errorText.substring(0, 500)}`);
     }
 
-    console.log(
-      `   [Debug] Response headers: ${JSON.stringify(
-        Object.fromEntries(response.headers)
-      )}`
-    );
-    console.log(
-      `   [Debug] Response body readable: ${response.body !== null}`
+    logger.verbose(
+      `   [Debug] Response headers: ${JSON.stringify(Object.fromEntries(response.headers))}`
     );
 
-    const responseHeaders = new Headers();
-    responseHeaders.set("Access-Control-Allow-Origin", "*");
+    const responseHeaders = new Headers(corsHeaders());
     responseHeaders.set("Content-Type", "application/json");
 
     // Handle streaming
@@ -214,16 +154,13 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         );
       }
 
-      // Collect user tool names so the stream handler can distinguish
-      // Cursor's tools from Claude Code internal tools (CreatePlan, etc.)
       let userToolNames: Set<string> | undefined;
       if (openaiBody.tools && openaiBody.tools.length > 0) {
         userToolNames = new Set<string>();
         for (const tool of openaiBody.tools) {
-          const t = tool as any;
-          const name = t.type === "function" && t.function?.name
-            ? t.function.name
-            : t.name;
+          const name = tool.type === "function" && tool.function?.name
+            ? tool.function.name
+            : (tool as any).name;
           if (name) userToolNames.add(name);
         }
       }
@@ -262,11 +199,8 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       );
     }
 
-    const anthropicResponse = await response.json();
-    const openaiResponse = anthropicToOpenai(
-      anthropicResponse,
-      openaiBody.model
-    );
+    const anthropicResponse = (await response.json()) as AnthropicResponse;
+    const openaiResponse = anthropicToOpenai(anthropicResponse, openaiBody.model);
 
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {

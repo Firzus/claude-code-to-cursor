@@ -7,6 +7,7 @@ import {
   createOpenAIStreamStart,
   createOpenAIStreamUsageChunk,
   createOpenAIToolCallChunk,
+  computeOpenAIUsage,
 } from "./openai-adapter";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
@@ -46,6 +47,10 @@ export function createOpenAIStreamFromAnthropic(
       let internalToolCallJson = "";
       let internalToolCallName = "";
       let inThinkingBlock = false;
+      // State machine for filtering <thinking>...</thinking> tags in text deltas.
+      // Claude can emit these in plain text even when thinking is not enabled via the API.
+      let inTextThinkingTag = false;   // true while inside <thinking>...</thinking> in text
+      let textTagBuffer = "";          // buffers partial tag matches
       let usageInputTokens = 0;
       let usageOutputTokens = 0;
       let usageCacheReadTokens = 0;
@@ -153,6 +158,43 @@ export function createOpenAIStreamFromAnthropic(
                   `   [Debug] First event type: ${event.type
                   }, full event: ${JSON.stringify(event).substring(0, 200)}`
                 );
+              }
+
+              // Handle error events from the Anthropic API (e.g., overloaded, rate limit)
+              // These arrive as SSE data with type "error" inside a 200 streaming response
+              if (event.type === "error") {
+                const errorMessage = event.error?.message || "Unknown API error";
+                const errorType = event.error?.type || "api_error";
+                console.log(`   [Error] Anthropic stream error: ${errorType} — ${errorMessage}`);
+
+                if (!sentStart) {
+                  safeEnqueue(
+                    new TextEncoder().encode(
+                      createOpenAIStreamStart(streamId, model)
+                    )
+                  );
+                  sentStart = true;
+                }
+
+                // Emit the error as text content so the user sees it in Cursor
+                safeEnqueue(
+                  new TextEncoder().encode(
+                    createOpenAIStreamChunk(streamId, model, `[Error: ${errorMessage}]`)
+                  )
+                );
+
+                // Send stop + DONE
+                safeEnqueue(
+                  new TextEncoder().encode(
+                    createOpenAIStreamChunk(streamId, model, undefined, "stop")
+                  )
+                );
+                safeEnqueue(
+                  new TextEncoder().encode("data: [DONE]\n\n")
+                );
+                messageStopped = true;
+                lastChunkTime = Date.now();
+                continue;
               }
 
               // Handle message_start
@@ -380,6 +422,8 @@ export function createOpenAIStreamFromAnthropic(
               }
 
               // Handle content_block_delta text events
+              // Includes a state machine to filter <thinking>...</thinking> tags
+              // that Claude may emit in plain text (not via the thinking API block).
               if (
                 event.type === "content_block_delta" &&
                 event.delta?.text
@@ -400,18 +444,65 @@ export function createOpenAIStreamFromAnthropic(
                   sentStart = true;
                 }
 
-                const text = event.delta.text;
+                let text = event.delta.text;
 
-                logger.verbose(
-                  `   [Debug] content_block_delta chunk (${text.length} chars): ${JSON.stringify(text)}`
-                );
+                // --- <thinking> tag filter state machine ---
+                // Process character by character to handle tags split across chunks
+                let output = "";
+                for (let ci = 0; ci < text.length; ci++) {
+                  const ch = text[ci]!;
 
-                safeEnqueue(
-                  new TextEncoder().encode(
-                    createOpenAIStreamChunk(streamId, model, text)
-                  )
-                );
-                lastChunkTime = Date.now();
+                  if (inTextThinkingTag) {
+                    // Inside <thinking> content — look for </thinking>
+                    textTagBuffer += ch;
+                    if (textTagBuffer.endsWith("</thinking>")) {
+                      inTextThinkingTag = false;
+                      textTagBuffer = "";
+                      logger.verbose(`   [Debug] Filtered </thinking> closing tag from text delta`);
+                    }
+                    continue;
+                  }
+
+                  if (textTagBuffer.length > 0) {
+                    // We're buffering a potential <thinking> opening tag
+                    textTagBuffer += ch;
+                    const target = "<thinking>";
+                    if (target.startsWith(textTagBuffer)) {
+                      // Still a valid prefix
+                      if (textTagBuffer === target) {
+                        // Full match — enter thinking mode
+                        inTextThinkingTag = true;
+                        textTagBuffer = "";
+                        logger.verbose(`   [Debug] Detected <thinking> tag in text delta, filtering`);
+                      }
+                    } else {
+                      // Not a match — flush buffer as normal text
+                      output += textTagBuffer;
+                      textTagBuffer = "";
+                    }
+                    continue;
+                  }
+
+                  if (ch === "<") {
+                    // Start buffering potential tag
+                    textTagBuffer = "<";
+                  } else {
+                    output += ch;
+                  }
+                }
+
+                if (output.length > 0) {
+                  logger.verbose(
+                    `   [Debug] content_block_delta chunk (${output.length} chars): ${JSON.stringify(output)}`
+                  );
+
+                  safeEnqueue(
+                    new TextEncoder().encode(
+                      createOpenAIStreamChunk(streamId, model, output)
+                    )
+                  );
+                  lastChunkTime = Date.now();
+                }
               }
 
               // Handle message_delta
@@ -438,17 +529,7 @@ export function createOpenAIStreamFromAnthropic(
                       model,
                       undefined,
                       finishReason as "stop" | "length",
-                      {
-                        prompt_tokens: usageInputTokens,
-                        completion_tokens: usageOutputTokens,
-                        total_tokens: usageInputTokens + usageOutputTokens,
-                        prompt_tokens_details: {
-                          cached_tokens: usageCacheReadTokens,
-                        },
-                        completion_tokens_details: {
-                          reasoning_tokens: 0,
-                        },
-                      }
+                      computeOpenAIUsage(usageInputTokens, usageOutputTokens, usageCacheReadTokens)
                     )
                   )
                 );

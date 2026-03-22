@@ -89,14 +89,18 @@ export function getRateLimitStatus(): {
   cachedAt: number | null;
 } {
   if (!rateLimitCache) {
-    return { isLimited: false, resetAt: null, originalResetAt: null,
-             minutesRemaining: null, inSoftExpiry: false, cachedAt: null };
+    return {
+      isLimited: false, resetAt: null, originalResetAt: null,
+      minutesRemaining: null, inSoftExpiry: false, cachedAt: null
+    };
   }
   const now = Date.now();
   if (now >= rateLimitCache.resetAt) {
     rateLimitCache = null;
-    return { isLimited: false, resetAt: null, originalResetAt: null,
-             minutesRemaining: null, inSoftExpiry: false, cachedAt: null };
+    return {
+      isLimited: false, resetAt: null, originalResetAt: null,
+      minutesRemaining: null, inSoftExpiry: false, cachedAt: null
+    };
   }
   const softExpired = now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS;
   return {
@@ -247,8 +251,7 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
 
 async function makeClaudeCodeRequest(
   endpoint: string,
-  body: AnthropicRequest,
-  headers: Record<string, string>
+  body: AnthropicRequest
 ): Promise<RequestResult> {
   if (isRateLimited()) {
     const minutes = getRateLimitResetMinutes();
@@ -273,14 +276,6 @@ async function makeClaudeCodeRequest(
     // Prepare the body with required Claude Code modifications
     const preparedBody = prepareClaudeCodeBody(body);
 
-    // Verify reasoning_budget was removed
-    if ("reasoning_budget" in preparedBody) {
-      logger.verbose(
-        `   [WARN] reasoning_budget still present after prepareClaudeCodeBody! Removing now.`
-      );
-      delete preparedBody.reasoning_budget;
-    }
-
     // Debug: log the model name being sent
     logger.verbose(
       `   [Debug] Sending model to Claude Code: "${preparedBody.model}"`
@@ -295,15 +290,18 @@ async function makeClaudeCodeRequest(
       `   [Debug] Using Claude Code beta headers: "${CLAUDE_CODE_BETA_HEADERS}"`
     );
 
-    const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}?beta=true`, {
+    const requestHeaders = {
+      Authorization: `Bearer ${token.accessToken}`,
+      "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+      "User-Agent": CLAUDE_CODE_USER_AGENT,
+    };
+    const apiUrl = `${ANTHROPIC_API_URL}${endpoint}?beta=true`;
+
+    const response = await fetch(apiUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token.accessToken}`,
-        "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-        "User-Agent": CLAUDE_CODE_USER_AGENT,
-      },
+      headers: requestHeaders,
       body: JSON.stringify(preparedBody),
     });
 
@@ -387,15 +385,9 @@ async function makeClaudeCodeRequest(
         delete preparedBody.tools;
         delete preparedBody.tool_choice;
 
-        const retryResponse = await fetch(`${ANTHROPIC_API_URL}${endpoint}?beta=true`, {
+        const retryResponse = await fetch(apiUrl, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token.accessToken}`,
-            "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-            "User-Agent": CLAUDE_CODE_USER_AGENT,
-          },
+          headers: requestHeaders,
           body: JSON.stringify(preparedBody),
         });
 
@@ -412,6 +404,29 @@ async function makeClaudeCodeRequest(
         success: false,
         error: errorMessage || "Bad request",
       };
+    }
+
+    // Handle other non-OK status codes (500, 529 overloaded, etc.)
+    if (!response.ok) {
+      const errorBody = await response.clone().text().catch(() => "");
+      console.log(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
+
+      // For streaming requests, return the response as-is so the stream handler
+      // can process SSE error events (Anthropic may return 200 for streaming errors,
+      // but non-200 streaming responses should still be passed through)
+      if (body.stream) {
+        const strippedResponse = stripMcpPrefixFromResponse(response);
+        return { success: true, response: strippedResponse, source: "claude_code" };
+      }
+
+      let errorMessage = "API error";
+      try {
+        const parsed = JSON.parse(errorBody) as { error?: { message?: string; type?: string } };
+        errorMessage = parsed?.error?.message || `HTTP ${response.status}`;
+      } catch {
+        errorMessage = `HTTP ${response.status}: ${errorBody.substring(0, 200)}`;
+      }
+      return { success: false, error: errorMessage };
     }
 
     // If we were probing after soft expiry and succeeded, clear the cache
@@ -517,14 +532,13 @@ async function extractUsageFromResponse(
 
 export async function proxyRequest(
   endpoint: string,
-  body: AnthropicRequest,
-  headers: Record<string, string>
+  body: AnthropicRequest
 ): Promise<Response> {
   const startTime = Date.now();
   const model = body.model;
   const stream = body.stream || false;
 
-  const result = await makeClaudeCodeRequest(endpoint, body, headers);
+  const result = await makeClaudeCodeRequest(endpoint, body);
 
   if (result.success) {
     console.log(`✓ Request served via Claude Code`);
@@ -546,27 +560,18 @@ export async function proxyRequest(
     error: result.error,
   });
 
-  logger.debug(
-    `   [Debug] Error response: ${JSON.stringify({
-      type: "error",
-      error: {
-        type: isClientError ? "invalid_request_error" : "api_error",
-        message: result.error,
-      },
-    })}`
-  );
+  const errorBody: AnthropicError = {
+    type: "error",
+    error: {
+      type: isClientError ? "invalid_request_error" : "api_error",
+      message: result.error,
+    },
+  };
 
-  return new Response(
-    JSON.stringify({
-      type: "error",
-      error: {
-        type: isClientError ? "invalid_request_error" : "api_error",
-        message: result.error,
-      },
-    } satisfies AnthropicError),
-    {
-      status: isClientError ? 400 : 502,
-      headers: { "Content-Type": "application/json" },
-    }
-  );
+  logger.debug(`   [Debug] Error response: ${JSON.stringify(errorBody)}`);
+
+  return new Response(JSON.stringify(errorBody), {
+    status: isClientError ? 400 : 502,
+    headers: { "Content-Type": "application/json" },
+  });
 }

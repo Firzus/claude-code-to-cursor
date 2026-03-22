@@ -16,12 +16,12 @@ let cachedToken: TokenInfo | null = null;
 // PKCE helpers
 // ---------------------------------------------------------------------------
 
-export function generateCodeVerifier(): string {
+function generateCodeVerifier(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(48));
   return base64url(bytes);
 }
 
-export async function computeCodeChallenge(verifier: string): Promise<string> {
+async function computeCodeChallenge(verifier: string): Promise<string> {
   const encoded = new TextEncoder().encode(verifier);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
   return base64url(new Uint8Array(digest));
@@ -106,12 +106,12 @@ export async function exchangeCode(
 // Persistence
 // ---------------------------------------------------------------------------
 
-export async function saveCredentials(auth: CcproxyAuth): Promise<void> {
+async function saveCredentials(auth: CcproxyAuth): Promise<void> {
   mkdirSync(CCPROXY_AUTH_DIR, { recursive: true });
   await Bun.write(CCPROXY_AUTH_PATH, JSON.stringify(auth, null, 2));
 }
 
-export async function loadCredentials(): Promise<CcproxyAuth | null> {
+async function loadCredentials(): Promise<CcproxyAuth | null> {
   try {
     const file = Bun.file(CCPROXY_AUTH_PATH);
     if (!(await file.exists())) return null;
@@ -133,7 +133,7 @@ export function hasCredentials(): boolean {
 // Token refresh
 // ---------------------------------------------------------------------------
 
-export async function refreshAccessToken(
+async function refreshAccessToken(
   refreshTokenValue: string
 ): Promise<TokenInfo | null> {
   try {

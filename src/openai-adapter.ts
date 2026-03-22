@@ -3,11 +3,12 @@
  * Converts OpenAI chat completion format to/from Anthropic messages format
  */
 
-import type { AnthropicRequest, AnthropicMessage, ContentBlock } from "./types";
+import type { AnthropicRequest, AnthropicMessage, AnthropicResponse, ContentBlock } from "./types";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
+import { MODEL, THINKING_EFFORT, THINKING_BUDGET_TOKENS } from "./config";
 
-export interface OpenAIMessage {
+interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | OpenAIContentPart[] | null;
   tool_calls?: OpenAIToolCall[];
@@ -15,7 +16,7 @@ export interface OpenAIMessage {
   name?: string;
 }
 
-export interface OpenAIContentPart {
+interface OpenAIContentPart {
   type: "text" | "image_url";
   text?: string;
   image_url?: {
@@ -24,7 +25,7 @@ export interface OpenAIContentPart {
   };
 }
 
-export interface OpenAITool {
+interface OpenAITool {
   type: "function";
   function: {
     name: string;
@@ -33,7 +34,7 @@ export interface OpenAITool {
   };
 }
 
-export interface OpenAIToolCall {
+interface OpenAIToolCall {
   id: string;
   type: "function";
   function: {
@@ -63,7 +64,7 @@ export interface OpenAIChatRequest {
   reasoning_effort?: "low" | "medium" | "high";
 }
 
-export interface OpenAIChatResponse {
+interface OpenAIChatResponse {
   id: string;
   object: "chat.completion";
   created: number;
@@ -94,7 +95,7 @@ export interface OpenAIChatResponse {
   };
 }
 
-export interface OpenAIStreamChunkToolCall {
+interface OpenAIStreamChunkToolCall {
   index: number;
   id?: string;
   type?: "function";
@@ -104,7 +105,7 @@ export interface OpenAIStreamChunkToolCall {
   };
 }
 
-export interface OpenAIStreamChunk {
+interface OpenAIStreamChunk {
   id: string;
   object: "chat.completion.chunk";
   created: number;
@@ -136,42 +137,26 @@ export interface OpenAIStreamChunk {
 }
 
 /**
- * Normalize Cursor model names to Anthropic format
- * Examples:
- * - claude-4.6-opus-high → claude-opus-4-6 (no thinking, -high is ignored without reasoning_effort)
- * - claude-4.6-opus-high-thinking → claude-opus-4-6 (thinking via reasoning_effort in body, fallback: high)
- * - claude-4.6-sonnet-high → claude-sonnet-4-6 (no thinking)
- * - claude-4.6-sonnet-high-thinking → claude-sonnet-4-6 (thinking via reasoning_effort in body, fallback: high)
- *
- * Thinking is primarily controlled by the reasoning_effort field sent separately by Cursor.
- * The -thinking suffix in the model name acts as a fallback budget (high=16384, medium=8192, low=4096).
+ * Build the OpenAI-compatible usage object from Anthropic token counts.
+ * Anthropic's input_tokens only counts uncached tokens; we sum all sources
+ * so Cursor displays the correct "context used" percentage.
  */
-export function normalizeModelName(model: string): { model: string; reasoningBudget?: string } {
-  // Handle Cursor's format: claude-{version}-(opus|sonnet|haiku)[-budget][-thinking]
-  // Supports any version like 4.5, 4.6, 5.0, etc.
-  // Only enable thinking when "-thinking" suffix is explicitly present
-  const match = model.match(/^claude-(\d+\.\d+)-(opus|sonnet|haiku)(?:-(high|medium|low))?(-thinking)?$/);
-  if (match) {
-    const version = match[1]!;
-    const modelType = match[2]!;
-    const budget = match[3];
-    const hasThinking = !!match[4]; // "-thinking" suffix present
-    // Convert version "4.5" → "4-5", "4.6" → "4-6"
-    const normalizedVersion = version.replace(".", "-");
-    return {
-      model: `claude-${modelType}-${normalizedVersion}`,
-      // Only set reasoningBudget if -thinking suffix is present
-      reasoningBudget: hasThinking ? (budget || "medium") : undefined,
-    };
-  }
-
-  // Handle Anthropic format directly (passthrough)
-  if (model.startsWith("claude-")) {
-    return { model };
-  }
-
-  // Unknown format, passthrough
-  return { model };
+export function computeOpenAIUsage(
+  promptTokens: number,
+  completionTokens: number,
+  cacheReadTokens: number = 0,
+) {
+  return {
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    total_tokens: promptTokens + completionTokens,
+    prompt_tokens_details: {
+      cached_tokens: cacheReadTokens,
+    },
+    completion_tokens_details: {
+      reasoning_tokens: 0,
+    },
+  };
 }
 
 function convertContent(
@@ -242,29 +227,6 @@ function convertContent(
   return blocks;
 }
 
-/**
- * Map non-Claude model names to Claude equivalents
- * Cursor may send OpenAI/other model names when using Override Base URL
- */
-function mapModelToClaude(model: string): string {
-  const lower = model.toLowerCase();
-
-  // Already a Claude model
-  if (lower.startsWith("claude")) return model;
-
-  // Map known non-Claude models to Claude equivalents
-  // GPT-5.x / GPT-4.x -> claude-sonnet-4-6
-  if (lower.startsWith("gpt-5") || lower.startsWith("gpt-4")) return "claude-sonnet-4-6";
-  // o1/o3/o4 reasoning models -> claude-sonnet-4-6
-  if (/^o[134]/.test(lower)) return "claude-sonnet-4-6";
-  // Gemini -> claude-sonnet-4-6
-  if (lower.startsWith("gemini")) return "claude-sonnet-4-6";
-
-  // Default fallback
-  console.log(`   [Warning] Unknown model "${model}", mapping to claude-sonnet-4-6`);
-  return "claude-sonnet-4-6";
-}
-
 export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest {
   // Normalize: Responses API uses `input` instead of `messages`
   if (!request.messages && request.input) {
@@ -278,12 +240,8 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     request.messages = [];
   }
 
-  // Map non-Claude models to Claude equivalents
-  const originalModel = request.model;
-  request.model = mapModelToClaude(request.model);
-  if (originalModel !== request.model) {
-    console.log(`   [Debug] Model mapping: "${originalModel}" → "${request.model}"`);
-  }
+  // Use the configured model from env, ignore whatever Cursor sends
+  console.log(`   [Debug] Request model "${request.model}" → using configured MODEL="${MODEL}" with thinking=${THINKING_EFFORT} (${THINKING_BUDGET_TOKENS} tokens)`);
 
   const messages: AnthropicMessage[] = [];
   let system: string | ContentBlock[] | undefined;
@@ -417,26 +375,28 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     messages.unshift({ role: "user", content: "Continue." });
   }
 
-  // Normalize model name from Cursor format
-  const normalized = normalizeModelName(request.model);
-
   // Determine max_tokens: use Cursor's value or default to 4096
-  const maxTokens = request.max_tokens || request.max_completion_tokens || 4096;
+  let maxTokens = request.max_tokens || request.max_completion_tokens || 4096;
   const maxTokensSource = request.max_tokens
     ? "Cursor (max_tokens)"
     : request.max_completion_tokens
       ? "Cursor (max_completion_tokens)"
       : "Default (4096)";
 
-  console.log(`   [Debug] Normalized model: "${request.model}" → "${normalized.model}"${normalized.reasoningBudget ? ` (reasoning_budget: ${normalized.reasoningBudget})` : ""}`);
+  // Ensure max_tokens is large enough for thinking budget + output
+  if (maxTokens < THINKING_BUDGET_TOKENS + 4096) {
+    maxTokens = THINKING_BUDGET_TOKENS + 16384;
+  }
+
   console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
 
   const result: AnthropicRequest = {
-    model: normalized.model,
+    model: MODEL,
     messages,
     system,
     max_tokens: maxTokens,
-    temperature: request.temperature,
+    // Anthropic requires temperature=1 when thinking is enabled
+    temperature: 1,
     top_p: request.top_p,
     stream: request.stream,
     stop_sequences: request.stop
@@ -444,6 +404,11 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
         ? request.stop
         : [request.stop]
       : undefined,
+    // Thinking is always enabled
+    thinking: {
+      type: "enabled",
+      budget_tokens: THINKING_BUDGET_TOKENS,
+    },
   };
 
   // Pass through tools - Cursor already sends them in Anthropic format
@@ -473,48 +438,19 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     result.tool_choice = request.tool_choice as unknown as typeof result.tool_choice;
   }
 
-  // Determine thinking budget: prefer reasoning_effort from request body (Cursor's toggle),
-  // fall back to model name suffix (-thinking)
-  const thinkingBudget = request.reasoning_effort || normalized.reasoningBudget;
-
-  if (thinkingBudget) {
-    const budgetMap: Record<string, number> = {
-      high: 16384,
-      medium: 8192,
-      low: 4096,
-    };
-    const budgetTokens = typeof thinkingBudget === "string"
-      ? budgetMap[thinkingBudget] || 8192
-      : Number(thinkingBudget) || 8192;
-
-    result.thinking = {
-      type: "enabled",
-      budget_tokens: budgetTokens,
-    };
-    // Anthropic requires temperature=1 when thinking is enabled
-    result.temperature = 1;
-    // Ensure max_tokens is large enough (budget_tokens + output space)
-    // Use 16384 tokens for output to support long responses (documentation, etc.)
-    if (result.max_tokens < budgetTokens + 4096) {
-      result.max_tokens = budgetTokens + 16384;
-    }
-    const source = request.reasoning_effort ? "reasoning_effort" : "model name";
-    console.log(`   [Debug] Thinking enabled (${source}): budget_tokens=${budgetTokens}, max_tokens=${result.max_tokens}`);
-  }
-
   return result;
 }
 
 export function anthropicToOpenai(
-  anthropicResponse: any,
+  anthropicResponse: AnthropicResponse,
   model: string
 ): OpenAIChatResponse {
   let content = anthropicResponse.content
-    ?.map((block: any) => {
+    ?.map((block: ContentBlock) => {
       if (block.type === "text") return block.text;
       if (block.type === "tool_use") {
-        const name = block.name?.startsWith("mcp_") ? block.name.slice(4) : block.name;
-        // Try to extract readable content from internal tool calls
+        const rawName = block.name || "";
+        const name = rawName.startsWith("mcp_") ? rawName.slice(4) : rawName;
         const extracted = formatInternalToolContent(name, block.input);
         if (extracted) return extracted;
         return `[Tool: ${name}]`;
@@ -522,6 +458,10 @@ export function anthropicToOpenai(
       return "";
     })
     .join("") || "";
+
+  // Strip <thinking>...</thinking> tags that Claude may emit in plain text
+  // (separate from the API thinking blocks which are already filtered by type)
+  content = content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
 
   return {
     id: `chatcmpl-${anthropicResponse.id || Date.now()}`,
@@ -543,27 +483,13 @@ export function anthropicToOpenai(
               : "stop",
       },
     ],
-    usage: {
-      // Total prompt tokens = uncached + cache_read + cache_creation
-      // Anthropic's input_tokens only counts uncached tokens; we need the full total
-      // so Cursor displays the correct "context used" percentage
-      prompt_tokens:
-        (anthropicResponse.usage?.input_tokens || 0) +
-        (anthropicResponse.usage?.cache_read_input_tokens || 0) +
-        (anthropicResponse.usage?.cache_creation_input_tokens || 0),
-      completion_tokens: anthropicResponse.usage?.output_tokens || 0,
-      total_tokens:
-        (anthropicResponse.usage?.input_tokens || 0) +
-        (anthropicResponse.usage?.cache_read_input_tokens || 0) +
-        (anthropicResponse.usage?.cache_creation_input_tokens || 0) +
-        (anthropicResponse.usage?.output_tokens || 0),
-      prompt_tokens_details: {
-        cached_tokens: anthropicResponse.usage?.cache_read_input_tokens || 0,
-      },
-      completion_tokens_details: {
-        reasoning_tokens: 0,
-      },
-    },
+    usage: computeOpenAIUsage(
+      (anthropicResponse.usage?.input_tokens || 0) +
+      (anthropicResponse.usage?.cache_read_input_tokens || 0) +
+      (anthropicResponse.usage?.cache_creation_input_tokens || 0),
+      anthropicResponse.usage?.output_tokens || 0,
+      anthropicResponse.usage?.cache_read_input_tokens || 0,
+    ),
   };
 }
 
@@ -683,17 +609,7 @@ export function createOpenAIStreamUsageChunk(
     created: Math.floor(Date.now() / 1000),
     model,
     choices: [],
-    usage: {
-      prompt_tokens: promptTokens,
-      completion_tokens: completionTokens,
-      total_tokens: promptTokens + completionTokens,
-      prompt_tokens_details: {
-        cached_tokens: cacheReadTokens,
-      },
-      completion_tokens_details: {
-        reasoning_tokens: 0,
-      },
-    },
+    usage: computeOpenAIUsage(promptTokens, completionTokens, cacheReadTokens),
   };
 
   return `data: ${JSON.stringify(chunk)}\n\n`;

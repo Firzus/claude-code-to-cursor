@@ -37,7 +37,7 @@ export interface ContentBlock {
   cache_control?: { type: string; ttl?: number };
 }
 
-export interface ImageSource {
+interface ImageSource {
   type: "base64" | "url";
   media_type?: string;
   data?: string;
@@ -86,6 +86,8 @@ export interface AnthropicResponse {
   usage: {
     input_tokens: number;
     output_tokens: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
 }
 
