@@ -1,14 +1,17 @@
 import { proxyRequest } from "../anthropic-client";
+import { MODEL } from "../config";
 import { logRequestDetails, corsHeaders } from "../middleware";
+import { normalizeAnthropicRequestModel } from "../request-normalization";
 import type { AnthropicRequest, AnthropicError } from "../types";
 
 export async function handleAnthropicMessages(req: Request): Promise<Response> {
   try {
     logRequestDetails(req, "Anthropic /v1/messages");
-    const body = (await req.json()) as AnthropicRequest;
+    const incomingBody = (await req.json()) as AnthropicRequest;
+    const body = normalizeAnthropicRequestModel(incomingBody, MODEL);
 
     console.log(
-      `\n→ Model: "${body.model}" | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`
+      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`
     );
 
     const response = await proxyRequest("/v1/messages", body);

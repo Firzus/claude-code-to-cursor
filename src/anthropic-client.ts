@@ -7,6 +7,7 @@ import {
 } from "./config";
 import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest } from "./db";
+import { normalizeAnthropicToolIds } from "./request-normalization";
 import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
 import { logger } from "./logger";
 
@@ -120,7 +121,7 @@ export function getRateLimitStatus(): {
  * 3. Strips TTL from cache_control objects
  */
 function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
-  const prepared = { ...body };
+  let prepared = { ...body };
 
   // Convert reasoning_budget to thinking parameter if not already converted
   if ("reasoning_budget" in prepared) {
@@ -245,6 +246,8 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
       }
     }
   }
+
+  prepared = normalizeAnthropicToolIds(prepared);
 
   return prepared;
 }
