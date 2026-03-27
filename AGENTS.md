@@ -34,11 +34,8 @@ All optional. See `.env.example` for full documentation.
 | ------------------------------- | -------------------------- | --------------------------------------------------------------------- |
 | `PORT`                          | `8082`                     | Server port                                                           |
 | `ALLOWED_IPS`                   | Cursor backend IPs         | Comma-separated IP whitelist, or `"disabled"`                         |
-| `MODEL`                         | `claude-sonnet-4-6`        | Claude model for all requests                                         |
-| `THINKING_EFFORT`               | `medium`                   | Thinking budget: `low` (4096), `medium` (8192), `high` (16384 tokens) |
 | `CLAUDE_CODE_EXTRA_INSTRUCTION` | Headless proxy instruction | Extra system prompt appended to required Claude Code prefix           |
-| `RATE_LIMIT_MAX_CACHE_SECONDS`  | `900` (15 min)             | Max duration for rate limit cache                                     |
-| `RATE_LIMIT_SOFT_SECONDS`       | `300` (5 min)              | Soft expiry — after this, probe requests pass through                 |
+| `CCPROXY_DB_PATH`               | `./ccproxy.db`             | Path to SQLite analytics database                                     |
 
 ## Architecture
 
@@ -51,11 +48,14 @@ src/
 ├── oauth.ts                # PKCE OAuth flow, token refresh, credential persistence (~/.ccproxy/auth.json)
 ├── config.ts               # Constants (OAuth URLs, beta headers, user-agent) and runtime config
 ├── middleware.ts            # CORS headers, IP whitelist validation (CF tunnel aware)
+├── model-parser.ts         # Model ID parsing, thinking effort extraction, exposed model list
 ├── db.ts                   # SQLite analytics database (Bun built-in), schema auto-init
 ├── logger.ts               # Dual console + file logger with auto-truncation
 ├── types.ts                # Shared TypeScript interfaces
 ├── html-templates.ts       # HTML pages for OAuth login flow UI
 ├── internal-tools.ts       # Extracts readable text from Claude Code internal tool calls
+├── request-normalization.ts      # Model name and tool ID normalization/sanitization
+├── request-normalization.test.ts # Bun tests for normalization (bun:test)
 └── routes/
     ├── anthropic.ts        # POST /v1/messages (native Anthropic proxy)
     ├── openai.ts           # POST /v1/chat/completions (OpenAI-compatible)
@@ -79,7 +79,14 @@ src/
 
 ## Testing
 
-No test framework is configured. TypeScript strict mode (`bun run typecheck`) is the primary code quality tool. Verify changes by:
+Tests use Bun's built-in test runner (`bun:test`). Test files live alongside source files with the `.test.ts` suffix.
+
+```bash
+bun test                              # Run all tests
+bun test src/request-normalization    # Run a specific test file
+```
+
+TypeScript strict mode (`bun run typecheck`) is also used for static analysis. For changes that aren't covered by tests, verify by:
 
 1. Running `bun run typecheck` to catch type errors
 2. Starting the server with `bun run dev` and testing endpoints manually
@@ -98,10 +105,10 @@ No test framework is configured. TypeScript strict mode (`bun run typecheck`) is
 ## Key Conventions
 
 - **OAuth identity**: Requests to Anthropic must include the exact Claude Code system prompt prefix (`CLAUDE_CODE_SYSTEM_PROMPT` in `config.ts`) and specific beta headers, or the API will reject them. Do not modify these values.
-- **Single model routing**: A single model "Claude Code" is exposed to clients. The actual model is configured via `MODEL` env var. Thinking is always enabled.
+- **Multi-model routing**: Multiple models are exposed to clients via `/v1/models`: the three base Anthropic models (`claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`), a thinking variant for each effort level (`-low-thinking`, `-medium-thinking`, `-high-thinking`), and the legacy `"Claude Code"` alias (maps to `claude-sonnet-4-6`). The incoming model name is parsed by `parseModelId()` in `src/model-parser.ts`; unknown models return a 400 error. Thinking effort can be encoded in the model name (e.g. `claude-opus-4-6-high-thinking`) and overrides the default thinking budget.
 - **Tool name prefixing**: All tool names are prefixed with `mcp_` before sending to the Claude Code API (required for compatibility) and stripped back on response. This applies to `tools`, `tool_choice`, and tool use/result blocks in messages. See `prepareClaudeCodeBody()` and `stripMcpPrefixFromResponse()` in `anthropic-client.ts`.
 - **Thinking tag filtering**: Claude may emit `<thinking>...</thinking>` tags in plain text. These are stripped in both streaming (state machine in `stream-handler.ts`) and non-streaming (`anthropicToOpenai()` regex in `openai-adapter.ts`) paths.
-- **Rate limit caching**: 429 responses trigger a cache with soft expiry (allows probe requests after `RATE_LIMIT_SOFT_SECONDS`) and hard cap (`RATE_LIMIT_MAX_CACHE_SECONDS`).
+- **Rate limit caching**: 429 responses trigger a cache with soft expiry (5 min — allows one probe request through) and a hard cap (15 min maximum). Both values are hardcoded constants in `src/anthropic-client.ts`.
 - **Logging**: Use the `logger` from `src/logger.ts`. It writes to both console and `api.log`. Use `logger.verbose()` for debug data that should only go to the log file.
 
 ## Build and Deployment
@@ -118,7 +125,7 @@ There is no build step — Bun runs TypeScript directly. For deployment:
 ## Debugging and Troubleshooting
 
 - **Auth issues**: Check `~/.ccproxy/auth.json` exists and contains valid tokens. Re-authenticate via `http://localhost:<port>/login`.
-- **Rate limits**: Check `GET /rate-limit` for current status. Use `POST /rate-limit/reset` to manually clear the cache.
+- **Rate limits**: Check `GET /rate-limit` for current status. Use `POST /rate-limit/reset` to manually clear the cache. Soft expiry is hardcoded to 5 min, hard cap to 15 min (in `src/anthropic-client.ts`).
 - **Request logs**: All requests are logged to `api.log` with timestamps. Verbose details (system prompts, tool lists) are logged via `logger.verbose()`.
 - **Analytics**: Use `GET /analytics` for usage summary, `GET /analytics/requests` for recent request details.
 - **Token refresh failures**: The server logs refresh attempts. If refresh fails, the user must re-authenticate via `/login`.

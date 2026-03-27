@@ -1,5 +1,4 @@
 import { proxyRequest } from "../anthropic-client";
-import { MODEL } from "../config";
 import { logRequestDetails, corsHeaders } from "../middleware";
 import {
   openaiToAnthropic,
@@ -169,7 +168,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       const stream = createOpenAIStreamFromAnthropic(
         response,
         streamId,
-        MODEL,
+        openaiBody.model,
         openaiBody.stream_options,
         userToolNames
       );
@@ -201,7 +200,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     }
 
     const anthropicResponse = (await response.json()) as AnthropicResponse;
-    const openaiResponse = anthropicToOpenai(anthropicResponse, MODEL);
+    const openaiResponse = anthropicToOpenai(anthropicResponse, openaiBody.model);
 
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {

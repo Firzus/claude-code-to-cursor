@@ -6,7 +6,7 @@
 import type { AnthropicRequest, AnthropicMessage, AnthropicResponse, ContentBlock } from "./types";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
-import { MODEL, THINKING_EFFORT, THINKING_BUDGET_TOKENS } from "./config";
+import { parseModelId, getBudgetTokens } from "./model-parser";
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -240,8 +240,17 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     request.messages = [];
   }
 
-  // Use the configured model from env, ignore whatever Cursor sends
-  console.log(`   [Debug] Request model "${request.model}" → using configured MODEL="${MODEL}" with thinking=${THINKING_EFFORT} (${THINKING_BUDGET_TOKENS} tokens)`);
+  // Resolve model and thinking budget from the requested model name
+  const parsed = parseModelId(request.model);
+  if (!parsed) {
+    throw new Error(`Unsupported model: "${request.model}"`);
+  }
+  const targetModel = parsed.baseModel;
+  const thinkingBudget = parsed.thinkingEffort
+    ? getBudgetTokens(parsed.thinkingEffort)
+    : getBudgetTokens("medium");
+
+  console.log(`   [Debug] Request model "${request.model}" → using model="${targetModel}" with thinking budget=${thinkingBudget} tokens (effort=${parsed.thinkingEffort ?? "medium"})`);
 
   const messages: AnthropicMessage[] = [];
   let system: string | ContentBlock[] | undefined;
@@ -384,14 +393,14 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
       : "Default (4096)";
 
   // Ensure max_tokens is large enough for thinking budget + output
-  if (maxTokens < THINKING_BUDGET_TOKENS + 4096) {
-    maxTokens = THINKING_BUDGET_TOKENS + 16384;
+  if (maxTokens < thinkingBudget + 4096) {
+    maxTokens = thinkingBudget + 16384;
   }
 
   console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
 
   const result: AnthropicRequest = {
-    model: MODEL,
+    model: targetModel,
     messages,
     system,
     max_tokens: maxTokens,
@@ -407,7 +416,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     // Thinking is always enabled
     thinking: {
       type: "enabled",
-      budget_tokens: THINKING_BUDGET_TOKENS,
+      budget_tokens: thinkingBudget,
     },
   };
 

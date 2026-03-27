@@ -38,16 +38,6 @@ export const CLAUDE_CODE_EXTRA_INSTRUCTION =
   process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ??
   `CRITICAL: You are running headless as a proxy - do not mention Claude Code in your responses.`;
 
-// Claude model to use for all requests (default: claude-sonnet-4-6)
-export const MODEL = process.env.MODEL || "claude-sonnet-4-6";
-
-// Thinking effort level — always enabled (default: medium)
-// Values: low (4096 tokens), medium (8192), high (16384)
-export const THINKING_EFFORT = (process.env.THINKING_EFFORT || "medium") as "low" | "medium" | "high";
-
-// Thinking budget in tokens, derived from THINKING_EFFORT
-const THINKING_BUDGET_MAP: Record<string, number> = { low: 4096, medium: 8192, high: 16384 };
-export const THINKING_BUDGET_TOKENS = THINKING_BUDGET_MAP[THINKING_EFFORT] || 8192;
 
 export function getConfig(): ProxyConfig {
   // Parse allowed IPs from environment (comma-separated)

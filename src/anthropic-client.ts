@@ -16,10 +16,8 @@ type RequestResult =
   | { success: false; error: string };
 
 // Rate limit cache with soft expiry and max cap
-const RATE_LIMIT_MAX_CACHE_MS =
-  parseInt(process.env.RATE_LIMIT_MAX_CACHE_SECONDS || "900", 10) * 1000; // default 15 min
-const RATE_LIMIT_SOFT_MS =
-  parseInt(process.env.RATE_LIMIT_SOFT_SECONDS || "300", 10) * 1000; // default 5 min
+const RATE_LIMIT_MAX_CACHE_MS = 900_000; // 15 min
+const RATE_LIMIT_SOFT_MS = 300_000; // 5 min
 
 let rateLimitCache: {
   resetAt: number;         // capped reset time
