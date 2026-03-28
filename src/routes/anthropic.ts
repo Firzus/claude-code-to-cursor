@@ -31,20 +31,26 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     const thinkingBudget = modelSettings.thinkingEnabled
       ? getThinkingBudget(modelSettings.thinkingEffort)
       : null;
-    let body = normalizeAnthropicRequestModel(incomingBody, targetModel);
+    const normalizedBody = normalizeAnthropicRequestModel(incomingBody, targetModel);
+    const {
+      reasoning_budget: _clientReasoningBudget,
+      thinking: _clientThinking,
+      ...bodyWithoutClientThinkingControls
+    } = normalizedBody;
 
-    body = {
-      ...body,
-      thinking:
-        thinkingBudget === null
-          ? undefined
-          : { type: "enabled", budget_tokens: thinkingBudget },
-      temperature: thinkingBudget === null ? incomingBody.temperature : 1,
-      max_tokens:
-        thinkingBudget === null
-          ? body.max_tokens
-          : Math.max(body.max_tokens ?? 0, thinkingBudget + 16384),
-    };
+    const body: AnthropicRequest =
+      thinkingBudget === null
+        ? {
+            ...bodyWithoutClientThinkingControls,
+            temperature: incomingBody.temperature,
+            max_tokens: normalizedBody.max_tokens,
+          }
+        : {
+            ...bodyWithoutClientThinkingControls,
+            thinking: { type: "enabled" as const, budget_tokens: thinkingBudget },
+            temperature: 1,
+            max_tokens: Math.max(normalizedBody.max_tokens ?? 0, thinkingBudget + 16384),
+          };
 
     console.log(
       `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`
