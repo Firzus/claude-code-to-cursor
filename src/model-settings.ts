@@ -27,7 +27,7 @@ const THINKING_BUDGETS: Record<ThinkingEffort, number> = {
   high: 16384,
 };
 
-const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
+export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
   "claude-opus-4-6",
   "claude-sonnet-4-6",
   "claude-haiku-4-5",

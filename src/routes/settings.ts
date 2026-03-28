@@ -6,11 +6,24 @@ interface FormDataLike {
   get(name: string): string | Blob | null;
 }
 
+const LOCAL_SETTINGS_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, {
     status,
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
+}
+
+function isLocalSettingsRequest(req: Request): boolean {
+  return LOCAL_SETTINGS_HOSTS.has(new URL(req.url).hostname.toLowerCase());
+}
+
+function localOnlySettingsResponse(): Response {
+  return htmlResponse(
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ccproxy — Forbidden</title></head><body>Local access only</body></html>`,
+    403,
+  );
 }
 
 function getStringField(formData: FormDataLike, key: string): string {
@@ -31,6 +44,10 @@ function parseThinkingEnabled(value: string): boolean {
 }
 
 export function handleSettingsPage(req: Request): Response {
+  if (!isLocalSettingsRequest(req)) {
+    return localOnlySettingsResponse();
+  }
+
   const url = new URL(req.url);
   const notice =
     url.searchParams.get("saved") === "1"
@@ -46,6 +63,10 @@ export function handleSettingsPage(req: Request): Response {
 }
 
 export async function handleSettingsModel(req: Request): Promise<Response> {
+  if (!isLocalSettingsRequest(req)) {
+    return localOnlySettingsResponse();
+  }
+
   const currentSettings = getModelSettings();
 
   try {

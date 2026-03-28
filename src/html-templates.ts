@@ -7,6 +7,7 @@ import type {
   SupportedSelectedModel,
   ThinkingEffort,
 } from "./model-settings";
+import { SUPPORTED_SELECTED_MODELS } from "./model-settings";
 
 export function htmlResult(message: string, success: boolean): string {
   const iconSVG = success
@@ -201,11 +202,6 @@ export function settingsPage({
   settings: ModelSettings;
   notice?: { kind: "success" | "error"; message: string };
 }): string {
-  const modelOptions: readonly SupportedSelectedModel[] = [
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-  ];
   const thinkingEfforts: readonly ThinkingEffort[] = ["low", "medium", "high"];
 
   return `<!DOCTYPE html>
@@ -305,7 +301,7 @@ export function settingsPage({
           <label class="field-label" for="selectedModel">Selected model</label>
           <div class="field-hint">This backend model will serve all incoming requests targeting the public local alias.</div>
           <select id="selectedModel" name="selectedModel">
-            ${modelOptions.map((value) => renderSelectOption(value, settings.selectedModel)).join("")}
+            ${SUPPORTED_SELECTED_MODELS.map((value) => renderSelectOption(value, settings.selectedModel)).join("")}
           </select>
         </div>
 

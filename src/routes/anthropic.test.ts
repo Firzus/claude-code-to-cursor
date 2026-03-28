@@ -11,6 +11,7 @@ describe("handleAnthropicMessages", () => {
         thinkingEnabled: false,
         thinkingEffort: "high" as const,
       }),
+      saveModelSettings: () => {},
     }));
 
     mock.module("../anthropic-client", () => ({

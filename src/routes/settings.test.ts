@@ -19,6 +19,16 @@ mock.module("../db", () => ({
 const { handleSettingsPage, handleSettingsModel } = await import("./settings");
 
 describe("settings routes", () => {
+  test("rejects remote access to the settings page", async () => {
+    const response = await handleSettingsPage(
+      new Request("http://example.com/settings"),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(403);
+    expect(body).toContain("Local access only");
+  });
+
   test("returns the settings page for invalid form submissions", async () => {
     savedSettingsCalls.length = 0;
 
@@ -84,6 +94,26 @@ describe("settings routes", () => {
         thinkingEffort: "low",
       },
     ]);
+  });
+
+  test("rejects remote settings updates", async () => {
+    savedSettingsCalls.length = 0;
+
+    const response = await handleSettingsModel(
+      new Request("http://example.com/settings/model", {
+        method: "POST",
+        body: new URLSearchParams({
+          selectedModel: "claude-haiku-4-5",
+          thinkingEnabled: "off",
+          thinkingEffort: "low",
+        }),
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(403);
+    expect(savedSettingsCalls).toHaveLength(0);
+    expect(body).toContain("Local access only");
   });
 
   test("renders the current active configuration on the settings page", async () => {
