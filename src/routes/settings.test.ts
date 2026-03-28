@@ -40,7 +40,28 @@ describe("settings routes", () => {
     expect(body).toContain("Unsupported selectedModel: claude-unknown");
   });
 
-  test("saves valid settings and redirects back to the settings page", async () => {
+  test("rejects malformed thinkingEnabled values", async () => {
+    savedSettingsCalls.length = 0;
+
+    const request = new Request("http://localhost/settings/model", {
+      method: "POST",
+      body: new URLSearchParams({
+        selectedModel: "claude-haiku-4-5",
+        thinkingEnabled: "maybe",
+        thinkingEffort: "low",
+      }),
+    });
+
+    const response = await handleSettingsModel(request);
+    const body = await response.text();
+
+    expect(response.status).toBe(400);
+    expect(savedSettingsCalls).toHaveLength(0);
+    expect(body).toContain("Model settings");
+    expect(body).toContain("Invalid thinkingEnabled value");
+  });
+
+  test("saves valid thinkingEnabled=off settings and redirects back to the settings page", async () => {
     savedSettingsCalls.length = 0;
 
     const request = new Request("http://localhost/settings/model", {

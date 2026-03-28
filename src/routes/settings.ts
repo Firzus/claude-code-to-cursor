@@ -18,6 +18,18 @@ function getStringField(formData: FormDataLike, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function parseThinkingEnabled(value: string): boolean {
+  if (value === "on" || value === "true") {
+    return true;
+  }
+
+  if (value === "off" || value === "false") {
+    return false;
+  }
+
+  throw new Error("Invalid thinkingEnabled value");
+}
+
 export function handleSettingsPage(req: Request): Response {
   const url = new URL(req.url);
   const notice =
@@ -40,7 +52,9 @@ export async function handleSettingsModel(req: Request): Promise<Response> {
     const formData = await req.formData();
     const settings = validateModelSettings({
       selectedModel: getStringField(formData, "selectedModel"),
-      thinkingEnabled: getStringField(formData, "thinkingEnabled") === "on",
+      thinkingEnabled: parseThinkingEnabled(
+        getStringField(formData, "thinkingEnabled"),
+      ),
       thinkingEffort: getStringField(formData, "thinkingEffort"),
     });
 
