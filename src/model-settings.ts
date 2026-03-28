@@ -1,6 +1,9 @@
 export type ThinkingEffort = "low" | "medium" | "high";
 
-export type SupportedSelectedModel = "claude-opus-4-6";
+export type SupportedSelectedModel =
+  | "claude-opus-4-6"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5";
 
 export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
@@ -24,7 +27,11 @@ const THINKING_BUDGETS: Record<ThinkingEffort, number> = {
   high: 16384,
 };
 
-const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = ["claude-opus-4-6"];
+const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5",
+];
 
 export function getExposedModels(): string[] {
   return [...EXPOSED_MODEL_IDS];
@@ -32,6 +39,10 @@ export function getExposedModels(): string[] {
 
 export function isAllowedPublicModel(modelId: string): modelId is typeof PUBLIC_MODEL_ID {
   return modelId === PUBLIC_MODEL_ID;
+}
+
+export function getInvalidPublicModelMessage(modelId: string): string {
+  return `Invalid model "${modelId}": only "${PUBLIC_MODEL_ID}" is supported.`;
 }
 
 export function getThinkingBudget(effort: ThinkingEffort): number {

@@ -1,35 +1,50 @@
 import { proxyRequest } from "../anthropic-client";
+import { getModelSettings } from "../db";
 import { logRequestDetails, corsHeaders } from "../middleware";
 import { normalizeAnthropicRequestModel } from "../request-normalization";
-import { parseModelId, getBudgetTokens } from "../model-parser";
+import {
+  getInvalidPublicModelMessage,
+  getThinkingBudget,
+  isAllowedPublicModel,
+} from "../model-settings";
 import type { AnthropicRequest, AnthropicError } from "../types";
 
 export async function handleAnthropicMessages(req: Request): Promise<Response> {
   try {
     logRequestDetails(req, "Anthropic /v1/messages");
     const incomingBody = (await req.json()) as AnthropicRequest;
+    const modelSettings = getModelSettings();
 
-    // Parse model name to extract base model and optional thinking effort
-    const parsed = parseModelId(incomingBody.model);
-    if (!parsed) {
+    if (!isAllowedPublicModel(incomingBody.model)) {
       return Response.json(
-        { type: "error", error: { type: "invalid_request_error", message: `Unsupported model: "${incomingBody.model}"` } },
+        {
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: getInvalidPublicModelMessage(incomingBody.model),
+          },
+        },
         { status: 400 }
       );
     }
-    const targetModel = parsed.baseModel;
+    const targetModel = modelSettings.selectedModel;
+    const thinkingBudget = modelSettings.thinkingEnabled
+      ? getThinkingBudget(modelSettings.thinkingEffort)
+      : null;
     let body = normalizeAnthropicRequestModel(incomingBody, targetModel);
 
-    // If thinking effort is encoded in the model name, override thinking budget
-    if (parsed?.thinkingEffort) {
-      const budget = getBudgetTokens(parsed.thinkingEffort);
-      body = {
-        ...body,
-        thinking: { type: "enabled", budget_tokens: budget },
-        temperature: 1,
-        max_tokens: Math.max(body.max_tokens ?? 0, budget + 16384),
-      };
-    }
+    body = {
+      ...body,
+      thinking:
+        thinkingBudget === null
+          ? undefined
+          : { type: "enabled", budget_tokens: thinkingBudget },
+      temperature: thinkingBudget === null ? incomingBody.temperature : 1,
+      max_tokens:
+        thinkingBudget === null
+          ? body.max_tokens
+          : Math.max(body.max_tokens ?? 0, thinkingBudget + 16384),
+    };
 
     console.log(
       `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`
@@ -48,10 +63,11 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     });
   } catch (error) {
     console.error("Request handling error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return Response.json(
       {
         type: "error",
-        error: { type: "invalid_request_error", message: String(error) },
+        error: { type: "invalid_request_error", message },
       } satisfies AnthropicError,
       { status: 400 }
     );

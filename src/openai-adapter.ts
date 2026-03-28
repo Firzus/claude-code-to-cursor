@@ -6,7 +6,12 @@
 import type { AnthropicRequest, AnthropicMessage, AnthropicResponse, ContentBlock } from "./types";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
-import { parseModelId, getBudgetTokens } from "./model-parser";
+import {
+  getInvalidPublicModelMessage,
+  getThinkingBudget,
+  isAllowedPublicModel,
+  type ModelSettings,
+} from "./model-settings";
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -227,7 +232,10 @@ function convertContent(
   return blocks;
 }
 
-export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest {
+export function openaiToAnthropic(
+  request: OpenAIChatRequest,
+  modelSettings: ModelSettings,
+): AnthropicRequest {
   // Normalize: Responses API uses `input` instead of `messages`
   if (!request.messages && request.input) {
     console.log(`   [Debug] Detected Responses API format: converting 'input' to 'messages'`);
@@ -240,17 +248,18 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     request.messages = [];
   }
 
-  // Resolve model and thinking budget from the requested model name
-  const parsed = parseModelId(request.model);
-  if (!parsed) {
-    throw new Error(`Unsupported model: "${request.model}"`);
+  if (!isAllowedPublicModel(request.model)) {
+    throw new Error(getInvalidPublicModelMessage(request.model));
   }
-  const targetModel = parsed.baseModel;
-  const thinkingBudget = parsed.thinkingEffort
-    ? getBudgetTokens(parsed.thinkingEffort)
-    : getBudgetTokens("medium");
 
-  console.log(`   [Debug] Request model "${request.model}" → using model="${targetModel}" with thinking budget=${thinkingBudget} tokens (effort=${parsed.thinkingEffort ?? "medium"})`);
+  const targetModel = modelSettings.selectedModel;
+  const thinkingBudget = modelSettings.thinkingEnabled
+    ? getThinkingBudget(modelSettings.thinkingEffort)
+    : null;
+
+  console.log(
+    `   [Debug] Request model "${request.model}" → using model="${targetModel}" with thinking ${thinkingBudget === null ? "disabled" : `budget=${thinkingBudget} tokens (effort=${modelSettings.thinkingEffort})`}`,
+  );
 
   const messages: AnthropicMessage[] = [];
   let system: string | ContentBlock[] | undefined;
@@ -393,7 +402,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
       : "Default (4096)";
 
   // Ensure max_tokens is large enough for thinking budget + output
-  if (maxTokens < thinkingBudget + 4096) {
+  if (thinkingBudget !== null && maxTokens < thinkingBudget + 4096) {
     maxTokens = thinkingBudget + 16384;
   }
 
@@ -404,8 +413,7 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
     messages,
     system,
     max_tokens: maxTokens,
-    // Anthropic requires temperature=1 when thinking is enabled
-    temperature: 1,
+    temperature: thinkingBudget === null ? request.temperature : 1,
     top_p: request.top_p,
     stream: request.stream,
     stop_sequences: request.stop
@@ -413,11 +421,13 @@ export function openaiToAnthropic(request: OpenAIChatRequest): AnthropicRequest 
         ? request.stop
         : [request.stop]
       : undefined,
-    // Thinking is always enabled
-    thinking: {
-      type: "enabled",
-      budget_tokens: thinkingBudget,
-    },
+    thinking:
+      thinkingBudget === null
+        ? undefined
+        : {
+            type: "enabled",
+            budget_tokens: thinkingBudget,
+          },
   };
 
   // Pass through tools - Cursor already sends them in Anthropic format

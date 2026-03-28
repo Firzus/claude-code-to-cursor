@@ -1,4 +1,5 @@
 import { proxyRequest } from "../anthropic-client";
+import { getModelSettings } from "../db";
 import { logRequestDetails, corsHeaders } from "../middleware";
 import {
   openaiToAnthropic,
@@ -112,10 +113,11 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
   try {
     logRequestDetails(req, "OpenAI /v1/chat/completions");
     const openaiBody = (await req.json()) as OpenAIChatRequest;
+    const modelSettings = getModelSettings();
 
     logOpenAIRequest(openaiBody);
 
-    const anthropicBody = openaiToAnthropic(openaiBody);
+    const anthropicBody = openaiToAnthropic(openaiBody, modelSettings);
 
     logAnthropicConversion(openaiBody, anthropicBody);
 
@@ -205,8 +207,9 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {
     console.error("OpenAI request handling error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return Response.json(
-      { error: { message: String(error), type: "invalid_request_error" } },
+      { error: { message, type: "invalid_request_error" } },
       { status: 400 }
     );
   }

@@ -36,13 +36,35 @@ describe("model settings contract", () => {
 
   test("accepts valid model settings payloads", () => {
     expect(validateModelSettings(DEFAULT_MODEL_SETTINGS)).toEqual(DEFAULT_MODEL_SETTINGS);
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-sonnet-4-6",
+        thinkingEnabled: false,
+        thinkingEffort: "low",
+      }),
+    ).toEqual({
+      selectedModel: "claude-sonnet-4-6",
+      thinkingEnabled: false,
+      thinkingEffort: "low",
+    });
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-haiku-4-5",
+        thinkingEnabled: true,
+        thinkingEffort: "medium",
+      }),
+    ).toEqual({
+      selectedModel: "claude-haiku-4-5",
+      thinkingEnabled: true,
+      thinkingEffort: "medium",
+    });
   });
 
   test("rejects unsupported selectedModel values", () => {
     expect(() =>
       validateModelSettings({
         ...DEFAULT_MODEL_SETTINGS,
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "Claude Code",
       }),
     ).toThrow();
   });
