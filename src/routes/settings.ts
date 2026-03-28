@@ -9,6 +9,16 @@ interface FormDataLike {
 const LOCAL_SETTINGS_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const LOOPBACK_SETTINGS_ADDRESSES = new Set(["127.0.0.1", "::1"]);
 
+function normalizeLoopbackSettingsAddress(address: string): string {
+  const lowerAddress = address.toLowerCase();
+
+  if (lowerAddress.startsWith("::ffff:")) {
+    return lowerAddress.slice("::ffff:".length);
+  }
+
+  return lowerAddress;
+}
+
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, {
     status,
@@ -23,7 +33,9 @@ export function isLoopbackSettingsAddress(
     return false;
   }
 
-  return LOOPBACK_SETTINGS_ADDRESSES.has(address.toLowerCase());
+  return LOOPBACK_SETTINGS_ADDRESSES.has(
+    normalizeLoopbackSettingsAddress(address),
+  );
 }
 
 export function isLocalSettingsHost(req: Request): boolean {
