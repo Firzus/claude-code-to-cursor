@@ -27,6 +27,8 @@ describe("settings routes", () => {
   test("treats only loopback IPs as local settings clients", () => {
     expect(isLoopbackSettingsAddress("127.0.0.1")).toBe(true);
     expect(isLoopbackSettingsAddress("::1")).toBe(true);
+    expect(isLoopbackSettingsAddress("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopbackSettingsAddress("::ffff:192.168.1.10")).toBe(false);
     expect(isLoopbackSettingsAddress("192.168.1.10")).toBe(false);
     expect(isLoopbackSettingsAddress(undefined)).toBe(false);
   });
