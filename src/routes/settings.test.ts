@@ -53,6 +53,7 @@ describe("settings routes", () => {
 
     const request = new Request("http://localhost/settings/model", {
       method: "POST",
+      headers: { Origin: "http://localhost" },
       body: new URLSearchParams({
         selectedModel: "claude-unknown",
         thinkingEnabled: "on",
@@ -74,6 +75,7 @@ describe("settings routes", () => {
 
     const request = new Request("http://localhost/settings/model", {
       method: "POST",
+      headers: { Origin: "http://localhost" },
       body: new URLSearchParams({
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: "maybe",
@@ -90,11 +92,12 @@ describe("settings routes", () => {
     expect(body).toContain("Invalid thinkingEnabled value");
   });
 
-  test("saves valid thinkingEnabled=off settings and redirects back to the settings page", async () => {
+  test("allows same-origin POSTs for model updates", async () => {
     savedSettingsCalls.length = 0;
 
     const request = new Request("http://localhost/settings/model", {
       method: "POST",
+      headers: { Origin: "http://localhost" },
       body: new URLSearchParams({
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: "off",
@@ -115,6 +118,47 @@ describe("settings routes", () => {
     ]);
   });
 
+  test("rejects cross-site POSTs for model updates", async () => {
+    savedSettingsCalls.length = 0;
+
+    const request = new Request("http://localhost/settings/model", {
+      method: "POST",
+      headers: { Origin: "https://evil.example" },
+      body: new URLSearchParams({
+        selectedModel: "claude-haiku-4-5",
+        thinkingEnabled: "off",
+        thinkingEffort: "low",
+      }),
+    });
+
+    const response = await handleSettingsModel(request);
+    const body = await response.text();
+
+    expect(response.status).toBe(403);
+    expect(savedSettingsCalls).toHaveLength(0);
+    expect(body).toContain("same-origin");
+  });
+
+  test("rejects POSTs without browser origin context", async () => {
+    savedSettingsCalls.length = 0;
+
+    const request = new Request("http://localhost/settings/model", {
+      method: "POST",
+      body: new URLSearchParams({
+        selectedModel: "claude-haiku-4-5",
+        thinkingEnabled: "off",
+        thinkingEffort: "low",
+      }),
+    });
+
+    const response = await handleSettingsModel(request);
+    const body = await response.text();
+
+    expect(response.status).toBe(403);
+    expect(savedSettingsCalls).toHaveLength(0);
+    expect(body).toContain("same-origin");
+  });
+
   test("renders the current active configuration on the settings page", async () => {
     const response = await handleSettingsPage(
       new Request("http://localhost/settings?saved=1"),
@@ -126,5 +170,6 @@ describe("settings routes", () => {
     expect(body).toContain("claude-sonnet-4-6");
     expect(body).toContain("Thinking enabled");
     expect(body).toContain("Changes saved.");
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
   });
 });
