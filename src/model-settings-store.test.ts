@@ -39,4 +39,30 @@ describe("model settings store", () => {
       database.close();
     }
   });
+
+  test("overwrites previously saved model settings on a second save", () => {
+    const database = new Database(":memory:");
+
+    try {
+      initModelSettingsSchema(database);
+
+      saveModelSettingsToDb(database, {
+        selectedModel: "claude-opus-4-6",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
+      });
+
+      const updatedSettings = {
+        selectedModel: "claude-opus-4-6",
+        thinkingEnabled: false,
+        thinkingEffort: "low",
+      } as const;
+
+      saveModelSettingsToDb(database, updatedSettings);
+
+      expect(getModelSettingsFromDb(database)).toEqual(updatedSettings);
+    } finally {
+      database.close();
+    }
+  });
 });

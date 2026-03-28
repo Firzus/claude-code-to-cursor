@@ -73,7 +73,15 @@ export function saveModelSettingsToDb(
   database: Database,
   settings: ModelSettings,
 ): void {
-  upsertSetting(database, "selected_model", settings.selectedModel);
-  upsertSetting(database, "thinking_enabled", toStoredBoolean(settings.thinkingEnabled));
-  upsertSetting(database, "thinking_effort", settings.thinkingEffort);
+  const saveSettings = database.transaction((currentSettings: ModelSettings) => {
+    upsertSetting(database, "selected_model", currentSettings.selectedModel);
+    upsertSetting(
+      database,
+      "thinking_enabled",
+      toStoredBoolean(currentSettings.thinkingEnabled),
+    );
+    upsertSetting(database, "thinking_effort", currentSettings.thinkingEffort);
+  });
+
+  saveSettings(settings);
 }
