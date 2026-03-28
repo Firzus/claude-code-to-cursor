@@ -7,6 +7,7 @@ interface FormDataLike {
 }
 
 const LOCAL_SETTINGS_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const LOOPBACK_SETTINGS_ADDRESSES = new Set(["127.0.0.1", "::1"]);
 
 function htmlResponse(body: string, status = 200): Response {
   return new Response(body, {
@@ -15,11 +16,21 @@ function htmlResponse(body: string, status = 200): Response {
   });
 }
 
-function isLocalSettingsRequest(req: Request): boolean {
+export function isLoopbackSettingsAddress(
+  address: string | null | undefined,
+): boolean {
+  if (!address) {
+    return false;
+  }
+
+  return LOOPBACK_SETTINGS_ADDRESSES.has(address.toLowerCase());
+}
+
+export function isLocalSettingsHost(req: Request): boolean {
   return LOCAL_SETTINGS_HOSTS.has(new URL(req.url).hostname.toLowerCase());
 }
 
-function localOnlySettingsResponse(): Response {
+export function localOnlySettingsResponse(): Response {
   return htmlResponse(
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ccproxy — Forbidden</title></head><body>Local access only</body></html>`,
     403,
@@ -44,7 +55,7 @@ function parseThinkingEnabled(value: string): boolean {
 }
 
 export function handleSettingsPage(req: Request): Response {
-  if (!isLocalSettingsRequest(req)) {
+  if (!isLocalSettingsHost(req)) {
     return localOnlySettingsResponse();
   }
 
@@ -63,7 +74,7 @@ export function handleSettingsPage(req: Request): Response {
 }
 
 export async function handleSettingsModel(req: Request): Promise<Response> {
-  if (!isLocalSettingsRequest(req)) {
+  if (!isLocalSettingsHost(req)) {
     return localOnlySettingsResponse();
   }
 

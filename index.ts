@@ -11,7 +11,12 @@ import {
   handleAnalyticsReset,
 } from "./src/routes/analytics";
 import { handleLogin, handleOAuthCallback } from "./src/routes/auth";
-import { handleSettingsModel, handleSettingsPage } from "./src/routes/settings";
+import {
+  handleSettingsModel,
+  handleSettingsPage,
+  isLoopbackSettingsAddress,
+  localOnlySettingsResponse,
+} from "./src/routes/settings";
 import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
 import type { AnthropicError } from "./src/types";
 import { logger } from "./src/logger";
@@ -53,7 +58,7 @@ const server = Bun.serve({
   port: config.port,
   idleTimeout: 255,
 
-  async fetch(req) {
+  async fetch(req, server) {
     const url = new URL(req.url);
 
     // CORS preflight
@@ -144,10 +149,20 @@ const server = Bun.serve({
     }
 
     if (url.pathname === "/settings" && req.method === "GET") {
+      const clientAddress = server.requestIP(req)?.address;
+      if (!isLoopbackSettingsAddress(clientAddress)) {
+        return localOnlySettingsResponse();
+      }
+
       return handleSettingsPage(req);
     }
 
     if (url.pathname === "/settings/model" && req.method === "POST") {
+      const clientAddress = server.requestIP(req)?.address;
+      if (!isLoopbackSettingsAddress(clientAddress)) {
+        return localOnlySettingsResponse();
+      }
+
       return handleSettingsModel(req);
     }
 
