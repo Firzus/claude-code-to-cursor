@@ -4,6 +4,12 @@
 
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import {
+  getModelSettingsFromDb,
+  initModelSettingsSchema,
+  saveModelSettingsToDb,
+} from "./model-settings-store";
+import type { ModelSettings } from "./model-settings";
 
 const DB_PATH =
   process.env.CCPROXY_DB_PATH || join(process.cwd(), "ccproxy.db");
@@ -13,14 +19,12 @@ let db: Database | null = null;
 export function getDb(): Database {
   if (!db) {
     db = new Database(DB_PATH);
-    initSchema();
+    initSchema(db);
   }
   return db;
 }
 
-function initSchema() {
-  const database = getDb();
-
+function initSchema(database: Database) {
   // Requests table - tracks every request
   database.run(`
     CREATE TABLE IF NOT EXISTS requests (
@@ -43,6 +47,8 @@ function initSchema() {
   database.run(
     `CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`
   );
+
+  initModelSettingsSchema(database);
 
   console.log(`✓ Database initialized at ${DB_PATH}`);
 }
@@ -192,4 +198,12 @@ export function resetAnalytics(): { deletedCount: number } {
 
   console.log(`✓ Reset analytics: deleted ${deletedCount} records`);
   return { deletedCount };
+}
+
+export function getModelSettings(): ModelSettings {
+  return getModelSettingsFromDb(getDb());
+}
+
+export function saveModelSettings(settings: ModelSettings): void {
+  saveModelSettingsToDb(getDb(), settings);
 }

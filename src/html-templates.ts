@@ -2,6 +2,13 @@
  * HTML templates for OAuth login flow
  */
 
+import type {
+  ModelSettings,
+  SupportedSelectedModel,
+  ThinkingEffort,
+} from "./model-settings";
+import { SUPPORTED_SELECTED_MODELS } from "./model-settings";
+
 export function htmlResult(message: string, success: boolean): string {
   const iconSVG = success
     ? `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12.5l2.5 2.5 5-5"/></svg>`
@@ -156,6 +163,201 @@ export function loginPage(authURL: string, state: string): string {
     btn.classList.add('loading');
     btn.disabled = true;
   });
+</script>
+</body></html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderSelectOption(
+  value: SupportedSelectedModel,
+  selectedValue: SupportedSelectedModel,
+): string {
+  return `<option value="${value}"${value === selectedValue ? " selected" : ""}>${value}</option>`;
+}
+
+function renderRadioOption(
+  name: string,
+  value: string,
+  label: string,
+  checked: boolean,
+): string {
+  return `<label class="choice">
+    <input type="radio" name="${name}" value="${value}"${checked ? " checked" : ""}>
+    <span>${label}</span>
+  </label>`;
+}
+
+export function settingsPage({
+  settings,
+  notice,
+}: {
+  settings: ModelSettings;
+  notice?: { kind: "success" | "error"; message: string };
+}): string {
+  const thinkingEfforts: readonly ThinkingEffort[] = ["low", "medium", "high"];
+
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ccproxy — Model settings</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#000;color:#ededed;min-height:100vh;padding:32px 20px}
+  .wrapper{width:min(760px,100%);margin:0 auto}
+  .header{margin-bottom:28px;animation:fadeIn .4s ease both}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .logo{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .logo svg{width:20px;height:20px}
+  .logo-text{font-size:.9375rem;font-weight:600;color:#fff;letter-spacing:-.01em}
+  .title{font-size:1.6rem;font-weight:600;letter-spacing:-.03em;color:#fff}
+  .subtitle{margin-top:8px;font-size:.875rem;line-height:1.6;color:#707070;max-width:52ch}
+  .card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:16px;overflow:hidden;animation:fadeIn .45s .05s ease both}
+  .notice{margin:20px 20px 0;padding:13px 14px;border-radius:10px;font-size:.8125rem;line-height:1.5}
+  .notice.success{background:#0f160f;border:1px solid #1f3421;color:#c7f0ca}
+  .notice.error{background:#160d0d;border:1px solid #3b1e1e;color:#f2c0c0}
+  .section{padding:22px 24px}
+  .section + .section{border-top:1px solid #1a1a1a}
+  .section-title{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6f6f6f;margin-bottom:14px}
+  .summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .summary-card{background:#050505;border:1px solid #181818;border-radius:12px;padding:14px}
+  .summary-label{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:#666;margin-bottom:7px}
+  .summary-value{font-size:.95rem;color:#f4f4f4;line-height:1.4;word-break:break-word}
+  form{display:grid;gap:22px}
+  .field{display:grid;gap:10px}
+  .field-label{font-size:.8125rem;font-weight:500;color:#f1f1f1}
+  .field-hint{font-size:.75rem;line-height:1.5;color:#676767}
+  select{width:100%;padding:11px 12px;background:#000;border:1px solid #333;border-radius:10px;color:#ededed;font-family:inherit;font-size:.875rem;outline:none;transition:border-color .15s,box-shadow .15s}
+  select:hover{border-color:#444}
+  select:focus{border-color:#ededed;box-shadow:0 0 0 1px #ededed}
+  .choice-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .choice{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#050505;border:1px solid #232323;border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+  .choice:hover{border-color:#3a3a3a;background:#0c0c0c}
+  .choice input{accent-color:#ededed}
+  .choice span{font-size:.875rem;color:#ededed}
+  .effort-group.is-muted{opacity:.55}
+  .footer{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .footer-copy{font-size:.75rem;line-height:1.5;color:#595959}
+  .submit-btn{padding:10px 18px;border:none;border-radius:10px;cursor:pointer;font-family:inherit;font-size:.875rem;font-weight:600;background:#ededed;color:#000;transition:background .15s,transform .15s;position:relative}
+  .submit-btn:hover{background:#fff}
+  .submit-btn:active{transform:translateY(1px)}
+  .submit-btn:disabled{opacity:.55;cursor:not-allowed}
+  .submit-btn.loading{color:transparent;pointer-events:none}
+  .submit-btn.loading::after{content:'';position:absolute;width:16px;height:16px;border:2px solid #666;border-top-color:#000;border-radius:50%;animation:spin .5s linear infinite;top:50%;left:50%;margin:-8px 0 0 -8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (max-width: 640px){
+    body{padding:20px 14px}
+    .summary{grid-template-columns:1fr}
+    .footer{flex-direction:column;align-items:stretch}
+    .submit-btn{width:100%}
+  }
+</style>
+</head><body>
+<div class="wrapper">
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+      <span class="logo-text">ccproxy</span>
+    </div>
+    <h1 class="title">Model settings</h1>
+    <p class="subtitle">Choose which Anthropic backend model the local proxy should use for the public "Claude Code" alias, and keep the current thinking defaults visible in one place.</p>
+  </div>
+
+  <div class="card">
+    ${
+      notice
+        ? `<div class="notice ${notice.kind}">${escapeHtml(notice.message)}</div>`
+        : ""
+    }
+    <div class="section">
+      <div class="section-title">Active configuration</div>
+      <div class="summary">
+        <div class="summary-card">
+          <div class="summary-label">Backend model</div>
+          <div class="summary-value">${settings.selectedModel}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Thinking</div>
+          <div class="summary-value">${settings.thinkingEnabled ? "Thinking enabled" : "Thinking disabled"}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Effort</div>
+          <div class="summary-value">${settings.thinkingEffort}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <form method="POST" action="/settings/model" id="settingsForm">
+        <div class="field">
+          <label class="field-label" for="selectedModel">Selected model</label>
+          <div class="field-hint">This backend model will serve all incoming requests targeting the public local alias.</div>
+          <select id="selectedModel" name="selectedModel">
+            ${SUPPORTED_SELECTED_MODELS.map((value) => renderSelectOption(value, settings.selectedModel)).join("")}
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="field-label">Thinking</div>
+          <div class="field-hint">Enable or disable Claude thinking defaults for proxied requests.</div>
+          <div class="choice-row">
+            ${renderRadioOption("thinkingEnabled", "on", "On", settings.thinkingEnabled)}
+            ${renderRadioOption("thinkingEnabled", "off", "Off", !settings.thinkingEnabled)}
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">Thinking effort</div>
+          <div class="field-hint">The effort level is kept even when thinking is off, so it is ready for the next activation.</div>
+          <div class="choice-row effort-group${settings.thinkingEnabled ? "" : " is-muted"}" id="effortGroup">
+            ${thinkingEfforts
+              .map((value) =>
+                renderRadioOption(
+                  "thinkingEffort",
+                  value,
+                  value[0]!.toUpperCase() + value.slice(1),
+                  settings.thinkingEffort === value,
+                ),
+              )
+              .join("")}
+          </div>
+        </div>
+
+        <div class="footer">
+          <p class="footer-copy">Saved locally in the existing SQLite settings store used by the proxy.</p>
+          <button type="submit" class="submit-btn" id="saveBtn">Save settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  var form = document.getElementById('settingsForm');
+  var saveBtn = document.getElementById('saveBtn');
+  var effortGroup = document.getElementById('effortGroup');
+
+  function syncThinkingState() {
+    var checked = document.querySelector('input[name="thinkingEnabled"]:checked');
+    var enabled = checked && checked.value === 'on';
+    effortGroup.classList.toggle('is-muted', !enabled);
+  }
+
+  form.addEventListener('submit', function() {
+    saveBtn.classList.add('loading');
+    saveBtn.disabled = true;
+  });
+
+  form.addEventListener('change', syncThinkingState);
+  syncThinkingState();
 </script>
 </body></html>`;
 }
