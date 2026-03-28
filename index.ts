@@ -11,6 +11,7 @@ import {
   handleAnalyticsReset,
 } from "./src/routes/analytics";
 import { handleLogin, handleOAuthCallback } from "./src/routes/auth";
+import { handleSettingsModel, handleSettingsPage } from "./src/routes/settings";
 import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
 import type { AnthropicError } from "./src/types";
 import { logger } from "./src/logger";
@@ -140,6 +141,14 @@ const server = Bun.serve({
 
     if (url.pathname === "/oauth/callback" && req.method === "POST") {
       return handleOAuthCallback(req);
+    }
+
+    if (url.pathname === "/settings" && req.method === "GET") {
+      return handleSettingsPage(req);
+    }
+
+    if (url.pathname === "/settings/model" && req.method === "POST") {
+      return handleSettingsModel(req);
     }
 
     // --- 404 ---
