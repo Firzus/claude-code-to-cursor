@@ -54,132 +54,155 @@ process.on("unhandledRejection", (reason) => {
   logger.error(`[FATAL] Unhandled rejection: ${reason}`);
 });
 
-const server = Bun.serve({
-  port: config.port,
-  idleTimeout: 255,
+function printPortInUseHelp(port: number) {
+  console.error(`\nPort ${port} is already in use.`);
+  console.error(
+    "Usually another ccproxy (bun) instance is still running, or another app bound this port."
+  );
+  console.error("\nTo free the port on Windows:");
+  console.error(`  netstat -ano | findstr :${port}`);
+  console.error(
+    "  Then: taskkill /PID <pid> /F   or   Stop-Process -Id <pid> -Force"
+  );
+  console.error("\nOr use a different port: set PORT=8083 (or in .env)\n");
+}
 
-  async fetch(req, server) {
-    const url = new URL(req.url);
+let server: ReturnType<typeof Bun.serve>;
+try {
+  server = Bun.serve({
+    port: config.port,
+    idleTimeout: 255,
 
-    // CORS preflight
-    if (req.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders() });
-    }
+    async fetch(req, server) {
+      const url = new URL(req.url);
 
-    logger.info(`[REQ] ${req.method} ${url.pathname}`);
+      // CORS preflight
+      if (req.method === "OPTIONS") {
+        return new Response(null, { headers: corsHeaders() });
+      }
 
-    // IP whitelist for API endpoints
-    if (
-      url.pathname.startsWith("/v1/") ||
-      url.pathname.startsWith("/analytics")
-    ) {
-      const ipCheck = checkIPWhitelist(req);
-      if (!ipCheck.allowed) {
-        return Response.json(
-          {
-            error: {
-              type: "authentication_error",
-              message: `Unauthorized: ${ipCheck.reason || "IP not whitelisted"}`,
+      logger.info(`[REQ] ${req.method} ${url.pathname}`);
+
+      // IP whitelist for API endpoints
+      if (
+        url.pathname.startsWith("/v1/") ||
+        url.pathname.startsWith("/analytics")
+      ) {
+        const ipCheck = checkIPWhitelist(req);
+        if (!ipCheck.allowed) {
+          return Response.json(
+            {
+              error: {
+                type: "authentication_error",
+                message: `Unauthorized: ${ipCheck.reason || "IP not whitelisted"}`,
+              },
             },
+            { status: 403 }
+          );
+        }
+      }
+
+      // --- Health check ---
+      if (url.pathname === "/health" || url.pathname === "/") {
+        const token = await getValidToken();
+        const rateLimit = getRateLimitStatus();
+        return Response.json({
+          status: rateLimit.isLimited ? "rate_limited" : "ok",
+          claudeCode: {
+            authenticated: !!token,
+            expiresAt: token?.expiresAt,
+            ...(token ? {} : { loginUrl: `http://localhost:${config.port}/login` }),
           },
-          { status: 403 }
-        );
-      }
-    }
-
-    // --- Health check ---
-    if (url.pathname === "/health" || url.pathname === "/") {
-      const token = await getValidToken();
-      const rateLimit = getRateLimitStatus();
-      return Response.json({
-        status: rateLimit.isLimited ? "rate_limited" : "ok",
-        claudeCode: {
-          authenticated: !!token,
-          expiresAt: token?.expiresAt,
-          ...(token ? {} : { loginUrl: `http://localhost:${config.port}/login` }),
-        },
-        rateLimit,
-      });
-    }
-
-    // --- API routes ---
-    if (url.pathname === "/v1/messages" && req.method === "POST") {
-      return handleAnthropicMessages(req);
-    }
-
-    if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-      return handleOpenAIChatCompletions(req);
-    }
-
-    if (url.pathname === "/v1/models" && req.method === "GET") {
-      return handleModels();
-    }
-
-    // --- Analytics ---
-    if (url.pathname === "/analytics" && req.method === "GET") {
-      return handleAnalytics(url);
-    }
-
-    if (url.pathname === "/analytics/requests" && req.method === "GET") {
-      return handleAnalyticsRequests(url);
-    }
-
-    if (url.pathname === "/analytics/reset" && req.method === "POST") {
-      return handleAnalyticsReset();
-    }
-
-    // --- Rate limit management ---
-    if (url.pathname === "/rate-limit" && req.method === "GET") {
-      return Response.json(getRateLimitStatus());
-    }
-
-    if (url.pathname === "/rate-limit/reset" && req.method === "POST") {
-      const result = clearRateLimitCache();
-      console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
-      return Response.json(result);
-    }
-
-    // --- OAuth login flow ---
-    if (url.pathname === "/login" && req.method === "GET") {
-      return handleLogin();
-    }
-
-    if (url.pathname === "/oauth/callback" && req.method === "POST") {
-      return handleOAuthCallback(req);
-    }
-
-    if (url.pathname === "/settings" && req.method === "GET") {
-      const clientAddress = server.requestIP(req)?.address;
-      if (!isLoopbackSettingsAddress(clientAddress)) {
-        return localOnlySettingsResponse();
+          rateLimit,
+        });
       }
 
-      return handleSettingsPage(req);
-    }
-
-    if (url.pathname === "/settings/model" && req.method === "POST") {
-      const clientAddress = server.requestIP(req)?.address;
-      if (!isLoopbackSettingsAddress(clientAddress)) {
-        return localOnlySettingsResponse();
+      // --- API routes ---
+      if (url.pathname === "/v1/messages" && req.method === "POST") {
+        return handleAnthropicMessages(req);
       }
 
-      return handleSettingsModel(req);
-    }
+      if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
+        return handleOpenAIChatCompletions(req);
+      }
 
-    // --- 404 ---
-    console.log(`[404] ${req.method} ${url.pathname}`);
-    return Response.json(
-      {
-        type: "error",
-        error: {
-          type: "not_found_error",
-          message: `Unknown endpoint: ${url.pathname}`,
-        },
-      } satisfies AnthropicError,
-      { status: 404 }
-    );
-  },
-});
+      if (url.pathname === "/v1/models" && req.method === "GET") {
+        return handleModels();
+      }
+
+      // --- Analytics ---
+      if (url.pathname === "/analytics" && req.method === "GET") {
+        return handleAnalytics(url);
+      }
+
+      if (url.pathname === "/analytics/requests" && req.method === "GET") {
+        return handleAnalyticsRequests(url);
+      }
+
+      if (url.pathname === "/analytics/reset" && req.method === "POST") {
+        return handleAnalyticsReset();
+      }
+
+      // --- Rate limit management ---
+      if (url.pathname === "/rate-limit" && req.method === "GET") {
+        return Response.json(getRateLimitStatus());
+      }
+
+      if (url.pathname === "/rate-limit/reset" && req.method === "POST") {
+        const result = clearRateLimitCache();
+        console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
+        return Response.json(result);
+      }
+
+      // --- OAuth login flow ---
+      if (url.pathname === "/login" && req.method === "GET") {
+        return handleLogin();
+      }
+
+      if (url.pathname === "/oauth/callback" && req.method === "POST") {
+        return handleOAuthCallback(req);
+      }
+
+      if (url.pathname === "/settings" && req.method === "GET") {
+        const clientAddress = server.requestIP(req)?.address;
+        if (!isLoopbackSettingsAddress(clientAddress)) {
+          return localOnlySettingsResponse();
+        }
+
+        return handleSettingsPage(req);
+      }
+
+      if (url.pathname === "/settings/model" && req.method === "POST") {
+        const clientAddress = server.requestIP(req)?.address;
+        if (!isLoopbackSettingsAddress(clientAddress)) {
+          return localOnlySettingsResponse();
+        }
+
+        return handleSettingsModel(req);
+      }
+
+      // --- 404 ---
+      console.log(`[404] ${req.method} ${url.pathname}`);
+      return Response.json(
+        {
+          type: "error",
+          error: {
+            type: "not_found_error",
+            message: `Unknown endpoint: ${url.pathname}`,
+          },
+        } satisfies AnthropicError,
+        { status: 404 }
+      );
+    },
+  });
+} catch (err) {
+  const code = err instanceof Error && "code" in err ? String((err as NodeJS.ErrnoException).code) : "";
+  if (code === "EADDRINUSE") {
+    printPortInUseHelp(config.port);
+    process.exit(1);
+  }
+  throw err;
+}
 
 // --- Bootstrap ---
 console.log(`
