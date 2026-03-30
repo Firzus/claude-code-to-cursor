@@ -10,12 +10,14 @@ import {
   handleAnalyticsRequests,
   handleAnalyticsReset,
 } from "./src/routes/analytics";
-import { handleLogin, handleOAuthCallback } from "./src/routes/auth";
 import {
-  handleSettingsModel,
-  handleSettingsPage,
-  isLoopbackSettingsAddress,
-  localOnlySettingsResponse,
+  handleLoginAPI,
+  handleOAuthCallbackAPI,
+  handleAuthStatus,
+} from "./src/routes/auth";
+import {
+  handleSettingsAPI,
+  handleSettingsModelAPI,
 } from "./src/routes/settings";
 import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
 import type { AnthropicError } from "./src/types";
@@ -27,7 +29,7 @@ async function checkCredentials(): Promise<boolean> {
   if (!hasCredentials()) {
     console.log("\n⚠️  No OAuth credentials found.");
     console.log(
-      `   >>> To authenticate: open http://localhost:${config.port}/login`
+      "   >>> To authenticate: open the dashboard and go to the Auth page"
     );
     return false;
   }
@@ -67,13 +69,121 @@ function printPortInUseHelp(port: number) {
   console.error("\nOr use a different port: set PORT=8083 (or in .env)\n");
 }
 
+async function handleRequest(req: Request, url: URL): Promise<Response> {
+  // IP whitelist for API endpoints
+  if (
+    url.pathname.startsWith("/v1/") ||
+    url.pathname.startsWith("/analytics") ||
+    url.pathname.startsWith("/api/analytics")
+  ) {
+    const ipCheck = checkIPWhitelist(req);
+    if (!ipCheck.allowed) {
+      return Response.json(
+        {
+          error: {
+            type: "authentication_error",
+            message: `Unauthorized: ${ipCheck.reason || "IP not whitelisted"}`,
+          },
+        },
+        { status: 403 }
+      );
+    }
+  }
+
+  // --- Health check ---
+  if (url.pathname === "/health" || url.pathname === "/" || url.pathname === "/api/health") {
+    const token = await getValidToken();
+    const rateLimit = getRateLimitStatus();
+    return Response.json({
+      status: rateLimit.isLimited ? "rate_limited" : "ok",
+      claudeCode: {
+        authenticated: !!token,
+        expiresAt: token?.expiresAt,
+      },
+      rateLimit,
+    });
+  }
+
+  // --- Proxy API routes ---
+  if (url.pathname === "/v1/messages" && req.method === "POST") {
+    return handleAnthropicMessages(req);
+  }
+
+  if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
+    return handleOpenAIChatCompletions(req);
+  }
+
+  if (url.pathname === "/v1/models" && req.method === "GET") {
+    return handleModels();
+  }
+
+  // --- Analytics ---
+  if ((url.pathname === "/analytics" || url.pathname === "/api/analytics") && req.method === "GET") {
+    return handleAnalytics(url);
+  }
+
+  if ((url.pathname === "/analytics/requests" || url.pathname === "/api/analytics/requests") && req.method === "GET") {
+    return handleAnalyticsRequests(url);
+  }
+
+  if ((url.pathname === "/analytics/reset" || url.pathname === "/api/analytics/reset") && req.method === "POST") {
+    return handleAnalyticsReset();
+  }
+
+  // --- Rate limit management ---
+  if ((url.pathname === "/rate-limit" || url.pathname === "/api/rate-limit") && req.method === "GET") {
+    return Response.json(getRateLimitStatus());
+  }
+
+  if ((url.pathname === "/rate-limit/reset" || url.pathname === "/api/rate-limit/reset") && req.method === "POST") {
+    const result = clearRateLimitCache();
+    console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
+    return Response.json(result);
+  }
+
+  // --- Auth (JSON API) ---
+  if (url.pathname === "/api/auth/login" && req.method === "GET") {
+    return handleLoginAPI();
+  }
+
+  if (url.pathname === "/api/auth/callback" && req.method === "POST") {
+    return handleOAuthCallbackAPI(req);
+  }
+
+  if (url.pathname === "/api/auth/status" && req.method === "GET") {
+    return handleAuthStatus();
+  }
+
+  // --- Settings (JSON API) ---
+  if (url.pathname === "/api/settings" && req.method === "GET") {
+    return handleSettingsAPI(req);
+  }
+
+  if (url.pathname === "/api/settings/model" && req.method === "POST") {
+    return handleSettingsModelAPI(req);
+  }
+
+  // --- 404 ---
+  console.log(`[404] ${req.method} ${url.pathname}`);
+  return Response.json(
+    {
+      type: "error",
+      error: {
+        type: "not_found_error",
+        message: `Unknown endpoint: ${url.pathname}`,
+      },
+    } satisfies AnthropicError,
+    { status: 404 }
+  );
+}
+
 let server: ReturnType<typeof Bun.serve>;
 try {
   server = Bun.serve({
     port: config.port,
     idleTimeout: 255,
 
-    async fetch(req, server) {
+    async fetch(req) {
       const url = new URL(req.url);
 
       // CORS preflight
@@ -83,116 +193,13 @@ try {
 
       logger.info(`[REQ] ${req.method} ${url.pathname}`);
 
-      // IP whitelist for API endpoints
-      if (
-        url.pathname.startsWith("/v1/") ||
-        url.pathname.startsWith("/analytics")
-      ) {
-        const ipCheck = checkIPWhitelist(req);
-        if (!ipCheck.allowed) {
-          return Response.json(
-            {
-              error: {
-                type: "authentication_error",
-                message: `Unauthorized: ${ipCheck.reason || "IP not whitelisted"}`,
-              },
-            },
-            { status: 403 }
-          );
-        }
+      // Handle request and add CORS headers to all responses
+      const response = await handleRequest(req, url);
+      const cors = corsHeaders();
+      for (const [key, value] of Object.entries(cors)) {
+        response.headers.set(key, value);
       }
-
-      // --- Health check ---
-      if (url.pathname === "/health" || url.pathname === "/") {
-        const token = await getValidToken();
-        const rateLimit = getRateLimitStatus();
-        return Response.json({
-          status: rateLimit.isLimited ? "rate_limited" : "ok",
-          claudeCode: {
-            authenticated: !!token,
-            expiresAt: token?.expiresAt,
-            ...(token ? {} : { loginUrl: `http://localhost:${config.port}/login` }),
-          },
-          rateLimit,
-        });
-      }
-
-      // --- API routes ---
-      if (url.pathname === "/v1/messages" && req.method === "POST") {
-        return handleAnthropicMessages(req);
-      }
-
-      if (url.pathname === "/v1/chat/completions" && req.method === "POST") {
-        return handleOpenAIChatCompletions(req);
-      }
-
-      if (url.pathname === "/v1/models" && req.method === "GET") {
-        return handleModels();
-      }
-
-      // --- Analytics ---
-      if (url.pathname === "/analytics" && req.method === "GET") {
-        return handleAnalytics(url);
-      }
-
-      if (url.pathname === "/analytics/requests" && req.method === "GET") {
-        return handleAnalyticsRequests(url);
-      }
-
-      if (url.pathname === "/analytics/reset" && req.method === "POST") {
-        return handleAnalyticsReset();
-      }
-
-      // --- Rate limit management ---
-      if (url.pathname === "/rate-limit" && req.method === "GET") {
-        return Response.json(getRateLimitStatus());
-      }
-
-      if (url.pathname === "/rate-limit/reset" && req.method === "POST") {
-        const result = clearRateLimitCache();
-        console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
-        return Response.json(result);
-      }
-
-      // --- OAuth login flow ---
-      if (url.pathname === "/login" && req.method === "GET") {
-        return handleLogin();
-      }
-
-      if (url.pathname === "/oauth/callback" && req.method === "POST") {
-        return handleOAuthCallback(req);
-      }
-
-      if (url.pathname === "/settings" && req.method === "GET") {
-        const clientAddress = server.requestIP(req)?.address;
-        if (!isLoopbackSettingsAddress(clientAddress)) {
-          return localOnlySettingsResponse();
-        }
-
-        return handleSettingsPage(req);
-      }
-
-      if (url.pathname === "/settings/model" && req.method === "POST") {
-        const clientAddress = server.requestIP(req)?.address;
-        if (!isLoopbackSettingsAddress(clientAddress)) {
-          return localOnlySettingsResponse();
-        }
-
-        return handleSettingsModel(req);
-      }
-
-      // --- 404 ---
-      console.log(`[404] ${req.method} ${url.pathname}`);
-      return Response.json(
-        {
-          type: "error",
-          error: {
-            type: "not_found_error",
-            message: `Unknown endpoint: ${url.pathname}`,
-          },
-        } satisfies AnthropicError,
-        { status: 404 }
-      );
+      return response;
     },
   });
 } catch (err) {
@@ -215,17 +222,12 @@ console.log(`
 
 getDb();
 
-console.log(`🚀 Server running at http://localhost:${server.port}`);
-console.log(`   Anthropic:  http://localhost:${server.port}/v1/messages`);
-console.log(
-  `   OpenAI:     http://localhost:${server.port}/v1/chat/completions`
-);
-console.log(`   Analytics:  http://localhost:${server.port}/analytics`);
-console.log(`   Rate Limit: http://localhost:${server.port}/rate-limit`);
-console.log(`   Login:      http://localhost:${server.port}/login\n`);
+console.log(`🚀 Server listening on port ${server.port}`);
+console.log(`   Anthropic:  /v1/messages`);
+console.log(`   OpenAI:     /v1/chat/completions`);
+console.log(`   Analytics:  /api/analytics`);
+console.log(`   Settings:   /api/settings\n`);
 
 await checkCredentials();
 
-console.log("\n📋 Usage in Cursor/other clients:");
-console.log(`   API Base URL: http://localhost:${server.port}`);
 console.log(`\n📝 Verbose logging enabled → api.log (gitignored)\n`);

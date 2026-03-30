@@ -59,8 +59,8 @@ export function getApiModelId(model: SupportedSelectedModel): string {
 
 /** Returns the context window size for a given selected model */
 export function getContextLength(model: SupportedSelectedModel): number {
-  if (model === "claude-opus-4-6") return 1000000;
-  return 200000;
+  if (model === "claude-haiku-4-5") return 200000;
+  return 1000000;
 }
 
 export function validateModelSettings(input: unknown): ModelSettings {

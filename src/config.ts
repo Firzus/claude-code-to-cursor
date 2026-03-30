@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { ProxyConfig } from "./types";
 
 // OAuth credentials persistence (own directory, not Claude Code's)
-export const CCPROXY_AUTH_DIR = join(homedir(), ".ccproxy");
+export const CCPROXY_AUTH_DIR = process.env.CCPROXY_AUTH_DIR || join(homedir(), ".ccproxy");
 export const CCPROXY_AUTH_PATH = join(CCPROXY_AUTH_DIR, "auth.json");
 
 export const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -18,13 +18,12 @@ export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 // Required beta headers for Claude Code OAuth
 const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
 const ANTHROPIC_BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14";
-const ANTHROPIC_BETA_CONTEXT_1M = "context-1m-2025-08-07";
 
 // Combined beta header string for Claude Code OAuth requests
+// Note: context-1m header removed — 1M context is GA for Opus 4.6 & Sonnet 4.6
 export const CLAUDE_CODE_BETA_HEADERS = [
   ANTHROPIC_BETA_OAUTH,
   ANTHROPIC_BETA_INTERLEAVED_THINKING,
-  ANTHROPIC_BETA_CONTEXT_1M,
 ].join(",");
 
 // Centralized User-Agent for all Claude Code requests
@@ -41,8 +40,8 @@ export const CLAUDE_CODE_EXTRA_INSTRUCTION =
 
 
 export function getConfig(): ProxyConfig {
-  // Parse allowed IPs from environment (comma-separated)
-  // Set to "disabled" to allow all IPs (tunnel URL acts as the secret)
+  // IP whitelist for requests coming through the Cloudflare tunnel.
+  // Set to "disabled" to allow all IPs.
   const allowedIPsEnv =
     process.env.ALLOWED_IPS || "52.44.113.131,184.73.225.134";
   const allowedIPs =

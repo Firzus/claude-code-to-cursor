@@ -1,0 +1,11 @@
+node_modules/
+.git/
+*.db
+*.log
+frontend/
+scripts/
+.env
+.claude/
+.worktrees/
+.idea/
+.DS_Store

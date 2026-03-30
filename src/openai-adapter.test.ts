@@ -86,7 +86,7 @@ describe("openaiToAnthropic", () => {
     });
   });
 
-  test("maps opus to 1M context API model ID", () => {
+  test("maps opus to correct API model ID", () => {
     const settings: ModelSettings = {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: false,

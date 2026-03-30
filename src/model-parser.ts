@@ -26,7 +26,7 @@ export function getBudgetTokens(effort: ThinkingEffort): number {
 export function getExposedModels() {
   return getPublicModelIds().map((id) => ({
     id,
-    context_length: 200000,
+    context_length: 1000000,
     max_output_tokens: 128000,
     object: "model",
     created: 1700000000,

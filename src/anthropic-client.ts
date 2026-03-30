@@ -321,7 +321,6 @@ async function makeClaudeCodeRequest(
     );
 
     // Use ONLY our Claude Code beta headers - don't merge with Cursor's
-    // Cursor may send incompatible headers like "context-1m-2025-08-07"
     console.log(
       `   [Debug] Using Claude Code beta headers: "${CLAUDE_CODE_BETA_HEADERS}"`
     );

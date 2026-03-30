@@ -10,6 +10,7 @@ export function handleModels(): Response {
     data: getExposedModels().map((id) => ({
       id,
       context_length: contextLength,
+      context_window: contextLength,
       max_output_tokens: 128000,
       object: "model",
       created: 1700000000,

@@ -1,0 +1,101 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist Sans", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-background: oklch(0% 0 0);
+  --color-foreground: oklch(93% 0 0);
+  --color-card: oklch(7% 0 0);
+  --color-card-foreground: oklch(93% 0 0);
+  --color-popover: oklch(7% 0 0);
+  --color-popover-foreground: oklch(93% 0 0);
+
+  --color-primary: oklch(93% 0 0);
+  --color-primary-foreground: oklch(0% 0 0);
+
+  --color-secondary: oklch(12% 0 0);
+  --color-secondary-foreground: oklch(63% 0 0);
+
+  --color-muted: oklch(12% 0 0);
+  --color-muted-foreground: oklch(45% 0 0);
+
+  --color-accent: oklch(62% 0.16 255);
+  --color-accent-foreground: oklch(100% 0 0);
+
+  --color-destructive: oklch(55% 0.22 27);
+  --color-destructive-foreground: oklch(95% 0 0);
+  --color-success: oklch(62% 0.17 155);
+  --color-warning: oklch(70% 0.15 70);
+
+  --color-border: oklch(18% 0 0);
+  --color-input: oklch(12% 0 0);
+  --color-ring: oklch(45% 0 0);
+
+  --radius: 0.5rem;
+
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-slide-up: slide-up 0.3s ease-out both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+
+  ::selection {
+    background: oklch(93% 0 0 / 0.15);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .model-card {
+    backdrop-filter: blur(8px);
+  }
+
+  .model-card.model-opus[class*="border-accent"] {
+    --color-accent: oklch(62% 0.22 300);
+    box-shadow: 0 0 16px -4px oklch(62% 0.22 300 / 0.25);
+  }
+
+  .model-card.model-sonnet[class*="border-accent"] {
+    --color-accent: oklch(65% 0.18 50);
+    box-shadow: 0 0 16px -4px oklch(65% 0.18 50 / 0.25);
+  }
+
+  .model-card.model-haiku[class*="border-accent"] {
+    --color-accent: oklch(65% 0.15 170);
+    box-shadow: 0 0 16px -4px oklch(65% 0.15 170 / 0.25);
+  }
+}

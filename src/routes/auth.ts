@@ -2,9 +2,9 @@ import {
   generatePKCE,
   getAuthorizationURL,
   exchangeCode,
+  hasCredentials,
+  getValidToken,
 } from "../oauth";
-import { CCPROXY_AUTH_PATH } from "../config";
-import { htmlResult, loginPage } from "../html-templates";
 
 // PKCE state storage (module-level, TTL 10 min)
 const pkceStore = new Map<
@@ -20,61 +20,57 @@ function cleanPkceStore() {
   }
 }
 
-export async function handleLogin(): Promise<Response> {
+export async function handleLoginAPI(): Promise<Response> {
   cleanPkceStore();
   const { codeVerifier, codeChallenge } = await generatePKCE();
   const state = crypto.randomUUID();
   pkceStore.set(state, { codeVerifier, createdAt: Date.now() });
   const authURL = getAuthorizationURL(codeChallenge, state);
 
-  return new Response(loginPage(authURL, state), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  });
+  return Response.json({ authURL, state });
 }
 
-export async function handleOAuthCallback(req: Request): Promise<Response> {
+export async function handleOAuthCallbackAPI(req: Request): Promise<Response> {
   try {
-    const formData = await req.formData();
-    const code = formData.get("code") as string | null;
-    const state = formData.get("state") as string | null;
+    const body = await req.json();
+    const { code, state } = body as { code?: string; state?: string };
 
     if (!code || !state) {
-      return new Response(htmlResult("Missing code or state parameter.", false), {
-        status: 400,
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return Response.json(
+        { success: false, message: "Missing code or state parameter." },
+        { status: 400 },
+      );
     }
 
     cleanPkceStore();
     const pkce = pkceStore.get(state);
     if (!pkce) {
-      return new Response(
-        htmlResult("Invalid or expired state. Please go back to /login and try again.", false),
-        { status: 400, headers: { "Content-Type": "text/html; charset=utf-8" } }
+      return Response.json(
+        { success: false, message: "Invalid or expired state. Please try again." },
+        { status: 400 },
       );
     }
     pkceStore.delete(state);
 
     const auth = await exchangeCode(code, pkce.codeVerifier, state);
-    const expiresIn = Math.round(
-      (auth.expiresAt - Date.now()) / 1000 / 60
-    );
-    console.log(
-      `✓ OAuth login successful — token expires in ${expiresIn} minutes`
-    );
+    const expiresIn = Math.round((auth.expiresAt - Date.now()) / 1000 / 60);
+    console.log(`✓ OAuth login successful — token expires in ${expiresIn} minutes`);
 
-    return new Response(
-      htmlResult(
-        `Authentication successful! Token expires in ${expiresIn} minutes.<br>Credentials saved to <code>${CCPROXY_AUTH_PATH}</code>.<br>You can close this page.`,
-        true
-      ),
-      { headers: { "Content-Type": "text/html; charset=utf-8" } }
-    );
+    return Response.json({ success: true, message: "Authentication successful.", expiresIn });
   } catch (error) {
     console.error("OAuth callback error:", error);
-    return new Response(
-      htmlResult(`Authentication failed: ${String(error)}`, false),
-      { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } }
+    return Response.json(
+      { success: false, message: `Authentication failed: ${String(error)}` },
+      { status: 500 },
     );
   }
+}
+
+export async function handleAuthStatus(): Promise<Response> {
+  const authenticated = hasCredentials();
+  const token = authenticated ? await getValidToken() : null;
+  return Response.json({
+    authenticated: !!token,
+    expiresAt: token?.expiresAt ?? null,
+  });
 }

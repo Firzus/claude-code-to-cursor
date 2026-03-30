@@ -17,98 +17,64 @@ mock.module("../db", () => ({
 }));
 
 const {
-  handleSettingsPage,
-  handleSettingsModel,
-  isLoopbackSettingsAddress,
-  isLocalSettingsHost,
+  handleSettingsAPI,
+  handleSettingsModelAPI,
 } = await import("./settings");
 
-describe("settings routes", () => {
-  test("treats only loopback IPs as local settings clients", () => {
-    expect(isLoopbackSettingsAddress("127.0.0.1")).toBe(true);
-    expect(isLoopbackSettingsAddress("::1")).toBe(true);
-    expect(isLoopbackSettingsAddress("::ffff:127.0.0.1")).toBe(true);
-    expect(isLoopbackSettingsAddress("::ffff:192.168.1.10")).toBe(false);
-    expect(isLoopbackSettingsAddress("192.168.1.10")).toBe(false);
-    expect(isLoopbackSettingsAddress(undefined)).toBe(false);
+describe("settings JSON API", () => {
+  test("returns current settings as JSON", async () => {
+    const response = handleSettingsAPI(
+      new Request("http://localhost/api/settings"),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.settings.selectedModel).toBe("claude-sonnet-4-6");
+    expect(body.settings.thinkingEnabled).toBe(true);
+    expect(body.settings.thinkingEffort).toBe("medium");
   });
 
-  test("keeps a host-based localhost check as defense in depth", () => {
-    expect(
-      isLocalSettingsHost(new Request("http://localhost/settings")),
-    ).toBe(true);
-    expect(
-      isLocalSettingsHost(new Request("http://127.0.0.1/settings")),
-    ).toBe(true);
-    expect(
-      isLocalSettingsHost(new Request("http://[::1]/settings")),
-    ).toBe(true);
-    expect(
-      isLocalSettingsHost(new Request("http://example.com/settings")),
-    ).toBe(false);
-  });
-
-  test("returns the settings page for invalid form submissions", async () => {
+  test("rejects invalid model in JSON body", async () => {
     savedSettingsCalls.length = 0;
 
-    const request = new Request("http://localhost/settings/model", {
+    const request = new Request("http://localhost/api/settings/model", {
       method: "POST",
-      headers: { Origin: "http://localhost" },
-      body: new URLSearchParams({
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         selectedModel: "claude-unknown",
-        thinkingEnabled: "on",
+        thinkingEnabled: true,
         thinkingEffort: "medium",
       }),
     });
 
-    const response = await handleSettingsModel(request);
-    const body = await response.text();
+    const response = await handleSettingsModelAPI(request);
+    const body = await response.json();
 
     expect(response.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("Unsupported selectedModel");
     expect(savedSettingsCalls).toHaveLength(0);
-    expect(body).toContain("Model settings");
-    expect(body).toContain("Unsupported selectedModel: claude-unknown");
   });
 
-  test("rejects malformed thinkingEnabled values", async () => {
+  test("saves valid settings via JSON body", async () => {
     savedSettingsCalls.length = 0;
 
-    const request = new Request("http://localhost/settings/model", {
+    const request = new Request("http://localhost/api/settings/model", {
       method: "POST",
-      headers: { Origin: "http://localhost" },
-      body: new URLSearchParams({
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         selectedModel: "claude-haiku-4-5",
-        thinkingEnabled: "maybe",
+        thinkingEnabled: false,
         thinkingEffort: "low",
       }),
     });
 
-    const response = await handleSettingsModel(request);
-    const body = await response.text();
+    const response = await handleSettingsModelAPI(request);
+    const body = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(savedSettingsCalls).toHaveLength(0);
-    expect(body).toContain("Model settings");
-    expect(body).toContain("Invalid thinkingEnabled value");
-  });
-
-  test("allows same-origin POSTs for model updates", async () => {
-    savedSettingsCalls.length = 0;
-
-    const request = new Request("http://localhost/settings/model", {
-      method: "POST",
-      headers: { Origin: "http://localhost" },
-      body: new URLSearchParams({
-        selectedModel: "claude-haiku-4-5",
-        thinkingEnabled: "off",
-        thinkingEffort: "low",
-      }),
-    });
-
-    const response = await handleSettingsModel(request);
-
-    expect(response.status).toBe(303);
-    expect(response.headers.get("Location")).toBe("/settings?saved=1");
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.settings.selectedModel).toBe("claude-haiku-4-5");
     expect(savedSettingsCalls).toEqual([
       {
         selectedModel: "claude-haiku-4-5",
@@ -118,58 +84,48 @@ describe("settings routes", () => {
     ]);
   });
 
-  test("rejects cross-site POSTs for model updates", async () => {
-    savedSettingsCalls.length = 0;
+  test("rejects request with wrong API key", async () => {
+    // Set env var for this test
+    const origKey = process.env.SETTINGS_API_KEY;
+    process.env.SETTINGS_API_KEY = "test-secret";
 
-    const request = new Request("http://localhost/settings/model", {
-      method: "POST",
-      headers: { Origin: "https://evil.example" },
-      body: new URLSearchParams({
-        selectedModel: "claude-haiku-4-5",
-        thinkingEnabled: "off",
-        thinkingEffort: "low",
-      }),
-    });
+    try {
+      const response = handleSettingsAPI(
+        new Request("http://localhost/api/settings"),
+      );
+      const body = await response.json();
 
-    const response = await handleSettingsModel(request);
-    const body = await response.text();
-
-    expect(response.status).toBe(403);
-    expect(savedSettingsCalls).toHaveLength(0);
-    expect(body).toContain("same-origin");
+      expect(response.status).toBe(403);
+      expect(body.error).toContain("Unauthorized");
+    } finally {
+      if (origKey === undefined) {
+        delete process.env.SETTINGS_API_KEY;
+      } else {
+        process.env.SETTINGS_API_KEY = origKey;
+      }
+    }
   });
 
-  test("rejects POSTs without browser origin context", async () => {
-    savedSettingsCalls.length = 0;
+  test("allows request with correct API key", async () => {
+    const origKey = process.env.SETTINGS_API_KEY;
+    process.env.SETTINGS_API_KEY = "test-secret";
 
-    const request = new Request("http://localhost/settings/model", {
-      method: "POST",
-      body: new URLSearchParams({
-        selectedModel: "claude-haiku-4-5",
-        thinkingEnabled: "off",
-        thinkingEffort: "low",
-      }),
-    });
+    try {
+      const response = handleSettingsAPI(
+        new Request("http://localhost/api/settings", {
+          headers: { "x-settings-key": "test-secret" },
+        }),
+      );
+      const body = await response.json();
 
-    const response = await handleSettingsModel(request);
-    const body = await response.text();
-
-    expect(response.status).toBe(403);
-    expect(savedSettingsCalls).toHaveLength(0);
-    expect(body).toContain("same-origin");
-  });
-
-  test("renders the current active configuration on the settings page", async () => {
-    const response = await handleSettingsPage(
-      new Request("http://localhost/settings?saved=1"),
-    );
-    const body = await response.text();
-
-    expect(response.status).toBe(200);
-    expect(body).toContain("Active configuration");
-    expect(body).toContain("claude-sonnet-4-6");
-    expect(body).toContain("Thinking enabled");
-    expect(body).toContain("Changes saved.");
-    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+      expect(response.status).toBe(200);
+      expect(body.settings).toBeDefined();
+    } finally {
+      if (origKey === undefined) {
+        delete process.env.SETTINGS_API_KEY;
+      } else {
+        process.env.SETTINGS_API_KEY = origKey;
+      }
+    }
   });
 });

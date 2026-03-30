@@ -14,8 +14,6 @@ coverage
 logs
 _.log
 api.log
-ccproxy-startup.log
-cloudflared-startup.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
@@ -38,3 +36,15 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # local git worktrees
 .worktrees/
+
+# startup logs
+ccproxy-startup.log
+cloudflared-startup.log
+
+# frontend build output & caches
+frontend/.output/
+frontend/node_modules/
+frontend/.vinxi/
+frontend/.tanstack/
+frontend/dist/
+frontend/vite.config.timestamp_*

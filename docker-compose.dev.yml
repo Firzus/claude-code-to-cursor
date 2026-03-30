@@ -1,0 +1,20 @@
+services:
+  api:
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ccproxy-data:/data
+    command: bun --hot run index.ts
+
+  frontend:
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend/src:/app/src
+    ports:
+      - "3111:3111"
+    command: npx vinxi dev --host --port 3111
+    environment:
+      - API_URL=http://api:8082
+
+  cloudflared: {}

@@ -1,0 +1,46 @@
+services:
+  api:
+    build: .
+    container_name: ccproxy-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8082}:8082"
+    volumes:
+      - ccproxy-data:/data
+    env_file: .env
+    environment:
+      - CCPROXY_DB_PATH=/data/ccproxy.db
+      - CCPROXY_AUTH_DIR=/data/auth
+      - LOG_DIR=/data/logs
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: ccproxy-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3111}:3111"
+    environment:
+      - API_URL=http://api:8082
+    depends_on:
+      api:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ccproxy-cloudflared
+    restart: unless-stopped
+    network_mode: "service:api"
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  ccproxy-data:

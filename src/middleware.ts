@@ -30,7 +30,7 @@ export function logRequestDetails(req: Request, endpoint: string) {
   console.log(`   URL: ${url.pathname}${url.search}`);
   console.log(`   Method: ${req.method}`);
 
-  // Log all headers to file only (verbose, useful for debugging tunnel issues)
+  // Log all headers to file only (verbose)
   const allHeaders: Record<string, string> = {};
   req.headers.forEach((value, key) => {
     allHeaders[key] = value;
@@ -59,28 +59,19 @@ export function extractHeaders(req: Request): Record<string, string> {
 
 /**
  * Check if the request IP is in the whitelist.
- * Only enforced when requests come through Cloudflare tunnel (have CF headers).
+ * All requests come through the Cloudflare tunnel; the client IP is
+ * extracted from CF-Connecting-IP or X-Forwarded-For headers.
  */
 export function checkIPWhitelist(req: Request): {
   allowed: boolean;
   ip?: string;
   reason?: string;
 } {
-  // If whitelist is empty (disabled), allow all requests
   if (config.allowedIPs.length === 0) {
     return { allowed: true, ip: "all" };
   }
 
-  // Only enforce IP whitelist when requests come through tunnel (have CF headers)
-  const cfRay = req.headers.get("cf-ray");
   const cfConnectingIp = req.headers.get("cf-connecting-ip");
-
-  // If no CF headers, assume local request (allow)
-  if (!cfRay && !cfConnectingIp) {
-    return { allowed: true, ip: "local" };
-  }
-
-  // If CF headers present, validate IP
   const clientIP =
     cfConnectingIp || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
 
@@ -91,6 +82,7 @@ export function checkIPWhitelist(req: Request): {
   const isAllowed = config.allowedIPs.includes(clientIP);
 
   if (!isAllowed) {
+    const cfRay = req.headers.get("cf-ray") || "none";
     console.log(
       `\n🚫 [SECURITY] Blocked request from unauthorized IP: ${clientIP}`
     );
