@@ -16,12 +16,20 @@ import { logger } from "./logger";
  * Creates a ReadableStream that converts Anthropic SSE events into OpenAI-compatible
  * chat.completion.chunk SSE format in real-time.
  */
+export interface StreamUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
 export function createOpenAIStreamFromAnthropic(
   response: Response,
   streamId: string,
   model: string,
   streamOptions?: { include_usage?: boolean },
-  userToolNames?: Set<string>
+  userToolNames?: Set<string>,
+  onComplete?: (usage: StreamUsage) => void,
 ): ReadableStream {
   const reader = response.body!.getReader();
   const HEARTBEAT_INTERVAL = 5000;
@@ -126,6 +134,7 @@ export function createOpenAIStreamFromAnthropic(
               safeEnqueue(
                 new TextEncoder().encode("data: [DONE]\n\n")
               );
+              onComplete?.({ inputTokens: usageInputTokens, outputTokens: usageOutputTokens, cacheReadTokens: usageCacheReadTokens, cacheCreationTokens: usageCacheCreationTokens });
             }
             break;
           }
@@ -554,6 +563,7 @@ export function createOpenAIStreamFromAnthropic(
                 logger.verbose(
                   `   [Debug] Sent [DONE] chunk with finish_reason: ${finishReason}`
                 );
+                onComplete?.({ inputTokens: usageInputTokens, outputTokens: usageOutputTokens, cacheReadTokens: usageCacheReadTokens, cacheCreationTokens: usageCacheCreationTokens });
               }
             } catch (parseError) {
               if (!cancelled) {

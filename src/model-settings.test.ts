@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_MODEL_SETTINGS,
+  getApiModelId,
+  getContextLength,
   getExposedModels,
   getThinkingBudget,
   isAllowedPublicModel,
@@ -58,6 +60,18 @@ describe("model settings contract", () => {
       thinkingEnabled: true,
       thinkingEffort: "medium",
     });
+  });
+
+  test("returns API model ID unchanged (1M context via beta header)", () => {
+    expect(getApiModelId("claude-opus-4-6")).toBe("claude-opus-4-6");
+    expect(getApiModelId("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
+    expect(getApiModelId("claude-haiku-4-5")).toBe("claude-haiku-4-5");
+  });
+
+  test("returns correct context length per model", () => {
+    expect(getContextLength("claude-opus-4-6")).toBe(1000000);
+    expect(getContextLength("claude-sonnet-4-6")).toBe(200000);
+    expect(getContextLength("claude-haiku-4-5")).toBe(200000);
   });
 
   test("rejects unsupported selectedModel values", () => {

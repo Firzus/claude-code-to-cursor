@@ -47,6 +47,54 @@ describe("openaiToAnthropic", () => {
       budget_tokens: 4096,
     });
     expect(result.temperature).toBe(1);
-    expect(result.max_tokens).toBe(20480);
+    expect(result.max_tokens).toBe(12288);
+  });
+
+  test("respects reasoning_effort from client over stored settings", () => {
+    const settings: ModelSettings = {
+      selectedModel: "claude-opus-4-6",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
+    };
+
+    const request = {
+      ...createRequest(),
+      reasoning_effort: "low" as const,
+    };
+
+    const result = openaiToAnthropic(request, settings);
+
+    // Should use client's "low" (4096) instead of stored "high" (16384)
+    expect(result.thinking).toEqual({
+      type: "enabled",
+      budget_tokens: 4096,
+    });
+  });
+
+  test("falls back to stored settings when reasoning_effort is absent", () => {
+    const settings: ModelSettings = {
+      selectedModel: "claude-opus-4-6",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
+    };
+
+    const result = openaiToAnthropic(createRequest(), settings);
+
+    expect(result.thinking).toEqual({
+      type: "enabled",
+      budget_tokens: 16384,
+    });
+  });
+
+  test("maps opus to 1M context API model ID", () => {
+    const settings: ModelSettings = {
+      selectedModel: "claude-opus-4-6",
+      thinkingEnabled: false,
+      thinkingEffort: "medium",
+    };
+
+    const result = openaiToAnthropic(createRequest(), settings);
+
+    expect(result.model).toBe("claude-opus-4-6");
   });
 });

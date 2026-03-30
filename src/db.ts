@@ -40,6 +40,10 @@ function initSchema(database: Database) {
     )
   `);
 
+  // Migration: add cache token columns
+  try { database.run("ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.run("ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0"); } catch {}
+
   // Create indexes for common queries
   database.run(
     `CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`
@@ -60,6 +64,8 @@ interface RequestRecord {
   source: RequestSource;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
   stream: boolean;
   latencyMs?: number;
   error?: string;
@@ -72,14 +78,16 @@ export function recordRequest(record: RequestRecord): void {
   const database = getDb();
 
   database.run(
-    `INSERT INTO requests (timestamp, model, source, input_tokens, output_tokens, stream, latency_ms, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO requests (timestamp, model, source, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, stream, latency_ms, error)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Date.now(),
       record.model,
       record.source,
       record.inputTokens,
       record.outputTokens,
+      record.cacheReadTokens ?? 0,
+      record.cacheCreationTokens ?? 0,
       record.stream ? 1 : 0,
       record.latencyMs ?? null,
       record.error ?? null,
@@ -93,6 +101,9 @@ interface AnalyticsSummary {
   errorRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheCreationTokens: number;
+  cacheHitRate: number;
   periodStart: number;
   periodEnd: number;
 }
@@ -113,7 +124,9 @@ export function getAnalytics(
         SUM(CASE WHEN source = 'claude_code' THEN 1 ELSE 0 END) as claude_code_requests,
         SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_requests,
         SUM(input_tokens) as total_input_tokens,
-        SUM(output_tokens) as total_output_tokens
+        SUM(output_tokens) as total_output_tokens,
+        SUM(cache_read_tokens) as total_cache_read_tokens,
+        SUM(cache_creation_tokens) as total_cache_creation_tokens
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?`
     )
@@ -123,14 +136,24 @@ export function getAnalytics(
       error_requests: number;
       total_input_tokens: number;
       total_output_tokens: number;
+      total_cache_read_tokens: number;
+      total_cache_creation_tokens: number;
     };
+
+  const cacheRead = totals.total_cache_read_tokens || 0;
+  const cacheCreation = totals.total_cache_creation_tokens || 0;
+  const totalInput = totals.total_input_tokens || 0;
+  const allInput = totalInput + cacheRead + cacheCreation;
 
   return {
     totalRequests: totals.total_requests || 0,
     claudeCodeRequests: totals.claude_code_requests || 0,
     errorRequests: totals.error_requests || 0,
-    totalInputTokens: totals.total_input_tokens || 0,
+    totalInputTokens: totalInput,
     totalOutputTokens: totals.total_output_tokens || 0,
+    totalCacheReadTokens: cacheRead,
+    totalCacheCreationTokens: cacheCreation,
+    cacheHitRate: allInput > 0 ? cacheRead / allInput : 0,
     periodStart: since,
     periodEnd: until,
   };

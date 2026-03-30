@@ -8,6 +8,7 @@ import {
 import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest } from "./db";
 import { normalizeAnthropicToolIds } from "./request-normalization";
+import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
 import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
 import { logger } from "./logger";
 
@@ -131,8 +132,8 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
         : Number(val) || 8192;
       prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
       prepared.temperature = 1;
-      if (prepared.max_tokens < budgetTokens + 4096) {
-        prepared.max_tokens = budgetTokens + 16384;
+      if (prepared.max_tokens < budgetTokens + THINKING_MAX_TOKENS_PADDING) {
+        prepared.max_tokens = budgetTokens + THINKING_MAX_TOKENS_PADDING;
       }
       logger.verbose(`   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
     }
@@ -200,7 +201,41 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
     }
   }
 
+  // Add cache_control breakpoint on the last system block to enable prompt caching
+  if (systemPrompts.length > 0) {
+    const lastIdx = systemPrompts.length - 1;
+    systemPrompts[lastIdx] = {
+      ...systemPrompts[lastIdx],
+      cache_control: { type: "ephemeral" },
+    };
+  }
+
   prepared.system = systemPrompts;
+
+  // Add cache_control breakpoint on conversation history (second-to-last user message)
+  // This caches the entire conversation prefix, so subsequent requests in an agent loop
+  // read ~50K+ tokens from cache at ~10% cost
+  if (prepared.messages && Array.isArray(prepared.messages)) {
+    const userMsgIndices: number[] = [];
+    for (let i = 0; i < prepared.messages.length; i++) {
+      if (prepared.messages[i].role === "user") userMsgIndices.push(i);
+    }
+    if (userMsgIndices.length >= 2) {
+      const targetIdx = userMsgIndices[userMsgIndices.length - 2]!;
+      const msg = prepared.messages[targetIdx];
+      if (typeof msg.content === "string") {
+        prepared.messages[targetIdx] = {
+          ...msg,
+          content: [{ type: "text", text: msg.content, cache_control: { type: "ephemeral" } }],
+        };
+      } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+        const blocks = [...msg.content];
+        const lastBlock = blocks[blocks.length - 1]!;
+        blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
+        prepared.messages[targetIdx] = { ...msg, content: blocks };
+      }
+    }
+  }
 
   // Log the final system prompt that will be sent to Claude Code (verbose to file)
   const finalSystemContent = systemPrompts
@@ -372,34 +407,6 @@ async function makeClaudeCodeRequest(
         };
       }
 
-      // If the error is related to tools, retry without tools
-      const isToolError =
-        errorMessage.includes("tool") ||
-        errorMessage.includes("tools") ||
-        errorMessage.includes("tool_choice") ||
-        errorMessage.includes("input_schema");
-
-      if (isToolError && preparedBody.tools) {
-        console.log(
-          `   [Debug] Claude Code rejected tools (${errorMessage}), retrying without tools...`
-        );
-        delete preparedBody.tools;
-        delete preparedBody.tool_choice;
-
-        const retryResponse = await fetch(apiUrl, {
-          method: "POST",
-          headers: requestHeaders,
-          body: JSON.stringify(preparedBody),
-        });
-
-        if (retryResponse.ok || (retryResponse.status !== 400 && retryResponse.status !== 401 && retryResponse.status !== 403)) {
-          console.log(`   [Debug] Retry without tools succeeded (status: ${retryResponse.status})`);
-          return { success: true, response: stripMcpPrefixFromResponse(retryResponse), source: "claude_code" };
-        }
-
-        console.log(`   [Debug] Retry without tools also failed (status: ${retryResponse.status})`);
-      }
-
       console.log("Claude Code 400 error:", JSON.stringify(errorBody));
       return {
         success: false,
@@ -486,17 +493,8 @@ async function extractUsageFromResponse(
   stream: boolean,
   startTime: number
 ): Promise<Response> {
-  // For streaming, we can't easily extract usage without consuming the stream
-  // Record with zeros and let the client track actual usage
+  // For streaming, token tracking is handled by the stream handler's onComplete callback
   if (stream) {
-    recordRequest({
-      model,
-      source: "claude_code",
-      inputTokens: 0,
-      outputTokens: 0,
-      stream: true,
-      latencyMs: Date.now() - startTime,
-    });
     return response;
   }
 
@@ -504,7 +502,7 @@ async function extractUsageFromResponse(
   try {
     const cloned = response.clone();
     const data = (await cloned.json()) as {
-      usage?: { input_tokens?: number; output_tokens?: number };
+      usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
     };
     const usage = data.usage || {};
 
@@ -513,6 +511,8 @@ async function extractUsageFromResponse(
       source: "claude_code",
       inputTokens: usage.input_tokens || 0,
       outputTokens: usage.output_tokens || 0,
+      cacheReadTokens: usage.cache_read_input_tokens || 0,
+      cacheCreationTokens: usage.cache_creation_input_tokens || 0,
       stream: false,
       latencyMs: Date.now() - startTime,
     });

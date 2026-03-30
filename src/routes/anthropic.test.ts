@@ -12,6 +12,7 @@ describe("handleAnthropicMessages", () => {
         thinkingEffort: "high" as const,
       }),
       saveModelSettings: () => {},
+      recordRequest: () => {},
     }));
 
     mock.module("../anthropic-client", () => ({
@@ -55,6 +56,7 @@ describe("handleAnthropicMessages", () => {
         thinkingEffort: "medium" as const,
       }),
       saveModelSettings: () => {},
+      recordRequest: () => {},
     }));
 
     mock.module("../anthropic-client", () => ({
@@ -104,6 +106,7 @@ describe("handleAnthropicMessages", () => {
         thinkingEffort: "low" as const,
       }),
       saveModelSettings: () => {},
+      recordRequest: () => {},
     }));
 
     mock.module("../anthropic-client", () => ({

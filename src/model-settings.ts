@@ -19,6 +19,9 @@ export const DEFAULT_MODEL_SETTINGS = {
   thinkingEffort: "high",
 } as const satisfies ModelSettings;
 
+/** Padding added to thinking budget to compute max_tokens */
+export const THINKING_MAX_TOKENS_PADDING = 8192;
+
 const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
 
 const THINKING_BUDGETS: Record<ThinkingEffort, number> = {
@@ -47,6 +50,17 @@ export function getInvalidPublicModelMessage(modelId: string): string {
 
 export function getThinkingBudget(effort: ThinkingEffort): number {
   return THINKING_BUDGETS[effort];
+}
+
+/** Maps a user-facing selected model to the actual API model ID */
+export function getApiModelId(model: SupportedSelectedModel): string {
+  return model;
+}
+
+/** Returns the context window size for a given selected model */
+export function getContextLength(model: SupportedSelectedModel): number {
+  if (model === "claude-opus-4-6") return 1000000;
+  return 200000;
 }
 
 export function validateModelSettings(input: unknown): ModelSettings {

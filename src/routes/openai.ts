@@ -1,5 +1,5 @@
 import { proxyRequest } from "../anthropic-client";
-import { getModelSettings } from "../db";
+import { getModelSettings, recordRequest } from "../db";
 import { logRequestDetails, corsHeaders } from "../middleware";
 import {
   openaiToAnthropic,
@@ -32,33 +32,14 @@ function indentBlock(text: string, prefix = "      "): string {
 }
 
 function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
-  const bodyStr = JSON.stringify(openaiBody, null, 2);
-  const truncatedBody =
-    bodyStr.length > 500
-      ? bodyStr.substring(0, 500) + "... [truncated]"
-      : bodyStr;
-
-  console.log(`\n📋 [Cursor Request Body]:`);
-  console.log(`   Model: "${openaiBody.model}"`);
-  console.log(`   Stream: ${openaiBody.stream || false}`);
-  console.log(
-    `   Max Tokens: ${openaiBody.max_tokens || openaiBody.max_completion_tokens || "not set"}`
-  );
-  console.log(`   Temperature: ${openaiBody.temperature || "not set"}`);
-  console.log(`   Stream Options: ${JSON.stringify(openaiBody.stream_options) || "not set"}`);
-  console.log(`   Messages Count: ${openaiBody.messages?.length || 0}`);
-
-  const allKeys = Object.keys(openaiBody);
-  console.log(`   All Request Keys: ${allKeys.join(", ")}`);
-  logger.info(`   All Request Keys: ${allKeys.join(", ")}`);
+  console.log(`\n📋 [Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`);
 
   if (openaiBody.reasoning_effort) {
     console.log(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
-    logger.info(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
   }
 
   logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
-  logger.verbose(bodyStr);
+  logger.verbose(JSON.stringify(openaiBody, null, 2));
 
   if (openaiBody.messages && openaiBody.messages.length > 0) {
     logger.verbose(`\n📝 [Cursor Messages]:`);
@@ -69,8 +50,6 @@ function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
       logger.verbose(`   ${indentBlock(content)}`);
     });
   }
-
-  console.log(`\n   Body Preview: ${truncatedBody}`);
 }
 
 function logAnthropicConversion(
@@ -167,12 +146,25 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         }
       }
 
+      const streamStartTime = Date.now();
       const stream = createOpenAIStreamFromAnthropic(
         response,
         streamId,
         openaiBody.model,
         openaiBody.stream_options,
-        userToolNames
+        userToolNames,
+        (usage) => {
+          recordRequest({
+            model: anthropicBody.model,
+            source: "claude_code",
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            cacheReadTokens: usage.cacheReadTokens,
+            cacheCreationTokens: usage.cacheCreationTokens,
+            stream: true,
+            latencyMs: Date.now() - streamStartTime,
+          });
+        },
       );
 
       return new Response(stream, { headers: responseHeaders });

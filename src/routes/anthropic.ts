@@ -1,12 +1,15 @@
 import { proxyRequest } from "../anthropic-client";
-import { getModelSettings } from "../db";
+import { getModelSettings, recordRequest } from "../db";
 import { logRequestDetails, corsHeaders } from "../middleware";
 import { normalizeAnthropicRequestModel } from "../request-normalization";
 import {
+  getApiModelId,
   getInvalidPublicModelMessage,
   getThinkingBudget,
   isAllowedPublicModel,
   PUBLIC_MODEL_ID,
+  THINKING_MAX_TOKENS_PADDING,
+  type ThinkingEffort,
 } from "../model-settings";
 import type { AnthropicRequest, AnthropicError, AnthropicResponse } from "../types";
 
@@ -59,10 +62,16 @@ function rewriteAnthropicSseLine(line: string): string {
 
 function rewriteAnthropicSseResponseModel(
   body: ReadableStream<Uint8Array>,
+  onComplete?: (usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) => void,
 ): ReadableStream<Uint8Array> {
   const reader = body.getReader();
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -81,6 +90,29 @@ function rewriteAnthropicSseResponseModel(
           while (newlineIndex !== -1) {
             const rawLine = buffer.slice(0, newlineIndex);
             const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+
+            // Extract token usage from SSE events
+            if (line.startsWith("data: ") && onComplete) {
+              try {
+                const data = JSON.parse(line.slice(6)) as {
+                  type?: string;
+                  message?: { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+                  usage?: { output_tokens?: number };
+                };
+                if (data.type === "message_start" && data.message?.usage) {
+                  const u = data.message.usage;
+                  cacheReadTokens = u.cache_read_input_tokens ?? 0;
+                  cacheCreationTokens = u.cache_creation_input_tokens ?? 0;
+                  inputTokens = (u.input_tokens ?? 0) + cacheReadTokens + cacheCreationTokens;
+                }
+                if (data.type === "message_delta" && data.usage?.output_tokens !== undefined) {
+                  outputTokens = data.usage.output_tokens;
+                }
+              } catch {
+                // ignore parse errors
+              }
+            }
+
             controller.enqueue(encoder.encode(`${rewriteAnthropicSseLine(line)}\n`));
             buffer = buffer.slice(newlineIndex + 1);
             newlineIndex = buffer.indexOf("\n");
@@ -92,6 +124,7 @@ function rewriteAnthropicSseResponseModel(
           controller.enqueue(encoder.encode(rewriteAnthropicSseLine(buffer)));
         }
 
+        onComplete?.({ inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens });
         controller.close();
       } catch (error) {
         controller.error(error);
@@ -102,7 +135,10 @@ function rewriteAnthropicSseResponseModel(
   });
 }
 
-async function rewriteAnthropicResponseModel(response: Response): Promise<Response> {
+async function rewriteAnthropicResponseModel(
+  response: Response,
+  onStreamComplete?: (usage: { inputTokens: number; outputTokens: number }) => void,
+): Promise<Response> {
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("Content-Length");
   responseHeaders.delete("Content-Encoding");
@@ -117,7 +153,7 @@ async function rewriteAnthropicResponseModel(response: Response): Promise<Respon
   }
 
   if (contentType.includes("text/event-stream") && response.body) {
-    return new Response(rewriteAnthropicSseResponseModel(response.body), {
+    return new Response(rewriteAnthropicSseResponseModel(response.body, onStreamComplete), {
       status: response.status,
       headers: responseHeaders,
     });
@@ -148,10 +184,17 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       );
     }
     const targetModel = modelSettings.selectedModel;
-    const thinkingBudget = modelSettings.thinkingEnabled
-      ? getThinkingBudget(modelSettings.thinkingEffort)
+    const apiModel = getApiModelId(targetModel);
+    // Respect client's reasoning_budget if it maps to a known effort level
+    const clientEffort = typeof incomingBody.reasoning_budget === "string"
+      && ["low", "medium", "high"].includes(incomingBody.reasoning_budget)
+      ? incomingBody.reasoning_budget as ThinkingEffort
       : null;
-    const normalizedBody = normalizeAnthropicRequestModel(incomingBody, targetModel);
+    const effectiveEffort = clientEffort || modelSettings.thinkingEffort;
+    const thinkingBudget = modelSettings.thinkingEnabled
+      ? getThinkingBudget(effectiveEffort)
+      : null;
+    const normalizedBody = normalizeAnthropicRequestModel(incomingBody, apiModel);
     const {
       reasoning_budget: _clientReasoningBudget,
       thinking: _clientThinking,
@@ -169,7 +212,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
             ...bodyWithoutClientThinkingControls,
             thinking: { type: "enabled" as const, budget_tokens: thinkingBudget },
             temperature: 1,
-            max_tokens: Math.max(normalizedBody.max_tokens ?? 0, thinkingBudget + 16384),
+            max_tokens: Math.max(normalizedBody.max_tokens ?? 0, thinkingBudget + THINKING_MAX_TOKENS_PADDING),
           };
 
     console.log(
@@ -177,7 +220,24 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     );
 
     const proxiedResponse = await proxyRequest("/v1/messages", body);
-    const response = await rewriteAnthropicResponseModel(proxiedResponse);
+    const streamStartTime = Date.now();
+    const response = await rewriteAnthropicResponseModel(
+      proxiedResponse,
+      body.stream
+        ? (usage) => {
+            recordRequest({
+              model: body.model,
+              source: "claude_code",
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              cacheReadTokens: usage.cacheReadTokens,
+              cacheCreationTokens: usage.cacheCreationTokens,
+              stream: true,
+              latencyMs: Date.now() - streamStartTime,
+            });
+          }
+        : undefined,
+    );
 
     const responseHeaders = new Headers(response.headers);
     for (const [key, value] of Object.entries(corsHeaders())) {

@@ -7,10 +7,13 @@ import type { AnthropicRequest, AnthropicMessage, AnthropicResponse, ContentBloc
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
+  getApiModelId,
   getInvalidPublicModelMessage,
   getThinkingBudget,
   isAllowedPublicModel,
+  THINKING_MAX_TOKENS_PADDING,
   type ModelSettings,
+  type ThinkingEffort,
 } from "./model-settings";
 
 interface OpenAIMessage {
@@ -253,12 +256,16 @@ export function openaiToAnthropic(
   }
 
   const targetModel = modelSettings.selectedModel;
+  const apiModel = getApiModelId(targetModel);
+  // Respect Cursor's reasoning_effort if provided, otherwise use stored settings
+  const effectiveEffort: ThinkingEffort =
+    (request.reasoning_effort as ThinkingEffort) || modelSettings.thinkingEffort;
   const thinkingBudget = modelSettings.thinkingEnabled
-    ? getThinkingBudget(modelSettings.thinkingEffort)
+    ? getThinkingBudget(effectiveEffort)
     : null;
 
   console.log(
-    `   [Debug] Request model "${request.model}" → using model="${targetModel}" with thinking ${thinkingBudget === null ? "disabled" : `budget=${thinkingBudget} tokens (effort=${modelSettings.thinkingEffort})`}`,
+    `   [Debug] Request model "${request.model}" → using model="${apiModel}" with thinking ${thinkingBudget === null ? "disabled" : `budget=${thinkingBudget} tokens (effort=${effectiveEffort}${request.reasoning_effort ? ", from client" : ""})`}`,
   );
 
   const messages: AnthropicMessage[] = [];
@@ -402,14 +409,14 @@ export function openaiToAnthropic(
       : "Default (4096)";
 
   // Ensure max_tokens is large enough for thinking budget + output
-  if (thinkingBudget !== null && maxTokens < thinkingBudget + 4096) {
-    maxTokens = thinkingBudget + 16384;
+  if (thinkingBudget !== null && maxTokens < thinkingBudget + THINKING_MAX_TOKENS_PADDING) {
+    maxTokens = thinkingBudget + THINKING_MAX_TOKENS_PADDING;
   }
 
   console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
 
   const result: AnthropicRequest = {
-    model: targetModel,
+    model: apiModel,
     messages,
     system,
     max_tokens: maxTokens,

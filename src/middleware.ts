@@ -1,4 +1,5 @@
 import { getConfig } from "./config";
+import { logger } from "./logger";
 
 const config = getConfig();
 
@@ -29,12 +30,12 @@ export function logRequestDetails(req: Request, endpoint: string) {
   console.log(`   URL: ${url.pathname}${url.search}`);
   console.log(`   Method: ${req.method}`);
 
-  // Log all headers (useful for debugging tunnel issues)
+  // Log all headers to file only (verbose, useful for debugging tunnel issues)
   const allHeaders: Record<string, string> = {};
   req.headers.forEach((value, key) => {
     allHeaders[key] = value;
   });
-  console.log(`   All Headers: ${JSON.stringify(allHeaders, null, 2)}`);
+  logger.verbose(`   All Headers: ${JSON.stringify(allHeaders, null, 2)}`);
 }
 
 /**

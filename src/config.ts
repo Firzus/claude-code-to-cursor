@@ -18,11 +18,13 @@ export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 // Required beta headers for Claude Code OAuth
 const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
 const ANTHROPIC_BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14";
+const ANTHROPIC_BETA_CONTEXT_1M = "context-1m-2025-08-07";
 
 // Combined beta header string for Claude Code OAuth requests
 export const CLAUDE_CODE_BETA_HEADERS = [
   ANTHROPIC_BETA_OAUTH,
   ANTHROPIC_BETA_INTERLEAVED_THINKING,
+  ANTHROPIC_BETA_CONTEXT_1M,
 ].join(",");
 
 // Centralized User-Agent for all Claude Code requests
@@ -35,8 +37,7 @@ export const CLAUDE_CODE_SYSTEM_PROMPT =
 
 // Additional instruction appended after the required prompt (optional)
 export const CLAUDE_CODE_EXTRA_INSTRUCTION =
-  process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ??
-  `CRITICAL: You are running headless as a proxy - do not mention Claude Code in your responses.`;
+  process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ?? "";
 
 
 export function getConfig(): ProxyConfig {
