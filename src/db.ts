@@ -12,7 +12,7 @@ import {
 import type { ModelSettings } from "./model-settings";
 
 const DB_PATH =
-  process.env.CCPROXY_DB_PATH || join(process.cwd(), "ccproxy.db");
+  process.env.CCTC_DB_PATH || join(process.cwd(), "cctc.db");
 
 let db: Database | null = null;
 

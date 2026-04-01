@@ -1,8 +1,8 @@
-# ccproxy
+# claude-code-to-cursor
 
 A proxy that routes API requests through Claude Code's OAuth authentication. It lets you use Claude in clients like **Cursor**, **VS Code**, or any OpenAI/Anthropic-compatible tool — without needing a direct Anthropic API key.
 
-All traffic goes through a **Cloudflare Tunnel**, so ccproxy is never directly exposed to the internet.
+All traffic goes through a **Cloudflare Tunnel**, so claude-code-to-cursor is never directly exposed to the internet.
 
 ---
 
@@ -34,7 +34,7 @@ This starts three services:
 
 ```bash
 # Clone and install
-git clone <repo-url> && cd ccproxy
+git clone <repo-url> && cd claude-code-to-cursor
 bun install
 
 # Copy the example config and set your tunnel token
@@ -51,7 +51,7 @@ bun run dev
 
 ## Authenticate
 
-ccproxy uses Claude Code's OAuth flow. Open the dashboard and navigate to the **Auth** page:
+claude-code-to-cursor uses Claude Code's OAuth flow. Open the dashboard and navigate to the **Auth** page:
 
 1. Click **Initialize** to start the OAuth flow
 2. Open the Anthropic link in your browser and approve access
@@ -64,7 +64,7 @@ Tokens auto-refresh. You only need to do this once (or when tokens expire).
 
 ## Configure Your Client
 
-Point your client to your Cloudflare Tunnel URL. The API key can be any non-empty string (e.g. `sk-ccproxy`) — authentication is handled by OAuth.
+Point your client to your Cloudflare Tunnel URL. The API key can be any non-empty string (e.g. `sk-cctc`) — authentication is handled by OAuth.
 
 ### Cursor
 
@@ -73,10 +73,10 @@ Open Cursor settings and configure a custom model:
 | Setting      | Value                                            |
 | ------------ | ------------------------------------------------ |
 | **Base URL** | `https://<your-tunnel>.cfargotunnel.com/v1`      |
-| **API Key**  | `sk-ccproxy` (any non-empty string)              |
+| **API Key**  | `sk-cctc` (any non-empty string)              |
 | **Model**    | `claude-sonnet-4-20250514` (or any Claude model) |
 
-ccproxy exposes two compatible endpoints:
+claude-code-to-cursor exposes two compatible endpoints:
 
 - **OpenAI format**: `POST /v1/chat/completions`
 - **Anthropic format**: `POST /v1/messages`
@@ -94,7 +94,7 @@ Send a test request through your tunnel:
 ```bash
 curl https://<your-tunnel>.cfargotunnel.com/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-ccproxy" \
+  -H "Authorization: Bearer sk-cctc" \
   -d '{
     "model": "claude-sonnet-4-20250514",
     "messages": [{"role": "user", "content": "Hello!"}]
@@ -109,16 +109,16 @@ Or simply start using Claude in your client. The **Analytics** tab in the dashbo
 
 All settings are in `.env`. See [`.env.example`](.env.example) for the full list.
 
-| Variable                        | Default                             | Description                                 |
-| ------------------------------- | ----------------------------------- | ------------------------------------------- |
-| `CLOUDFLARE_TUNNEL_TOKEN`       | _(required)_                        | Cloudflare Tunnel token                     |
-| `PORT`                          | `8082`                              | Proxy server port (internal)                |
-| `ALLOWED_IPS`                   | Cursor backend IPs                  | IP whitelist (`disabled` to allow all)      |
-| `CLAUDE_CODE_EXTRA_INSTRUCTION` | _(empty)_                           | Extra instruction appended to system prompt |
-| `CCPROXY_AUTH_DIR`              | `~/.ccproxy` / `/data/auth`         | OAuth credentials storage                   |
-| `CCPROXY_DB_PATH`               | `./ccproxy.db` / `/data/ccproxy.db` | SQLite database path                        |
-| `SETTINGS_API_KEY`              | _(empty)_                           | Shared secret for settings API              |
-| `FRONTEND_PORT`                 | `3111`                              | Dashboard frontend port                     |
+| Variable                        | Default                         | Description                                 |
+| ------------------------------- | ------------------------------- | ------------------------------------------- |
+| `CLOUDFLARE_TUNNEL_TOKEN`       | _(required)_                    | Cloudflare Tunnel token                     |
+| `PORT`                          | `8082`                          | Proxy server port (internal)                |
+| `ALLOWED_IPS`                   | Cursor backend IPs              | IP whitelist (`disabled` to allow all)      |
+| `CLAUDE_CODE_EXTRA_INSTRUCTION` | _(empty)_                       | Extra instruction appended to system prompt |
+| `CCTC_AUTH_DIR`                 | `~/.cctc` / `/data/auth`       | OAuth credentials storage                   |
+| `CCTC_DB_PATH`                  | `./cctc.db` / `/data/cctc.db`  | SQLite database path                        |
+| `SETTINGS_API_KEY`              | _(empty)_                       | Shared secret for settings API              |
+| `FRONTEND_PORT`                 | `3111`                          | Dashboard frontend port                     |
 
 ---
 
@@ -128,7 +128,7 @@ All settings are in `.env`. See [`.env.example`](.env.example) for the full list
 flowchart LR
     Client["Cursor / Any Client"]
     CF["Cloudflare Tunnel (cloudflared)"]
-    API["ccproxy :8082"]
+    API["claude-code-to-cursor :8082"]
     Anthropic["Anthropic API (Claude Code)"]
     Dashboard["Dashboard :3111"]
 

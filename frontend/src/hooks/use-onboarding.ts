@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { useHealth } from "./use-health";
 
-const STORAGE_KEY = "ccproxy:onboarding-complete";
+const STORAGE_KEY = "cctc:onboarding-complete";
 
 function subscribe(cb: () => void) {
   window.addEventListener("storage", cb);

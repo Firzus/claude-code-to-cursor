@@ -3,8 +3,8 @@ import { join } from "node:path";
 import type { ProxyConfig } from "./types";
 
 // OAuth credentials persistence (own directory, not Claude Code's)
-export const CCPROXY_AUTH_DIR = process.env.CCPROXY_AUTH_DIR || join(homedir(), ".ccproxy");
-export const CCPROXY_AUTH_PATH = join(CCPROXY_AUTH_DIR, "auth.json");
+export const CCTC_AUTH_DIR = process.env.CCTC_AUTH_DIR || join(homedir(), ".cctc");
+export const CCTC_AUTH_PATH = join(CCTC_AUTH_DIR, "auth.json");
 
 export const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 export const ANTHROPIC_TOKEN_URL =

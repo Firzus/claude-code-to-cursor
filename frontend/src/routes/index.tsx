@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-const STORAGE_KEY = "ccproxy:onboarding-complete";
+const STORAGE_KEY = "cctc:onboarding-complete";
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {

@@ -35,7 +35,7 @@ export function NavBar() {
               <line x1="8" y1="12" x2="16" y2="12" opacity="0.4" />
             </svg>
             <span className="text-sm font-semibold tracking-tight">
-              ccproxy
+              claude-code-to-cursor
             </span>
           </Link>
           <span className="text-border hidden sm:inline">/</span>

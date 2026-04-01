@@ -3,7 +3,7 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
-      - ccproxy-data:/data
+      - cctc-data:/data
     command: bun --hot run index.ts
 
   frontend:

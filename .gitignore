@@ -38,7 +38,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .worktrees/
 
 # startup logs
-ccproxy-startup.log
+cctc-startup.log
 cloudflared-startup.log
 
 # frontend build output & caches

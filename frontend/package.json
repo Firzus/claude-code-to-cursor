@@ -1,5 +1,5 @@
 {
-  "name": "ccproxy-frontend",
+  "name": "claude-code-to-cursor-frontend",
   "private": true,
   "type": "module",
   "scripts": {

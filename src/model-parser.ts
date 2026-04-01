@@ -11,7 +11,7 @@ export interface ParsedModel {
 }
 
 /**
- * Parses the single public model ID exposed by ccproxy.
+ * Parses the single public model ID exposed by claude-code-to-cursor.
  */
 export function parseModelId(modelId: string): ParsedModel | null {
   if (!isAllowedPublicModel(modelId)) return null;

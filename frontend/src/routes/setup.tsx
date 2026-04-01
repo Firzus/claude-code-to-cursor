@@ -34,11 +34,11 @@ const STEPS = [
 
 type StepId = (typeof STEPS)[number]["id"];
 
-const STEP_STORAGE_KEY = "ccproxy:setup-step";
+const STEP_STORAGE_KEY = "cctc:setup-step";
 
 function getProxyBase() {
   if (typeof window === "undefined") return "http://localhost:8082";
-  return `${window.location.protocol}//${window.location.hostname}:${window.__CCPROXY_API_PORT__ || 8082}`;
+  return `${window.location.protocol}//${window.location.hostname}:${window.__CCTC_API_PORT__ || 8082}`;
 }
 
 function getInitialStep(): StepId {
@@ -156,7 +156,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           First-time setup
         </div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome to ccproxy
+          Welcome to claude-code-to-cursor
         </h1>
         <p className="text-[14px] text-muted-foreground leading-relaxed max-w-md mx-auto">
           Route API requests through Claude Code OAuth. Use Claude in Cursor and
@@ -268,7 +268,7 @@ function ConfigureStep({
           Configure your client
         </h2>
         <p className="text-[13px] text-muted-foreground">
-          Point Cursor (or any compatible client) to ccproxy.
+          Point Cursor (or any compatible client) to claude-code-to-cursor.
         </p>
       </div>
 
@@ -276,7 +276,7 @@ function ConfigureStep({
         <ConfigField label="Base URL" value={`${base}/v1`} mono />
         <ConfigField
           label="API Key"
-          value="sk-ccproxy"
+          value="sk-cctc"
           sub="Any non-empty string"
           mono
         />
@@ -319,7 +319,7 @@ function ConfigureStep({
         <CopyBlock
           value={`curl ${base}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer sk-ccproxy" \\
+  -H "Authorization: Bearer sk-cctc" \\
   -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello!"}]}'`}
         />
       </div>
@@ -472,7 +472,7 @@ function VerifyStep({
           <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
           <div className="text-[15px] font-semibold">Setup complete</div>
           <p className="text-[13px] text-muted-foreground">
-            ccproxy is working. Your requests will appear in the Analytics
+            claude-code-to-cursor is working. Your requests will appear in the Analytics
             dashboard.
           </p>
         </div>

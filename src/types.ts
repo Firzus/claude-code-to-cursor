@@ -1,4 +1,4 @@
-export interface CcproxyAuth {
+export interface CctcAuth {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;

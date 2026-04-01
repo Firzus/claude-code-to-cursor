@@ -1,14 +1,14 @@
 import { mkdirSync } from "node:fs";
 import {
-  CCPROXY_AUTH_DIR,
-  CCPROXY_AUTH_PATH,
+  CCTC_AUTH_DIR,
+  CCTC_AUTH_PATH,
   CLAUDE_CLIENT_ID,
   ANTHROPIC_TOKEN_URL,
   ANTHROPIC_AUTHORIZE_URL,
   OAUTH_REDIRECT_URI,
   OAUTH_SCOPES,
 } from "./config";
-import type { CcproxyAuth, TokenInfo, TokenRefreshResponse } from "./types";
+import type { CctcAuth, TokenInfo, TokenRefreshResponse } from "./types";
 
 let cachedToken: TokenInfo | null = null;
 
@@ -58,7 +58,7 @@ export async function exchangeCode(
   code: string,
   codeVerifier: string,
   state: string
-): Promise<CcproxyAuth> {
+): Promise<CctcAuth> {
   // Anthropic may return code in format "code#state" — strip the fragment
   const cleanCode = code.includes("#") ? code.split("#")[0] : code;
 
@@ -83,7 +83,7 @@ export async function exchangeCode(
   const data = (await response.json()) as TokenRefreshResponse;
   const now = Date.now();
 
-  const auth: CcproxyAuth = {
+  const auth: CctcAuth = {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
     expiresAt: now + data.expires_in * 1000,
@@ -106,16 +106,16 @@ export async function exchangeCode(
 // Persistence
 // ---------------------------------------------------------------------------
 
-async function saveCredentials(auth: CcproxyAuth): Promise<void> {
-  mkdirSync(CCPROXY_AUTH_DIR, { recursive: true });
-  await Bun.write(CCPROXY_AUTH_PATH, JSON.stringify(auth, null, 2));
+async function saveCredentials(auth: CctcAuth): Promise<void> {
+  mkdirSync(CCTC_AUTH_DIR, { recursive: true });
+  await Bun.write(CCTC_AUTH_PATH, JSON.stringify(auth, null, 2));
 }
 
-async function loadCredentials(): Promise<CcproxyAuth | null> {
+async function loadCredentials(): Promise<CctcAuth | null> {
   try {
-    const file = Bun.file(CCPROXY_AUTH_PATH);
+    const file = Bun.file(CCTC_AUTH_PATH);
     if (!(await file.exists())) return null;
-    return (await file.json()) as CcproxyAuth;
+    return (await file.json()) as CctcAuth;
   } catch {
     return null;
   }
@@ -123,7 +123,7 @@ async function loadCredentials(): Promise<CcproxyAuth | null> {
 
 export function hasCredentials(): boolean {
   try {
-    return require("node:fs").existsSync(CCPROXY_AUTH_PATH);
+    return require("node:fs").existsSync(CCTC_AUTH_PATH);
   } catch {
     return false;
   }

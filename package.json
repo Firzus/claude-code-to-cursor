@@ -1,5 +1,5 @@
 {
-  "name": "ccproxy",
+  "name": "claude-code-to-cursor",
   "module": "index.ts",
   "type": "module",
   "private": true,

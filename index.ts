@@ -60,7 +60,7 @@ process.on("unhandledRejection", (reason) => {
 function printPortInUseHelp(port: number) {
   console.error(`\nPort ${port} is already in use.`);
   console.error(
-    "Usually another ccproxy (bun) instance is still running, or another app bound this port."
+    "Usually another claude-code-to-cursor (bun) instance is still running, or another app bound this port."
   );
   console.error("\nTo free the port on Windows:");
   console.error(`  netstat -ano | findstr :${port}`);

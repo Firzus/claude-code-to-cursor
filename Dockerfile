@@ -14,8 +14,8 @@ RUN mkdir -p /data /data/logs /data/auth
 
 # Environment defaults
 ENV PORT=8082
-ENV CCPROXY_DB_PATH=/data/ccproxy.db
-ENV CCPROXY_AUTH_DIR=/data/auth
+ENV CCTC_DB_PATH=/data/cctc.db
+ENV CCTC_AUTH_DIR=/data/auth
 ENV LOG_DIR=/data/logs
 
 EXPOSE 8082
