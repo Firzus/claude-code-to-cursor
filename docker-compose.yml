@@ -13,7 +13,13 @@ services:
       - CCTC_AUTH_DIR=/data/auth
       - LOG_DIR=/data/logs
     healthcheck:
-      test: ["CMD", "bun", "-e", "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

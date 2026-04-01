@@ -73,7 +73,7 @@ Open Cursor settings and configure a custom model:
 | Setting      | Value                                            |
 | ------------ | ------------------------------------------------ |
 | **Base URL** | `https://<your-tunnel>.cfargotunnel.com/v1`      |
-| **API Key**  | `sk-cctc` (any non-empty string)              |
+| **API Key**  | `sk-cctc` (any non-empty string)                 |
 | **Model**    | `claude-sonnet-4-20250514` (or any Claude model) |
 
 claude-code-to-cursor exposes two compatible endpoints:
@@ -109,16 +109,16 @@ Or simply start using Claude in your client. The **Analytics** tab in the dashbo
 
 All settings are in `.env`. See [`.env.example`](.env.example) for the full list.
 
-| Variable                        | Default                         | Description                                 |
-| ------------------------------- | ------------------------------- | ------------------------------------------- |
-| `CLOUDFLARE_TUNNEL_TOKEN`       | _(required)_                    | Cloudflare Tunnel token                     |
-| `PORT`                          | `8082`                          | Proxy server port (internal)                |
-| `ALLOWED_IPS`                   | Cursor backend IPs              | IP whitelist (`disabled` to allow all)      |
-| `CLAUDE_CODE_EXTRA_INSTRUCTION` | _(empty)_                       | Extra instruction appended to system prompt |
-| `CCTC_AUTH_DIR`                 | `~/.cctc` / `/data/auth`       | OAuth credentials storage                   |
-| `CCTC_DB_PATH`                  | `./cctc.db` / `/data/cctc.db`  | SQLite database path                        |
-| `SETTINGS_API_KEY`              | _(empty)_                       | Shared secret for settings API              |
-| `FRONTEND_PORT`                 | `3111`                          | Dashboard frontend port                     |
+| Variable                        | Default                       | Description                                 |
+| ------------------------------- | ----------------------------- | ------------------------------------------- |
+| `CLOUDFLARE_TUNNEL_TOKEN`       | _(required)_                  | Cloudflare Tunnel token                     |
+| `PORT`                          | `8082`                        | Proxy server port (internal)                |
+| `ALLOWED_IPS`                   | Cursor backend IPs            | IP whitelist (`disabled` to allow all)      |
+| `CLAUDE_CODE_EXTRA_INSTRUCTION` | _(empty)_                     | Extra instruction appended to system prompt |
+| `CCTC_AUTH_DIR`                 | `~/.cctc` / `/data/auth`      | OAuth credentials storage                   |
+| `CCTC_DB_PATH`                  | `./cctc.db` / `/data/cctc.db` | SQLite database path                        |
+| `SETTINGS_API_KEY`              | _(empty)_                     | Shared secret for settings API              |
+| `FRONTEND_PORT`                 | `3111`                        | Dashboard frontend port                     |
 
 ---
 
