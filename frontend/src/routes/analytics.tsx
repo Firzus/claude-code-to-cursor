@@ -106,7 +106,7 @@ function AnalyticsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-medium">Analytics</h1>
           <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5">
@@ -398,82 +398,84 @@ function AnalyticsPage() {
           />
         ) : (
           <>
-            <table className="w-full text-[13px]" aria-label="Recent API requests">
-              <caption className="sr-only">
-                List of recent API requests with timing, model, tokens, and
-                status
-              </caption>
-              <thead>
-                <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-                  <th className="px-4 py-2 font-normal">Time</th>
-                  <th className="px-4 py-2 font-normal">Model</th>
-                  <th className="px-4 py-2 font-normal text-right">In</th>
-                  <th className="px-4 py-2 font-normal text-right">Cache</th>
-                  <th className="px-4 py-2 font-normal text-right">Out</th>
-                  <th className="px-4 py-2 font-normal text-right">
-                    Latency
-                  </th>
-                  <th className="px-4 py-2 font-normal text-right">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.data.requests.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-border/50 hover:bg-card transition-colors"
-                  >
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground tabular">
-                      {new Date(r.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      })}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono">
-                      {r.model.replace("claude-", "")}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-right tabular">
-                      {fmt(r.inputTokens)}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-right tabular text-muted-foreground">
-                      {r.cacheReadTokens ? fmt(r.cacheReadTokens) : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-right tabular">
-                      {fmt(r.outputTokens)}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-right text-muted-foreground tabular">
-                      {r.latencyMs
-                        ? `${(r.latencyMs / 1000).toFixed(1)}s`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      {r.source === "error" && r.error ? (
-                        <Tooltip
-                          content={
-                            <span className="max-w-[200px] block truncate">
-                              {r.error}
-                            </span>
-                          }
-                        >
-                          <span
-                            className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help"
-                            aria-label="Error"
-                          />
-                          <span className="sr-only">Error: {r.error}</span>
-                        </Tooltip>
-                      ) : (
-                        <>
-                          <span className="inline-block h-2 w-2 rounded-full bg-success" />
-                          <span className="sr-only">Success</span>
-                        </>
-                      )}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] min-w-0" aria-label="Recent API requests">
+                <caption className="sr-only">
+                  List of recent API requests with timing, model, tokens, and
+                  status
+                </caption>
+                <thead>
+                  <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
+                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap">Time</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap">Model</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">In</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Out</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">
+                      Latency
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
+                      Status
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {requests.data.requests.map((r) => (
+                    <tr
+                      key={r.id}
+                      className="border-b border-border/50 hover:bg-card transition-colors"
+                    >
+                      <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap">
+                        {new Date(r.timestamp).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2.5 font-mono truncate max-w-[120px] sm:max-w-none">
+                        {r.model.replace("claude-", "")}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
+                        {fmt(r.inputTokens)}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular text-muted-foreground whitespace-nowrap hidden sm:table-cell">
+                        {r.cacheReadTokens ? fmt(r.cacheReadTokens) : "—"}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
+                        {fmt(r.outputTokens)}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right text-muted-foreground tabular whitespace-nowrap hidden md:table-cell">
+                        {r.latencyMs
+                          ? `${(r.latencyMs / 1000).toFixed(1)}s`
+                          : "—"}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2.5 text-right">
+                        {r.source === "error" && r.error ? (
+                          <Tooltip
+                            content={
+                              <span className="max-w-[200px] block truncate">
+                                {r.error}
+                              </span>
+                            }
+                          >
+                            <span
+                              className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help"
+                              aria-label="Error"
+                            />
+                            <span className="sr-only">Error: {r.error}</span>
+                          </Tooltip>
+                        ) : (
+                          <>
+                            <span className="inline-block h-2 w-2 rounded-full bg-success" />
+                            <span className="sr-only">Success</span>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <Pagination
               page={page}
               pageSize={PAGE_SIZE}
