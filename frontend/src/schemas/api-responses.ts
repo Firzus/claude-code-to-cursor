@@ -51,6 +51,31 @@ export const requestRecordSchema = z.object({
 
 export type RequestRecord = z.infer<typeof requestRecordSchema>;
 
+export const requestsResponseSchema = z.object({
+  requests: z.array(requestRecordSchema),
+  total: z.number(),
+});
+
+export type RequestsResponse = z.infer<typeof requestsResponseSchema>;
+
+export const timelineBucketSchema = z.object({
+  timestamp: z.number(),
+  requests: z.number(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  errorCount: z.number(),
+});
+
+export type TimelineBucket = z.infer<typeof timelineBucketSchema>;
+
+export const timelineResponseSchema = z.object({
+  period: z.string(),
+  buckets: z.array(timelineBucketSchema),
+});
+
+export type TimelineResponse = z.infer<typeof timelineResponseSchema>;
+
 export const loginResponseSchema = z.object({
   authURL: z.string(),
   state: z.string(),

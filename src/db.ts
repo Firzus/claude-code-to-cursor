@@ -41,8 +41,8 @@ function initSchema(database: Database) {
   `);
 
   // Migration: add cache token columns
-  try { database.run("ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0"); } catch {}
-  try { database.run("ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0"); } catch {}
+  try { database.run("ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0"); } catch { }
 
   // Create indexes for common queries
   database.run(
@@ -160,26 +160,38 @@ export function getAnalytics(
 }
 
 /**
- * Get recent requests
+ * Get recent requests with pagination
  */
-export function getRecentRequests(limit: number = 100): Array<{
-  id: number;
-  timestamp: number;
-  model: string;
-  source: RequestSource;
-  inputTokens: number;
-  outputTokens: number;
-  stream: boolean;
-  latencyMs: number | null;
-  error: string | null;
-}> {
+export function getRecentRequests(
+  limit: number = 100,
+  since: number = 0,
+  offset: number = 0
+): {
+  requests: Array<{
+    id: number;
+    timestamp: number;
+    model: string;
+    source: RequestSource;
+    inputTokens: number;
+    outputTokens: number;
+    stream: boolean;
+    latencyMs: number | null;
+    error: string | null;
+  }>;
+  total: number;
+} {
   const database = getDb();
+
+  const countResult = database
+    .query(`SELECT COUNT(*) as count FROM requests WHERE timestamp >= ?`)
+    .get(since) as { count: number };
+
   const rows = database
     .query(
       `SELECT id, timestamp, model, source, input_tokens, output_tokens, stream, latency_ms, error
-       FROM requests ORDER BY timestamp DESC LIMIT ?`
+       FROM requests WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`
     )
-    .all(limit) as Array<{
+    .all(since, limit, offset) as Array<{
       id: number;
       timestamp: number;
       model: string;
@@ -191,17 +203,80 @@ export function getRecentRequests(limit: number = 100): Array<{
       error: string | null;
     }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    timestamp: row.timestamp,
-    model: row.model,
-    source: row.source,
-    inputTokens: row.input_tokens,
-    outputTokens: row.output_tokens,
-    stream: row.stream === 1,
-    latencyMs: row.latency_ms,
-    error: row.error,
-  }));
+  return {
+    total: countResult.count,
+    requests: rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      model: row.model,
+      source: row.source,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      stream: row.stream === 1,
+      latencyMs: row.latency_ms,
+      error: row.error,
+    })),
+  };
+}
+
+interface TimelineBucket {
+  timestamp: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  errorCount: number;
+}
+
+export function getAnalyticsTimeline(
+  since: number,
+  until: number = Date.now(),
+  buckets: number = 24,
+): TimelineBucket[] {
+  const database = getDb();
+  const span = until - since;
+  const bucketSize = Math.max(1, Math.floor(span / buckets));
+
+  const rows = database
+    .query(
+      `SELECT
+        (timestamp / ?) * ? as bucket_ts,
+        COUNT(*) as requests,
+        SUM(input_tokens) as input_tokens,
+        SUM(output_tokens) as output_tokens,
+        SUM(cache_read_tokens) as cache_read_tokens,
+        SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_count
+       FROM requests
+       WHERE timestamp >= ? AND timestamp <= ?
+       GROUP BY bucket_ts
+       ORDER BY bucket_ts ASC`,
+    )
+    .all(bucketSize, bucketSize, since, until) as Array<{
+      bucket_ts: number;
+      requests: number;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      error_count: number;
+    }>;
+
+  const filledBuckets: TimelineBucket[] = [];
+  for (let i = 0; i < buckets; i++) {
+    const ts = since + i * bucketSize;
+    const match = rows.find(
+      (r) => r.bucket_ts >= ts && r.bucket_ts < ts + bucketSize,
+    );
+    filledBuckets.push({
+      timestamp: ts,
+      requests: match?.requests ?? 0,
+      inputTokens: match?.input_tokens ?? 0,
+      outputTokens: match?.output_tokens ?? 0,
+      cacheReadTokens: match?.cache_read_tokens ?? 0,
+      errorCount: match?.error_count ?? 0,
+    });
+  }
+
+  return filledBuckets;
 }
 
 /**

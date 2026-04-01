@@ -35,7 +35,7 @@ services:
     container_name: ccproxy-cloudflared
     restart: unless-stopped
     network_mode: "service:api"
-    command: tunnel run
+    command: tunnel --protocol http2 run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     depends_on:

@@ -18,7 +18,7 @@
   --color-secondary-foreground: oklch(63% 0 0);
 
   --color-muted: oklch(12% 0 0);
-  --color-muted-foreground: oklch(45% 0 0);
+  --color-muted-foreground: oklch(56% 0 0);
 
   --color-accent: oklch(62% 0.16 255);
   --color-accent-foreground: oklch(100% 0 0);
@@ -31,6 +31,12 @@
   --color-border: oklch(18% 0 0);
   --color-input: oklch(12% 0 0);
   --color-ring: oklch(45% 0 0);
+
+  --color-chart-1: oklch(62% 0.16 255);
+  --color-chart-2: oklch(65% 0.15 170);
+  --color-chart-3: oklch(65% 0.18 50);
+  --color-chart-4: oklch(62% 0.22 300);
+  --color-chart-5: oklch(70% 0.15 70);
 
   --radius: 0.5rem;
 
@@ -61,6 +67,8 @@
 @layer base {
   * {
     border-color: var(--color-border);
+    scrollbar-width: thin;
+    scrollbar-color: oklch(22% 0 0) transparent;
   }
 
   body {
@@ -72,6 +80,28 @@
 
   ::selection {
     background: oklch(93% 0 0 / 0.15);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: oklch(22% 0 0);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(30% 0 0);
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 

@@ -9,6 +9,7 @@ import {
   handleAnalytics,
   handleAnalyticsRequests,
   handleAnalyticsReset,
+  handleAnalyticsTimeline,
 } from "./src/routes/analytics";
 import {
   handleLoginAPI,
@@ -124,6 +125,10 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
 
   if ((url.pathname === "/analytics/requests" || url.pathname === "/api/analytics/requests") && req.method === "GET") {
     return handleAnalyticsRequests(url);
+  }
+
+  if ((url.pathname === "/analytics/timeline" || url.pathname === "/api/analytics/timeline") && req.method === "GET") {
+    return handleAnalyticsTimeline(url);
   }
 
   if ((url.pathname === "/analytics/reset" || url.pathname === "/api/analytics/reset") && req.method === "POST") {

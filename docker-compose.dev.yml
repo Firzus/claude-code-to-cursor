@@ -9,11 +9,12 @@ services:
   frontend:
     build:
       context: ./frontend
+      target: builder
     volumes:
       - ./frontend/src:/app/src
     ports:
       - "3111:3111"
-    command: npx vinxi dev --host --port 3111
+    command: npx vite dev --host --port 3111
     environment:
       - API_URL=http://api:8082
 

@@ -1,7 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ExternalLink,
   Check,
@@ -17,10 +15,10 @@ import {
   Circle,
 } from "lucide-react";
 import { apiFetch } from "~/lib/api-client";
-import { loginFormSchema, type LoginFormValues } from "~/schemas/login";
-import type { LoginResponse, AnalyticsResponse } from "~/schemas/api-responses";
+import type { AnalyticsResponse } from "~/schemas/api-responses";
 import { useHealth } from "~/hooks/use-health";
 import { useOnboardingComplete } from "~/hooks/use-onboarding";
+import { OAuthFlow } from "~/components/oauth-flow";
 import { cn } from "~/lib/utils";
 
 export const Route = createFileRoute("/setup")({
@@ -36,17 +34,30 @@ const STEPS = [
 
 type StepId = (typeof STEPS)[number]["id"];
 
+const STEP_STORAGE_KEY = "ccproxy:setup-step";
+
 function getProxyBase() {
   if (typeof window === "undefined") return "http://localhost:8082";
   return `${window.location.protocol}//${window.location.hostname}:${window.__CCPROXY_API_PORT__ || 8082}`;
 }
 
+function getInitialStep(): StepId {
+  if (typeof window === "undefined") return "welcome";
+  const stored = sessionStorage.getItem(STEP_STORAGE_KEY);
+  if (stored && STEPS.some((s) => s.id === stored)) return stored as StepId;
+  return "welcome";
+}
+
 function SetupPage() {
-  const [currentStep, setCurrentStep] = useState<StepId>("welcome");
+  const [currentStep, setCurrentStep] = useState<StepId>(getInitialStep);
   const { markComplete } = useOnboardingComplete();
   const navigate = useNavigate();
 
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
+
+  useEffect(() => {
+    sessionStorage.setItem(STEP_STORAGE_KEY, currentStep);
+  }, [currentStep]);
 
   const next = useCallback(() => {
     const i = STEPS.findIndex((s) => s.id === currentStep);
@@ -59,6 +70,7 @@ function SetupPage() {
   }, [currentStep]);
 
   const finish = useCallback(() => {
+    sessionStorage.removeItem(STEP_STORAGE_KEY);
     markComplete();
     navigate({ to: "/analytics" });
   }, [markComplete, navigate]);
@@ -80,8 +92,6 @@ function SetupPage() {
     </div>
   );
 }
-
-/* ─── Step indicator ─── */
 
 function StepIndicator({
   steps,
@@ -109,11 +119,12 @@ function StepIndicator({
               <div
                 className={cn(
                   "flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-mono transition-all duration-300",
-                  done &&
-                  "bg-accent text-background",
+                  done && "bg-accent text-background",
                   active &&
                   "border-2 border-accent text-accent shadow-[0_0_12px_-2px_var(--color-accent)]",
-                  !done && !active && "border border-border text-muted-foreground",
+                  !done &&
+                  !active &&
+                  "border border-border text-muted-foreground",
                 )}
               >
                 {done ? <Check className="h-3 w-3" /> : i + 1}
@@ -121,7 +132,9 @@ function StepIndicator({
               <span
                 className={cn(
                   "hidden text-[12px] sm:inline transition-colors",
-                  active ? "text-foreground font-medium" : "text-muted-foreground",
+                  active
+                    ? "text-foreground font-medium"
+                    : "text-muted-foreground",
                 )}
               >
                 {step.label}
@@ -133,8 +146,6 @@ function StepIndicator({
     </div>
   );
 }
-
-/* ─── Step 1: Welcome ─── */
 
 function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
@@ -148,8 +159,8 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           Welcome to ccproxy
         </h1>
         <p className="text-[14px] text-muted-foreground leading-relaxed max-w-md mx-auto">
-          Route API requests through Claude Code OAuth.
-          Use Claude in Cursor and other tools — no API key needed.
+          Route API requests through Claude Code OAuth. Use Claude in Cursor and
+          other tools — no API key needed.
         </p>
       </div>
 
@@ -206,8 +217,6 @@ function FeatureCard({
   );
 }
 
-/* ─── Step 2: Auth ─── */
-
 function AuthStep({
   onNext,
   onPrev,
@@ -215,59 +224,8 @@ function AuthStep({
   onNext: () => void;
   onPrev: () => void;
 }) {
-  const [loginData, setLoginData] = useState<LoginResponse | null>(null);
-  const [result, setResult] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
-  const [loadingAuth, setLoadingAuth] = useState(false);
   const health = useHealth();
   const isAuthenticated = health.data?.claudeCode.authenticated === true;
-
-  const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginFormSchema),
-    defaultValues: { code: "" },
-  });
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      setResult({ success: true, message: "Already authenticated!" });
-    }
-  }, [isAuthenticated]);
-
-  async function initLogin() {
-    setLoadingAuth(true);
-    setResult(null);
-    try {
-      setLoginData(await apiFetch<LoginResponse>("/auth/login"));
-    } catch (err) {
-      setResult({ success: false, message: `Failed to initialize: ${err}` });
-    } finally {
-      setLoadingAuth(false);
-    }
-  }
-
-  async function onSubmit(values: LoginFormValues) {
-    if (!loginData) return;
-    setResult(null);
-    try {
-      const res = await apiFetch<{
-        success: boolean;
-        message: string;
-        expiresIn?: number;
-      }>("/auth/callback", {
-        method: "POST",
-        body: JSON.stringify({ code: values.code, state: loginData.state }),
-      });
-      setResult(res);
-      if (res.success) {
-        form.reset();
-        setLoginData(null);
-      }
-    } catch (err) {
-      setResult({ success: false, message: `Failed: ${err}` });
-    }
-  }
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -280,118 +238,19 @@ function AuthStep({
         </p>
       </div>
 
-      {result && (
-        <div
-          className={cn(
-            "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-[13px] animate-slide-up",
-            result.success
-              ? "border-success/30 bg-success/5 text-success"
-              : "border-destructive/30 bg-destructive/5 text-destructive",
-          )}
-        >
-          {result.success ? (
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-          ) : (
-            <Circle className="h-4 w-4 shrink-0" />
-          )}
-          {result.message}
+      {isAuthenticated ? (
+        <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2.5 text-[13px] text-success animate-slide-up">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          Already authenticated!
         </div>
+      ) : (
+        <OAuthFlow compact />
       )}
 
-      {!isAuthenticated && (
-        <div className="rounded-lg border border-border divide-y divide-border">
-          {/* Step 1 */}
-          <div className="p-4 space-y-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-accent/40 bg-accent/10 text-[11px] font-mono text-accent">
-                1
-              </span>
-              <span className="text-[13px] font-medium">
-                Start authorization
-              </span>
-            </div>
-            {!loginData ? (
-              <button
-                onClick={initLogin}
-                disabled={loadingAuth}
-                className="ml-8 inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
-              >
-                {loadingAuth && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
-                Initialize
-              </button>
-            ) : (
-              <a
-                href={loginData.authURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-8 inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90"
-              >
-                Open Anthropic <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
-
-          {/* Step 2 */}
-          <div className="p-4">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-[11px] font-mono text-muted-foreground">
-                2
-              </span>
-              <span className="text-[13px] font-medium">
-                Approve and copy the code
-              </span>
-            </div>
-            <p className="mt-1.5 ml-8 text-[12px] text-muted-foreground leading-relaxed">
-              After approving on Anthropic, copy the authorization code displayed.
-            </p>
-          </div>
-
-          {/* Step 3 */}
-          <div className="p-4 space-y-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-[11px] font-mono text-muted-foreground">
-                3
-              </span>
-              <span className="text-[13px] font-medium">Paste the code</span>
-            </div>
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className="flex gap-2 ml-8"
-            >
-              <input
-                placeholder="Paste code..."
-                disabled={!loginData}
-                className="h-8 flex-1 rounded-md border border-border bg-background px-3 font-mono text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-40 transition-all"
-                {...form.register("code")}
-              />
-              <button
-                type="submit"
-                disabled={!loginData || form.formState.isSubmitting}
-                className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
-              >
-                {form.formState.isSubmitting && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
-                Submit
-              </button>
-            </form>
-            {form.formState.errors.code && (
-              <p className="ml-8 text-[12px] text-destructive">
-                {form.formState.errors.code.message}
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      <NavButtons onPrev={onPrev} onNext={onNext} nextDisabled={false} />
+      <NavButtons onPrev={onPrev} onNext={onNext} />
     </div>
   );
 }
-
-/* ─── Step 3: Configure ─── */
 
 function ConfigureStep({
   onNext,
@@ -415,7 +274,12 @@ function ConfigureStep({
 
       <div className="space-y-3">
         <ConfigField label="Base URL" value={`${base}/v1`} mono />
-        <ConfigField label="API Key" value="sk-ccproxy" sub="Any non-empty string" mono />
+        <ConfigField
+          label="API Key"
+          value="sk-ccproxy"
+          sub="Any non-empty string"
+          mono
+        />
         <ConfigField
           label="Model"
           value="claude-sonnet-4-20250514"
@@ -488,12 +352,7 @@ function ConfigField({
     <div className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-border/80">
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="text-[12px] text-muted-foreground">{label}</div>
-        <div
-          className={cn(
-            "text-[13px] truncate",
-            mono && "font-mono",
-          )}
-        >
+        <div className={cn("text-[13px] truncate", mono && "font-mono")}>
           {value}
         </div>
         {sub && (
@@ -503,7 +362,7 @@ function ConfigField({
       <button
         onClick={copy}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-all hover:text-foreground hover:border-foreground/20 cursor-pointer"
-        title="Copy"
+        aria-label="Copy to clipboard"
       >
         {copied ? (
           <Check className="h-3 w-3 text-success" />
@@ -532,7 +391,7 @@ function CopyBlock({ value }: { value: string }) {
       <button
         onClick={copy}
         className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:text-foreground cursor-pointer"
-        title="Copy"
+        aria-label="Copy to clipboard"
       >
         {copied ? (
           <Check className="h-3 w-3 text-success" />
@@ -543,8 +402,6 @@ function CopyBlock({ value }: { value: string }) {
     </div>
   );
 }
-
-/* ─── Step 4: Verify ─── */
 
 function VerifyStep({
   onFinish,
@@ -656,17 +513,13 @@ function StatusRow({
     <div
       className={cn(
         "flex items-center gap-3 rounded-lg border p-4 transition-all",
-        ok
-          ? "border-success/30 bg-success/5"
-          : "border-border bg-card/30",
+        ok ? "border-success/30 bg-success/5" : "border-border bg-card/30",
       )}
     >
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          ok
-            ? "bg-success/15 text-success"
-            : "bg-muted text-muted-foreground",
+          ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
         )}
       >
         {ok ? (
@@ -684,8 +537,6 @@ function StatusRow({
     </div>
   );
 }
-
-/* ─── Navigation buttons ─── */
 
 function NavButtons({
   onPrev,
