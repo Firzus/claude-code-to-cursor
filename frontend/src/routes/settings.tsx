@@ -30,7 +30,7 @@ const modelMeta: Record<
     accentClass: "model-opus",
   },
   "claude-sonnet-4-6": {
-    context: "1M context · Balanced",
+    context: "200K context · Balanced",
     icon: Zap,
     accentClass: "model-sonnet",
   },

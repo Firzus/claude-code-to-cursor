@@ -3,6 +3,7 @@ import { supportedModels, thinkingEfforts } from "./settings";
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "rate_limited"]),
+  tunnelUrl: z.string().optional(),
   claudeCode: z.object({
     authenticated: z.boolean(),
     expiresAt: z.number().nullable().optional(),

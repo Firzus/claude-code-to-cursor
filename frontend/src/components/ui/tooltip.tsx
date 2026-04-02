@@ -10,7 +10,7 @@ interface TooltipProps {
 
 function Tooltip({ content, children, className, side = "top" }: TooltipProps) {
   return (
-    <span className="group/tip relative inline-flex">
+    <span className="group/tip relative inline-flex overflow-hidden hover:overflow-visible">
       {children}
       <span
         role="tooltip"

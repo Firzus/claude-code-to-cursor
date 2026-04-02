@@ -70,7 +70,7 @@ describe("model settings contract", () => {
 
   test("returns correct context length per model", () => {
     expect(getContextLength("claude-opus-4-6")).toBe(1000000);
-    expect(getContextLength("claude-sonnet-4-6")).toBe(1000000);
+    expect(getContextLength("claude-sonnet-4-6")).toBe(200000);
     expect(getContextLength("claude-haiku-4-5")).toBe(200000);
   });
 

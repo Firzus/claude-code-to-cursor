@@ -1,4 +1,4 @@
-import { getConfig } from "./src/config";
+import { getConfig, TUNNEL_URL } from "./src/config";
 import { hasCredentials, getValidToken } from "./src/oauth";
 import { getDb } from "./src/db";
 import { checkIPWhitelist, corsHeaders } from "./src/middleware";
@@ -97,6 +97,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
     const rateLimit = getRateLimitStatus();
     return Response.json({
       status: rateLimit.isLimited ? "rate_limited" : "ok",
+      tunnelUrl: TUNNEL_URL || undefined,
       claudeCode: {
         authenticated: !!token,
         expiresAt: token?.expiresAt,

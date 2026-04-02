@@ -399,15 +399,15 @@ function AnalyticsPage() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-[13px] min-w-0" aria-label="Recent API requests">
+              <table className="w-full text-[13px]" aria-label="Recent API requests">
                 <caption className="sr-only">
                   List of recent API requests with timing, model, tokens, and
                   status
                 </caption>
                 <thead>
                   <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap">Time</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap">Model</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap hidden sm:table-cell">Time</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal w-full">Model</th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">In</th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache</th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Out</th>
@@ -425,14 +425,14 @@ function AnalyticsPage() {
                       key={r.id}
                       className="border-b border-border/50 hover:bg-card transition-colors"
                     >
-                      <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap">
+                      <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap hidden sm:table-cell">
                         {new Date(r.timestamp).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                           second: "2-digit",
                         })}
                       </td>
-                      <td className="px-3 sm:px-4 py-2.5 font-mono truncate max-w-[120px] sm:max-w-none">
+                      <td className="px-3 sm:px-4 py-2.5 font-mono truncate">
                         {r.model.replace("claude-", "")}
                       </td>
                       <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">

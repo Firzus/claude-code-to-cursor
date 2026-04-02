@@ -15,12 +15,13 @@ export const OAUTH_REDIRECT_URI =
   "https://console.anthropic.com/oauth/code/callback";
 export const OAUTH_SCOPES = "org:create_api_key user:profile user:inference";
 export const ANTHROPIC_API_URL = "https://api.anthropic.com";
+export const TUNNEL_URL = process.env.CLOUDFLARE_TUNNEL_URL || "";
 // Required beta headers for Claude Code OAuth
 const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
 const ANTHROPIC_BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14";
 
 // Combined beta header string for Claude Code OAuth requests
-// Note: context-1m header removed — 1M context is GA for Opus 4.6 & Sonnet 4.6
+// Note: context-1m header removed — 1M context is GA for Opus 4.6
 export const CLAUDE_CODE_BETA_HEADERS = [
   ANTHROPIC_BETA_OAUTH,
   ANTHROPIC_BETA_INTERLEAVED_THINKING,

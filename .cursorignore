@@ -7,7 +7,7 @@ bun.lock
 # Logs
 *.log
 api.log
-ccproxy-startup.log
+cctc-startup.log
 
 # Base de données SQLite (binaire)
 *.db

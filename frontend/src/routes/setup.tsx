@@ -259,7 +259,9 @@ function ConfigureStep({
   onNext: () => void;
   onPrev: () => void;
 }) {
-  const base = getProxyBase();
+  const health = useHealth();
+  const tunnelUrl = health.data?.tunnelUrl;
+  const baseUrl = tunnelUrl ? `${tunnelUrl}/v1` : `${getProxyBase()}/v1`;
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -273,7 +275,7 @@ function ConfigureStep({
       </div>
 
       <div className="space-y-3">
-        <ConfigField label="Base URL" value={`${base}/v1`} mono />
+        <ConfigField label="Base URL" value={baseUrl} sub="Override the OpenAI Base URL" mono />
         <ConfigField
           label="API Key"
           value="sk-cctc"
@@ -282,45 +284,9 @@ function ConfigureStep({
         />
         <ConfigField
           label="Model"
-          value="claude-sonnet-4-20250514"
-          sub="Or any Claude model name"
+          value="Claude Code"
+          sub="Add as a custom model in Cursor"
           mono
-        />
-      </div>
-
-      <div className="rounded-lg border border-border bg-card/30 p-4 space-y-3">
-        <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-          Available endpoints
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <div className="text-[12px] text-muted-foreground">
-              OpenAI format
-            </div>
-            <code className="block rounded border border-border bg-background px-2.5 py-1.5 font-mono text-[12px] text-accent">
-              POST /v1/chat/completions
-            </code>
-          </div>
-          <div className="space-y-1">
-            <div className="text-[12px] text-muted-foreground">
-              Anthropic format
-            </div>
-            <code className="block rounded border border-border bg-background px-2.5 py-1.5 font-mono text-[12px] text-accent">
-              POST /v1/messages
-            </code>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-border bg-card/30 p-4 space-y-2">
-        <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-          Test with curl
-        </div>
-        <CopyBlock
-          value={`curl ${base}/v1/chat/completions \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer sk-cctc" \\
-  -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello!"}]}'`}
         />
       </div>
 
@@ -413,17 +379,25 @@ function VerifyStep({
   const health = useHealth();
   const [detected, setDetected] = useState(false);
   const [polling, setPolling] = useState(true);
+  const [baseline, setBaseline] = useState<number | null>(null);
 
   const isAuthenticated = health.data?.claudeCode.authenticated === true;
 
+  // Capture initial request count on mount
   useEffect(() => {
-    if (!polling) return;
+    apiFetch<AnalyticsResponse>("/analytics?period=hour")
+      .then((data) => setBaseline(data.totalRequests))
+      .catch(() => setBaseline(0));
+  }, []);
+
+  useEffect(() => {
+    if (!polling || baseline === null) return;
     const id = setInterval(async () => {
       try {
         const data = await apiFetch<AnalyticsResponse>(
           "/analytics?period=hour",
         );
-        if (data.totalRequests > 0) {
+        if (data.totalRequests > baseline) {
           setDetected(true);
           setPolling(false);
         }
@@ -432,7 +406,7 @@ function VerifyStep({
       }
     }, 3000);
     return () => clearInterval(id);
-  }, [polling]);
+  }, [polling, baseline]);
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -466,6 +440,18 @@ function VerifyStep({
           }
         />
       </div>
+
+      {!detected && (
+        <div className="rounded-lg border border-border bg-card/30 p-4 space-y-2">
+          <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            Send a test message
+          </div>
+          <p className="text-[13px] text-muted-foreground">
+            Type the following in your Cursor chat:
+          </p>
+          <CopyBlock value="Fait moi signe !" />
+        </div>
+      )}
 
       {detected && (
         <div className="rounded-lg border border-success/30 bg-success/5 p-5 text-center space-y-3 animate-slide-up">
