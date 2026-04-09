@@ -28,7 +28,7 @@ export const CLAUDE_CODE_BETA_HEADERS = [
 ].join(",");
 
 // Centralized User-Agent for all Claude Code requests
-export const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.2 (external, cli)";
+export const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.97 (external, cli)";
 
 // System prompt prefix that identifies requests as coming from Claude Code
 // This exact string is required for Claude Code OAuth to work - do not modify

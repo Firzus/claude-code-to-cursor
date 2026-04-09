@@ -174,6 +174,8 @@ export function getRecentRequests(
     source: RequestSource;
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
     stream: boolean;
     latencyMs: number | null;
     error: string | null;
@@ -188,7 +190,8 @@ export function getRecentRequests(
 
   const rows = database
     .query(
-      `SELECT id, timestamp, model, source, input_tokens, output_tokens, stream, latency_ms, error
+      `SELECT id, timestamp, model, source, input_tokens, output_tokens,
+              cache_read_tokens, cache_creation_tokens, stream, latency_ms, error
        FROM requests WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`
     )
     .all(since, limit, offset) as Array<{
@@ -198,6 +201,8 @@ export function getRecentRequests(
       source: RequestSource;
       input_tokens: number;
       output_tokens: number;
+      cache_read_tokens: number;
+      cache_creation_tokens: number;
       stream: number;
       latency_ms: number | null;
       error: string | null;
@@ -212,6 +217,8 @@ export function getRecentRequests(
       source: row.source,
       inputTokens: row.input_tokens,
       outputTokens: row.output_tokens,
+      cacheReadTokens: row.cache_read_tokens,
+      cacheCreationTokens: row.cache_creation_tokens,
       stream: row.stream === 1,
       latencyMs: row.latency_ms,
       error: row.error,
@@ -225,6 +232,7 @@ interface TimelineBucket {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cacheCreationTokens: number;
   errorCount: number;
 }
 
@@ -245,6 +253,7 @@ export function getAnalyticsTimeline(
         SUM(input_tokens) as input_tokens,
         SUM(output_tokens) as output_tokens,
         SUM(cache_read_tokens) as cache_read_tokens,
+        SUM(cache_creation_tokens) as cache_creation_tokens,
         SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_count
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?
@@ -257,6 +266,7 @@ export function getAnalyticsTimeline(
       input_tokens: number;
       output_tokens: number;
       cache_read_tokens: number;
+      cache_creation_tokens: number;
       error_count: number;
     }>;
 
@@ -272,6 +282,7 @@ export function getAnalyticsTimeline(
       inputTokens: match?.input_tokens ?? 0,
       outputTokens: match?.output_tokens ?? 0,
       cacheReadTokens: match?.cache_read_tokens ?? 0,
+      cacheCreationTokens: match?.cache_creation_tokens ?? 0,
       errorCount: match?.error_count ?? 0,
     });
   }

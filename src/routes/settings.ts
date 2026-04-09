@@ -1,11 +1,21 @@
+import { timingSafeEqual } from "node:crypto";
 import { getModelSettings, saveModelSettings } from "../db";
 import { validateModelSettings } from "../model-settings";
+import { logger } from "../logger";
+
+if (!process.env.SETTINGS_API_KEY) {
+  logger.warn("SETTINGS_API_KEY is not set — settings API is unrestricted");
+}
 
 function isAuthorizedSettingsRequest(req: Request): boolean {
   const apiKey = process.env.SETTINGS_API_KEY;
-  if (!apiKey) return true; // No key configured = unrestricted (dev mode / Docker internal)
-  const provided = req.headers.get("x-settings-key");
-  return provided === apiKey;
+  if (!apiKey) return true;
+  const provided = req.headers.get("x-settings-key") ?? "";
+  if (provided.length !== apiKey.length) return false;
+  return timingSafeEqual(
+    Buffer.from(provided),
+    Buffer.from(apiKey),
+  );
 }
 
 export function handleSettingsAPI(req: Request): Response {

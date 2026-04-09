@@ -103,7 +103,7 @@ function rewriteAnthropicSseResponseModel(
                   const u = data.message.usage;
                   cacheReadTokens = u.cache_read_input_tokens ?? 0;
                   cacheCreationTokens = u.cache_creation_input_tokens ?? 0;
-                  inputTokens = (u.input_tokens ?? 0) + cacheReadTokens + cacheCreationTokens;
+                  inputTokens = u.input_tokens ?? 0;
                 }
                 if (data.type === "message_delta" && data.usage?.output_tokens !== undefined) {
                   outputTokens = data.usage.output_tokens;

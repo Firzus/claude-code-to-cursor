@@ -6,6 +6,7 @@ import {
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
 import { apiFetch } from "~/lib/api-client";
+import { calculateCacheSavings } from "~/lib/pricing";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "~/lib/utils";
 import {
@@ -15,6 +16,7 @@ import {
   XAxis,
   YAxis,
   Tooltip as RechartsTooltip,
+  ReferenceLine,
 } from "recharts";
 import {
   ChartContainer,
@@ -24,16 +26,23 @@ import {
 import { Card, CardContent } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip } from "~/components/ui/tooltip";
+import { Badge } from "~/components/ui/badge";
 import { EmptyState } from "~/components/empty-state";
+import { StatCard } from "~/components/analytics/stat-card";
+import { Pagination } from "~/components/analytics/pagination";
+import { AgoText } from "~/components/analytics/ago-text";
+import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import {
   Trash2,
   RefreshCw,
   Activity,
-  ArrowDownToLine,
   ArrowUpFromLine,
   Zap,
   Inbox,
   AlertCircle,
+  TrendingDown,
+  DollarSign,
+  Database,
 } from "lucide-react";
 
 export const Route = createFileRoute("/analytics")({
@@ -54,14 +63,33 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
-const chartConfig = {
+function pct(n: number): string {
+  return `${n.toFixed(1)}%`;
+}
+
+const tokenBreakdownConfig = {
+  cacheReadTokens: {
+    label: "Cache Read",
+    color: "var(--color-success)",
+  },
   inputTokens: {
-    label: "Input",
+    label: "Fresh Input",
     color: "var(--color-chart-1)",
+  },
+  cacheCreationTokens: {
+    label: "Cache Write",
+    color: "var(--color-chart-3)",
   },
   outputTokens: {
     label: "Output",
     color: "var(--color-chart-2)",
+  },
+} satisfies ChartConfig;
+
+const cacheRateConfig = {
+  cacheHitRate: {
+    label: "Cache Hit Rate",
+    color: "var(--color-chart-4)",
   },
 } satisfies ChartConfig;
 
@@ -76,21 +104,11 @@ function AnalyticsPage() {
   const qc = useQueryClient();
   const [resetting, setResetting] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
-  const [agoText, setAgoText] = useState("just now");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (summary.dataUpdatedAt) setLastUpdated(summary.dataUpdatedAt);
   }, [summary.dataUpdatedAt]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const secs = Math.round((Date.now() - lastUpdated) / 1000);
-      if (secs < 5) setAgoText("just now");
-      else if (secs < 60) setAgoText(`${secs}s ago`);
-      else setAgoText(`${Math.floor(secs / 60)}m ago`);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [lastUpdated]);
 
   function handlePeriodChange(value: string) {
     setPeriod(value);
@@ -101,7 +119,34 @@ function AnalyticsPage() {
     qc.invalidateQueries({ queryKey: ["analytics"] });
   }
 
+  function handleReset() {
+    setConfirmOpen(false);
+    setResetting(true);
+    apiFetch("/analytics/reset", { method: "POST" })
+      .then(() => qc.invalidateQueries({ queryKey: ["analytics"] }))
+      .finally(() => setResetting(false));
+  }
+
   const s = summary.data;
+
+  const savings = s
+    ? calculateCacheSavings(
+        s.totalInputTokens,
+        s.totalCacheReadTokens,
+        s.totalCacheCreationTokens,
+      )
+    : null;
+
+  const timelineWithRate = timeline.data?.buckets.map((b) => {
+    const total =
+      b.inputTokens + b.cacheReadTokens + (b.cacheCreationTokens ?? 0);
+    return {
+      ...b,
+      cacheHitRate: total > 0 ? (b.cacheReadTokens / total) * 100 : 0,
+    };
+  });
+
+  const avgCacheRate = s ? s.cacheHitRate * 100 : 0;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -109,17 +154,19 @@ function AnalyticsPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-medium">Analytics</h1>
-          <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5">
-            <span className="h-1 w-1 rounded-full bg-success animate-pulse inline-block" />
-            {agoText}
-          </span>
+          <AgoText updatedAt={lastUpdated} />
         </div>
         <div className="flex items-center gap-2">
-          {/* Period tabs */}
-          <div className="flex rounded-md border border-border text-[12px]">
+          <div
+            role="radiogroup"
+            aria-label="Time period"
+            className="flex rounded-md border border-border text-[12px]"
+          >
             {periods.map(({ value, label }) => (
               <button
                 key={value}
+                role="radio"
+                aria-checked={period === value}
                 onClick={() => handlePeriodChange(value)}
                 className={cn(
                   "px-2.5 py-1 font-mono transition-colors cursor-pointer first:rounded-l-md last:rounded-r-md",
@@ -140,15 +187,7 @@ function AnalyticsPage() {
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => {
-              if (!confirm("Reset all analytics?")) return;
-              setResetting(true);
-              apiFetch("/analytics/reset", { method: "POST" })
-                .then(() =>
-                  qc.invalidateQueries({ queryKey: ["analytics"] }),
-                )
-                .finally(() => setResetting(false));
-            }}
+            onClick={() => setConfirmOpen(true)}
             disabled={resetting}
             aria-label="Reset analytics data"
             className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50 cursor-pointer"
@@ -157,6 +196,14 @@ function AnalyticsPage() {
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Reset all analytics?"
+        description="This will permanently delete all recorded requests and statistics. This action cannot be undone."
+        onConfirm={handleReset}
+        onCancel={() => setConfirmOpen(false)}
+      />
 
       {/* Error state */}
       {summary.isError && (
@@ -176,9 +223,9 @@ function AnalyticsPage() {
         </Card>
       )}
 
-      {/* Stats */}
-      {s && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Stat cards */}
+      {s && savings && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard
             icon={Activity}
             label="Requests"
@@ -187,32 +234,46 @@ function AnalyticsPage() {
             accent="chart-1"
           />
           <StatCard
-            icon={ArrowDownToLine}
-            label="Input"
-            value={fmt(s.totalInputTokens)}
-            sub={`${fmt(s.totalCacheReadTokens)} cached`}
-            accent="chart-2"
+            icon={Zap}
+            label="Cache Hit Rate"
+            value={pct(s.cacheHitRate * 100)}
+            sub={`${fmt(s.totalCacheReadTokens)} / ${fmt(savings.allInput)}`}
+            accent="chart-4"
+          />
+          <StatCard
+            icon={TrendingDown}
+            label="Tokens Saved"
+            value={fmt(s.totalCacheReadTokens)}
+            sub={`of ${fmt(savings.allInput)} total input`}
+            accent="success"
+          />
+          <StatCard
+            icon={DollarSign}
+            label="Est. Savings"
+            value={pct(savings.savingsPercent)}
+            sub={savings.allInput > 0 ? `~${fmt(savings.tokensSaved)} tokens equiv.` : "no data yet"}
+            accent="success"
+          />
+          <StatCard
+            icon={Database}
+            label="Cache Written"
+            value={fmt(s.totalCacheCreationTokens)}
+            sub="125% cost multiplier"
+            accent="chart-3"
           />
           <StatCard
             icon={ArrowUpFromLine}
             label="Output"
             value={fmt(s.totalOutputTokens)}
-            sub={`${fmt(s.totalCacheCreationTokens)} cache written`}
-            accent="chart-3"
-          />
-          <StatCard
-            icon={Zap}
-            label="Cache hit"
-            value={`${(s.cacheHitRate * 100).toFixed(1)}%`}
-            sub={`${fmt(s.totalCacheReadTokens)} / ${fmt(s.totalCacheReadTokens + s.totalInputTokens + s.totalCacheCreationTokens)}`}
-            accent="chart-4"
+            sub={s.totalRequests > 0 ? `avg ${fmt(Math.round(s.totalOutputTokens / s.totalRequests))} / req` : "—"}
+            accent="chart-2"
           />
         </div>
       )}
 
       {summary.isLoading && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[...Array(4)].map((_, i) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[...Array(6)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-4 space-y-2">
                 <Skeleton className="h-3 w-16" />
@@ -224,146 +285,127 @@ function AnalyticsPage() {
         </div>
       )}
 
-      {/* Chart */}
-      {timeline.data && timeline.data.buckets.length > 0 && (
-        <Card>
-          <CardContent className="p-4 pt-4">
-            <div className="text-[12px] text-muted-foreground mb-3 font-medium">
-              Token usage over time
-            </div>
-            <ChartContainer
-              config={chartConfig}
-              className="aspect-auto h-[220px] w-full"
-            >
-              <AreaChart
-                accessibilityLayer
-                data={timeline.data.buckets}
-                margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
+      {/* Charts */}
+      {timelineWithRate && timelineWithRate.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-[12px] text-muted-foreground mb-3 font-medium">
+                Token breakdown over time
+              </div>
+              <ChartContainer
+                config={tokenBreakdownConfig}
+                className="aspect-auto h-[220px] w-full"
               >
-                <defs>
-                  <linearGradient
-                    id="fillInput"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop
-                      offset="0%"
-                      stopColor="var(--color-chart-1)"
-                      stopOpacity={0.3}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="var(--color-chart-1)"
-                      stopOpacity={0}
-                    />
-                  </linearGradient>
-                  <linearGradient
-                    id="fillOutput"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop
-                      offset="0%"
-                      stopColor="var(--color-chart-2)"
-                      stopOpacity={0.3}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor="var(--color-chart-2)"
-                      stopOpacity={0}
-                    />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  vertical={false}
-                  strokeDasharray="3 3"
-                  stroke="var(--color-border)"
-                  strokeOpacity={0.5}
-                />
-                <XAxis
-                  dataKey="timestamp"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={40}
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--color-muted-foreground)"
-                  tickFormatter={(v) => {
-                    const d = new Date(v);
-                    if (period === "hour")
-                      return d.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      });
-                    if (period === "day")
-                      return d.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      });
-                    return d.toLocaleDateString([], {
-                      month: "short",
-                      day: "numeric",
-                    });
-                  }}
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  width={50}
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--color-muted-foreground)"
-                  tickFormatter={(v) => fmt(v)}
-                />
-                <RechartsTooltip
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(v) => {
-                        const d = new Date(Number(v));
-                        return d.toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                      }}
-                      formatter={(value) => fmt(value)}
-                    />
-                  }
-                />
-                <Area
-                  type="monotone"
-                  dataKey="inputTokens"
-                  stroke="var(--color-chart-1)"
-                  strokeWidth={1.5}
-                  fill="url(#fillInput)"
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="outputTokens"
-                  stroke="var(--color-chart-2)"
-                  strokeWidth={1.5}
-                  fill="url(#fillOutput)"
-                  dot={false}
-                />
-              </AreaChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+                <AreaChart
+                  accessibilityLayer
+                  data={timelineWithRate}
+                  margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="fillCacheRead" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-success)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="fillFreshInput" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="fillCacheWrite" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-chart-3)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.5} />
+                  <XAxis
+                    dataKey="timestamp" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40}
+                    tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)"
+                    tickFormatter={(v) => {
+                      const d = new Date(v);
+                      if (period === "hour" || period === "day")
+                        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      return d.toLocaleDateString([], { month: "short", day: "numeric" });
+                    }}
+                  />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={50} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" tickFormatter={(v) => fmt(v)} />
+                  <RechartsTooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(v) => {
+                          const d = new Date(Number(v));
+                          return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                        }}
+                        formatter={(value) => fmt(value)}
+                      />
+                    }
+                  />
+                  <Area type="monotone" dataKey="cacheReadTokens" stackId="1" stroke="var(--color-success)" strokeWidth={1.5} fill="url(#fillCacheRead)" dot={false} />
+                  <Area type="monotone" dataKey="inputTokens" stackId="1" stroke="var(--color-chart-1)" strokeWidth={1.5} fill="url(#fillFreshInput)" dot={false} />
+                  <Area type="monotone" dataKey="cacheCreationTokens" stackId="1" stroke="var(--color-chart-3)" strokeWidth={1.5} fill="url(#fillCacheWrite)" dot={false} />
+                  <Area type="monotone" dataKey="outputTokens" stroke="var(--color-chart-2)" strokeWidth={1.5} strokeDasharray="4 3" fill="none" dot={false} />
+                </AreaChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-[12px] text-muted-foreground mb-3 font-medium">
+                Cache hit rate over time
+              </div>
+              <ChartContainer config={cacheRateConfig} className="aspect-auto h-[220px] w-full">
+                <AreaChart accessibilityLayer data={timelineWithRate} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="fillCacheRate" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--color-chart-4)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--color-chart-4)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.5} />
+                  <XAxis
+                    dataKey="timestamp" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40}
+                    tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)"
+                    tickFormatter={(v) => {
+                      const d = new Date(v);
+                      if (period === "hour" || period === "day")
+                        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      return d.toLocaleDateString([], { month: "short", day: "numeric" });
+                    }}
+                  />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={40} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <RechartsTooltip
+                    content={
+                      <ChartTooltipContent
+                        labelFormatter={(v) => {
+                          const d = new Date(Number(v));
+                          return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                        }}
+                        formatter={(value) => `${Number(value).toFixed(1)}%`}
+                      />
+                    }
+                  />
+                  {avgCacheRate > 0 && (
+                    <ReferenceLine y={avgCacheRate} stroke="var(--color-chart-4)" strokeDasharray="6 4" strokeOpacity={0.5} />
+                  )}
+                  <Area type="monotone" dataKey="cacheHitRate" stroke="var(--color-chart-4)" strokeWidth={1.5} fill="url(#fillCacheRate)" dot={false} />
+                </AreaChart>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {timeline.isLoading && (
-        <Card>
-          <CardContent className="p-4">
-            <Skeleton className="h-3 w-32 mb-3" />
-            <Skeleton className="h-[220px] w-full" />
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {[...Array(2)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <Skeleton className="h-3 w-32 mb-3" />
+                <Skeleton className="h-[220px] w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
 
       {/* Table */}
@@ -401,78 +443,85 @@ function AnalyticsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]" aria-label="Recent API requests">
                 <caption className="sr-only">
-                  List of recent API requests with timing, model, tokens, and
-                  status
+                  List of recent API requests with timing, model, tokens, cache efficiency, and status
                 </caption>
                 <thead>
                   <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
                     <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap hidden sm:table-cell">Time</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal w-full">Model</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">In</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal">Model</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Fresh In</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache Read</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">Cache Write</th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Out</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">
-                      Latency
-                    </th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
-                      Status
-                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache %</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">Latency</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {requests.data.requests.map((r) => (
-                    <tr
-                      key={r.id}
-                      className="border-b border-border/50 hover:bg-card transition-colors"
-                    >
-                      <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap hidden sm:table-cell">
-                        {new Date(r.timestamp).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          second: "2-digit",
-                        })}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2.5 font-mono truncate">
-                        {r.model.replace("claude-", "")}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
-                        {fmt(r.inputTokens)}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular text-muted-foreground whitespace-nowrap hidden sm:table-cell">
-                        {r.cacheReadTokens ? fmt(r.cacheReadTokens) : "—"}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
-                        {fmt(r.outputTokens)}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2.5 font-mono text-right text-muted-foreground tabular whitespace-nowrap hidden md:table-cell">
-                        {r.latencyMs
-                          ? `${(r.latencyMs / 1000).toFixed(1)}s`
-                          : "—"}
-                      </td>
-                      <td className="px-3 sm:px-4 py-2.5 text-right">
-                        {r.source === "error" && r.error ? (
-                          <Tooltip
-                            content={
-                              <span className="max-w-[200px] block truncate">
-                                {r.error}
-                              </span>
-                            }
-                          >
-                            <span
-                              className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help"
-                              aria-label="Error"
-                            />
-                            <span className="sr-only">Error: {r.error}</span>
-                          </Tooltip>
-                        ) : (
-                          <>
-                            <span className="inline-block h-2 w-2 rounded-full bg-success" />
-                            <span className="sr-only">Success</span>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {requests.data.requests.map((r) => {
+                    const cacheRead = r.cacheReadTokens ?? 0;
+                    const cacheWrite = r.cacheCreationTokens ?? 0;
+                    const rowAllInput = r.inputTokens + cacheRead + cacheWrite;
+                    const rowCacheRate = rowAllInput > 0 ? (cacheRead / rowAllInput) * 100 : 0;
+
+                    return (
+                      <tr key={r.id} className="border-b border-border/50 hover:bg-card transition-colors">
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap hidden sm:table-cell">
+                          {new Date(r.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono truncate">
+                          {r.model.replace("claude-", "")}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
+                          {fmt(r.inputTokens)}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell" style={{ color: cacheRead > 0 ? "var(--color-success)" : undefined }}>
+                          {cacheRead > 0 ? fmt(cacheRead) : "\u2014"}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular text-muted-foreground whitespace-nowrap hidden md:table-cell">
+                          {cacheWrite > 0 ? fmt(cacheWrite) : "\u2014"}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
+                          {fmt(r.outputTokens)}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 text-right whitespace-nowrap hidden sm:table-cell">
+                          {rowCacheRate > 0 ? (
+                            <Badge
+                              variant={rowCacheRate >= 80 ? "success" : rowCacheRate >= 40 ? "warning" : "secondary"}
+                              className="text-[11px] px-1.5 py-0 font-mono"
+                            >
+                              {pct(rowCacheRate)}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">{"\u2014"}</span>
+                          )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right text-muted-foreground tabular whitespace-nowrap hidden md:table-cell">
+                          {r.latencyMs ? `${(r.latencyMs / 1000).toFixed(1)}s` : "\u2014"}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 text-right">
+                          {r.source === "error" && r.error ? (
+                            <Tooltip
+                              content={
+                                <span className="max-w-[200px] block truncate">
+                                  {r.error}
+                                </span>
+                              }
+                            >
+                              <span className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help" aria-label="Error" />
+                              <span className="sr-only">Error: {r.error}</span>
+                            </Tooltip>
+                          ) : (
+                            <>
+                              <span className="inline-block h-2 w-2 rounded-full bg-success" />
+                              <span className="sr-only">Success</span>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -486,90 +535,6 @@ function AnalyticsPage() {
           </>
         )}
       </Card>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  icon: typeof Activity;
-  label: string;
-  value: string;
-  sub: string;
-  accent: string;
-}) {
-  return (
-    <Card className="group transition-colors hover:border-border/80">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="flex h-6 w-6 items-center justify-center rounded-md"
-            style={{
-              backgroundColor: `color-mix(in oklch, var(--color-${accent}) 15%, transparent)`,
-              color: `var(--color-${accent})`,
-            }}
-          >
-            <Icon className="h-3 w-3" />
-          </div>
-          <span className="text-[12px] text-muted-foreground">{label}</span>
-        </div>
-        <div className="font-mono text-xl font-semibold tabular">{value}</div>
-        <div className="mt-0.5 text-[12px] text-muted-foreground font-mono">
-          {sub}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Pagination({
-  page,
-  pageSize,
-  total,
-  onPrev,
-  onNext,
-}: {
-  page: number;
-  pageSize: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const totalPages = Math.ceil(total / pageSize);
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-
-  return (
-    <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
-      <span className="font-mono text-[12px] text-muted-foreground tabular">
-        {total === 0 ? "0 results" : `${from}–${to} of ${total}`}
-      </span>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={onPrev}
-          disabled={page <= 1}
-          aria-label="Previous page"
-          className="rounded border border-border px-2 py-0.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-        >
-          ←
-        </button>
-        <span className="font-mono text-[12px] text-muted-foreground tabular px-2">
-          {page} / {totalPages}
-        </span>
-        <button
-          onClick={onNext}
-          disabled={page >= totalPages}
-          aria-label="Next page"
-          className="rounded border border-border px-2 py-0.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-        >
-          →
-        </button>
-      </div>
     </div>
   );
 }

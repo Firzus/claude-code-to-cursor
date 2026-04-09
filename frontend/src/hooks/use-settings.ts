@@ -1,13 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "~/lib/api-client";
 import { queryKeys } from "~/lib/query-keys";
+import { settingsResponseSchema } from "~/schemas/api-responses";
 import type { SettingsResponse } from "~/schemas/api-responses";
 import type { SettingsFormValues } from "~/schemas/settings";
 
 export function useSettings() {
   return useQuery({
     queryKey: queryKeys.settings,
-    queryFn: () => apiFetch<SettingsResponse>("/settings"),
+    queryFn: () =>
+      apiFetch<SettingsResponse>("/settings", settingsResponseSchema),
   });
 }
 

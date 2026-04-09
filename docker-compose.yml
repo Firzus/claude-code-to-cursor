@@ -5,7 +5,6 @@ services:
     restart: unless-stopped
     ports:
       - "${PORT:-8082}:8082"
-      - "1455:1455"
     volumes:
       - cctc-data:/data
     env_file: .env
@@ -24,6 +23,13 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
 
   frontend:
     build: ./frontend
@@ -36,9 +42,16 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2025.4.0
     container_name: cctc-cloudflared
     restart: unless-stopped
     command: tunnel --protocol http2 run
@@ -47,6 +60,17 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   cctc-data:

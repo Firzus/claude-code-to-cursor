@@ -9,6 +9,7 @@ import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest } from "./db";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
+import { updateCachePrefix } from "./cache-keepalive";
 import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
 import { logger } from "./logger";
 
@@ -140,15 +141,25 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
     delete prepared.reasoning_budget;
   }
 
-  // Prefix tool names with mcp_ for Claude Code API compatibility
+  // Sort tools by name for stable cache keys, then prefix with mcp_
   const TOOL_PREFIX = "mcp_";
   if (prepared.tools && Array.isArray(prepared.tools)) {
+    // Stable sort ensures consistent ordering across requests for cache efficiency
+    prepared.tools = [...prepared.tools].sort((a: any, b: any) =>
+      ((a.name as string) || '').localeCompare((b.name as string) || '')
+    );
     prepared.tools = prepared.tools.map((tool: any) => ({
       ...tool,
       name: tool.name ? `${TOOL_PREFIX}${tool.name}` : tool.name,
     }));
+    // Add cache breakpoint on the last tool definition (first level of cache hierarchy)
+    if (prepared.tools.length > 0) {
+      const lastIdx = prepared.tools.length - 1;
+      const lastTool = prepared.tools[lastIdx]!;
+      prepared.tools[lastIdx] = { ...lastTool, cache_control: { type: "ephemeral" } };
+    }
     logger.verbose(
-      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (prefixed with mcp_)`
+      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with mcp_, last cached)`
     );
   }
   if (prepared.tool_choice) {
@@ -204,35 +215,53 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   // Add cache_control breakpoint on the last system block to enable prompt caching
   if (systemPrompts.length > 0) {
     const lastIdx = systemPrompts.length - 1;
-    systemPrompts[lastIdx] = {
-      ...systemPrompts[lastIdx],
-      cache_control: { type: "ephemeral" },
-    };
+    const lastBlock = systemPrompts[lastIdx]!;
+    systemPrompts[lastIdx] = { ...lastBlock, cache_control: { type: "ephemeral" } };
   }
 
   prepared.system = systemPrompts;
 
-  // Add cache_control breakpoint on conversation history (second-to-last user message)
-  // This caches the entire conversation prefix, so subsequent requests in an agent loop
-  // read ~50K+ tokens from cache at ~10% cost
+  // Cache breakpoints on conversation history.
+  // Anthropic allows up to 4 breakpoints total. We use:
+  //   #1 = last tool definition (set above)
+  //   #2 = last system block (set above)
+  //   #3 = intermediate message breakpoint (for long conversations, prevents
+  //         the 20-block lookback window from missing the prefix cache)
+  //   #4 = second-to-last user message (recent conversation cache)
   if (prepared.messages && Array.isArray(prepared.messages)) {
-    const userMsgIndices: number[] = [];
-    for (let i = 0; i < prepared.messages.length; i++) {
-      if (prepared.messages[i].role === "user") userMsgIndices.push(i);
-    }
-    if (userMsgIndices.length >= 2) {
-      const targetIdx = userMsgIndices[userMsgIndices.length - 2]!;
-      const msg = prepared.messages[targetIdx];
+    const addCacheBreakpoint = (idx: number) => {
+      const msg = prepared.messages[idx]!;
       if (typeof msg.content === "string") {
-        prepared.messages[targetIdx] = {
-          ...msg,
-          content: [{ type: "text", text: msg.content, cache_control: { type: "ephemeral" } }],
+        prepared.messages[idx] = {
+          role: msg.role,
+          content: [{ type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" } }],
         };
       } else if (Array.isArray(msg.content) && msg.content.length > 0) {
         const blocks = [...msg.content];
         const lastBlock = blocks[blocks.length - 1]!;
         blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
-        prepared.messages[targetIdx] = { ...msg, content: blocks };
+        prepared.messages[idx] = { role: msg.role, content: blocks };
+      }
+    };
+
+    const userMsgIndices: number[] = [];
+    for (let i = 0; i < prepared.messages.length; i++) {
+      if (prepared.messages[i]!.role === "user") userMsgIndices.push(i);
+    }
+
+    // Breakpoint #4: second-to-last user message (recent conversation prefix)
+    if (userMsgIndices.length >= 2) {
+      addCacheBreakpoint(userMsgIndices[userMsgIndices.length - 2]!);
+    }
+
+    // Breakpoint #3: intermediate breakpoint for long conversations
+    // Place at ~40% of user messages to create two cache tiers
+    if (userMsgIndices.length >= 6) {
+      const intermediatePos = Math.floor(userMsgIndices.length * 0.4);
+      const intermediateIdx = userMsgIndices[intermediatePos]!;
+      // Only add if it's different from breakpoint #4
+      if (intermediateIdx !== userMsgIndices[userMsgIndices.length - 2]) {
+        addCacheBreakpoint(intermediateIdx);
       }
     }
   }
@@ -340,7 +369,11 @@ async function makeClaudeCodeRequest(
       body: JSON.stringify(preparedBody),
     });
 
+    console.log(`   [Debug] Anthropic API response status: ${response.status}`);
+
     if (response.status === 429) {
+      const errorBody429 = await response.clone().text().catch(() => "");
+      console.log(`Claude Code 429 response body: ${errorBody429.substring(0, 500)}`);
       const retryAfter = response.headers.get("retry-after");
       const rateLimitReset = response.headers.get("x-ratelimit-reset");
 
@@ -441,6 +474,9 @@ async function makeClaudeCodeRequest(
       console.log("Rate limit probe succeeded, clearing cache");
       rateLimitCache = null;
     }
+
+    // Update cache keepalive prefix so pings reuse the same tools+system
+    updateCachePrefix(preparedBody);
 
     // Strip mcp_ prefix from tool names in streaming/non-streaming responses
     const strippedResponse = stripMcpPrefixFromResponse(response);

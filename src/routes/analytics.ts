@@ -101,6 +101,14 @@ export function handleAnalyticsTimeline(url: URL): Response {
 }
 
 export function handleAnalyticsReset(): Response {
-  const result = resetAnalytics();
-  return Response.json({ success: true, ...result });
+  try {
+    const result = resetAnalytics();
+    return Response.json({ success: true, ...result });
+  } catch (error) {
+    console.error("Reset analytics error:", error);
+    return Response.json(
+      { error: { message: error instanceof Error ? error.message : "Reset failed" } },
+      { status: 500 }
+    );
+  }
 }

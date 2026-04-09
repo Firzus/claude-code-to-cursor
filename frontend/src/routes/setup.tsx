@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
   ExternalLink,
   Check,
-  Loader2,
   Copy,
   ArrowRight,
   ArrowLeft,
@@ -12,7 +11,6 @@ import {
   BarChart3,
   Terminal,
   CheckCircle2,
-  Circle,
 } from "lucide-react";
 import { apiFetch } from "~/lib/api-client";
 import type { AnalyticsResponse } from "~/schemas/api-responses";
@@ -20,6 +18,10 @@ import { useHealth } from "~/hooks/use-health";
 import { useOnboardingComplete } from "~/hooks/use-onboarding";
 import { OAuthFlow } from "~/components/oauth-flow";
 import { cn } from "~/lib/utils";
+import { StepIndicator } from "~/components/setup/step-indicator";
+import { NavButtons } from "~/components/setup/nav-buttons";
+import { CopyBlock } from "~/components/setup/copy-block";
+import { StatusRow } from "~/components/setup/status-row";
 
 export const Route = createFileRoute("/setup")({
   component: SetupPage,
@@ -89,60 +91,6 @@ function SetupPage() {
           <VerifyStep onFinish={finish} onPrev={prev} />
         )}
       </div>
-    </div>
-  );
-}
-
-function StepIndicator({
-  steps,
-  currentIndex,
-}: {
-  steps: readonly { id: string; label: string }[];
-  currentIndex: number;
-}) {
-  return (
-    <div className="flex items-center justify-center gap-1">
-      {steps.map((step, i) => {
-        const done = i < currentIndex;
-        const active = i === currentIndex;
-        return (
-          <div key={step.id} className="flex items-center gap-1">
-            {i > 0 && (
-              <div
-                className={cn(
-                  "h-px w-8 transition-colors duration-500",
-                  done ? "bg-accent" : "bg-border",
-                )}
-              />
-            )}
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-mono transition-all duration-300",
-                  done && "bg-accent text-background",
-                  active &&
-                  "border-2 border-accent text-accent shadow-[0_0_12px_-2px_var(--color-accent)]",
-                  !done &&
-                  !active &&
-                  "border border-border text-muted-foreground",
-                )}
-              >
-                {done ? <Check className="h-3 w-3" /> : i + 1}
-              </div>
-              <span
-                className={cn(
-                  "hidden text-[12px] sm:inline transition-colors",
-                  active
-                    ? "text-foreground font-medium"
-                    : "text-muted-foreground",
-                )}
-              >
-                {step.label}
-              </span>
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -340,35 +288,6 @@ function ConfigField({
   );
 }
 
-function CopyBlock({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  function copy() {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <div className="group relative">
-      <pre className="overflow-x-auto rounded border border-border bg-background px-3 py-2.5 font-mono text-[11px] text-muted-foreground leading-relaxed">
-        {value}
-      </pre>
-      <button
-        onClick={copy}
-        className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:text-foreground cursor-pointer"
-        aria-label="Copy to clipboard"
-      >
-        {copied ? (
-          <Check className="h-3 w-3 text-success" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
-      </button>
-    </div>
-  );
-}
-
 function VerifyStep({
   onFinish,
   onPrev,
@@ -383,7 +302,6 @@ function VerifyStep({
 
   const isAuthenticated = health.data?.claudeCode.authenticated === true;
 
-  // Capture initial request count on mount
   useEffect(() => {
     apiFetch<AnalyticsResponse>("/analytics?period=hour")
       .then((data) => setBaseline(data.totalRequests))
@@ -480,84 +398,6 @@ function VerifyStep({
           <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
-    </div>
-  );
-}
-
-function StatusRow({
-  ok,
-  loading,
-  label,
-  sub,
-}: {
-  ok: boolean;
-  loading?: boolean;
-  label: string;
-  sub: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-lg border p-4 transition-all",
-        ok ? "border-success/30 bg-success/5" : "border-border bg-card/30",
-      )}
-    >
-      <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          ok ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
-        )}
-      >
-        {ok ? (
-          <Check className="h-4 w-4" />
-        ) : loading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Circle className="h-4 w-4" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium">{label}</div>
-        <div className="text-[12px] text-muted-foreground">{sub}</div>
-      </div>
-    </div>
-  );
-}
-
-function NavButtons({
-  onPrev,
-  onNext,
-  nextLabel = "Continue",
-  nextDisabled = false,
-}: {
-  onPrev?: () => void;
-  onNext?: () => void;
-  nextLabel?: string;
-  nextDisabled?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      {onPrev ? (
-        <button
-          onClick={onPrev}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-4 text-[13px] text-muted-foreground transition-colors hover:text-foreground hover:border-foreground/20 cursor-pointer"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back
-        </button>
-      ) : (
-        <div />
-      )}
-      {onNext && (
-        <button
-          onClick={onNext}
-          disabled={nextDisabled}
-          className="group inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
-        >
-          {nextLabel}
-          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </button>
-      )}
     </div>
   );
 }
