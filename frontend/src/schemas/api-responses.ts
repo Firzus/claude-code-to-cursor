@@ -43,8 +43,8 @@ export const requestRecordSchema = z.object({
   source: z.enum(["claude_code", "error"]),
   inputTokens: z.number(),
   outputTokens: z.number(),
-  cacheReadTokens: z.number().optional(),
-  cacheCreationTokens: z.number().optional(),
+  cacheReadTokens: z.number().default(0),
+  cacheCreationTokens: z.number().default(0),
   stream: z.union([z.boolean(), z.number()]),
   latencyMs: z.number().nullable(),
   error: z.string().nullable(),
@@ -65,6 +65,7 @@ export const timelineBucketSchema = z.object({
   inputTokens: z.number(),
   outputTokens: z.number(),
   cacheReadTokens: z.number(),
+  cacheCreationTokens: z.number().default(0),
   errorCount: z.number(),
 });
 
