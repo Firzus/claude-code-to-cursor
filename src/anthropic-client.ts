@@ -5,7 +5,6 @@ import {
   CLAUDE_CODE_EXTRA_INSTRUCTION,
   CLAUDE_CODE_USER_AGENT,
 } from "./config";
-import { EXTENDED_SYSTEM_PROMPT } from "./system-prompt";
 import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest } from "./db";
 import { normalizeAnthropicToolIds } from "./request-normalization";
@@ -193,10 +192,9 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
     });
   }
 
-  // Build system prompts array - required Claude Code identity line first,
-  // then the extended prompt to reach the minimum cacheable prefix size (4096 tokens)
+  // Build system prompts array - required Claude Code prompt first
   const systemPrompts: ContentBlock[] = [
-    { type: "text", text: `${CLAUDE_CODE_SYSTEM_PROMPT}\n${EXTENDED_SYSTEM_PROMPT}` },
+    { type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT },
   ];
 
   // Add extra instruction if configured
