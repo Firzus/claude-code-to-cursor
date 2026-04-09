@@ -68,6 +68,7 @@ export interface Tool {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
+  cache_control?: { type: string };
 }
 
 export interface ToolChoice {
