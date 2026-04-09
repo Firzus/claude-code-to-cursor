@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Rocket, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "~/lib/utils";
 import { HealthIndicator } from "./health-indicator";
 
@@ -14,21 +14,49 @@ export function NavBar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeMobile();
+    }
+
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(e.target as Node)
+      ) {
+        closeMobile();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [mobileOpen, closeMobile]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-6">
         <div className="flex items-center gap-6">
-          <Link to="/analytics" className="flex items-center gap-2">
+          <Link to="/analytics" className="flex items-center gap-2 rounded-md">
             <svg
               width="20"
               height="20"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="white"
+              stroke="currentColor"
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden="true"
             >
               <polyline points="7 4 1 12 7 20" />
               <polyline points="17 4 23 12 17 20" />
@@ -38,8 +66,8 @@ export function NavBar() {
               claude-code-to-cursor
             </span>
           </Link>
-          <span className="text-border hidden sm:inline">/</span>
-          <nav className="hidden sm:flex items-center gap-1">
+          <span className="text-border hidden sm:inline" aria-hidden="true">/</span>
+          <nav className="hidden sm:flex items-center gap-1" aria-label="Main navigation">
             {navItems.map(({ to, label }) => (
               <Link
                 key={to}
@@ -65,7 +93,7 @@ export function NavBar() {
             )}
             title="Setup guide"
           >
-            <Rocket className="h-3.5 w-3.5" />
+            <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Setup</span>
           </Link>
         </div>
@@ -76,6 +104,7 @@ export function NavBar() {
             onClick={() => setMobileOpen(!mobileOpen)}
             className="sm:hidden rounded-md p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
           >
             {mobileOpen ? (
               <X className="h-4 w-4" />
@@ -86,15 +115,17 @@ export function NavBar() {
         </div>
       </div>
 
-      {/* Mobile menu */}
       {mobileOpen && (
-        <div className="sm:hidden border-t border-border bg-background/95 backdrop-blur-xl animate-slide-up">
-          <nav className="flex flex-col p-3 gap-1">
+        <div
+          ref={mobileMenuRef}
+          className="sm:hidden border-t border-border bg-background/95 backdrop-blur-xl animate-slide-up"
+        >
+          <nav className="flex flex-col p-3 gap-1" aria-label="Mobile navigation">
             {navItems.map(({ to, label }) => (
               <Link
                 key={to}
                 to={to}
-                onClick={() => setMobileOpen(false)}
+                onClick={closeMobile}
                 className={cn(
                   "rounded-md px-3 py-2 text-[13px] transition-colors",
                   currentPath === to
@@ -107,7 +138,7 @@ export function NavBar() {
             ))}
             <Link
               to="/setup"
-              onClick={() => setMobileOpen(false)}
+              onClick={closeMobile}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-3 py-2 text-[12px] transition-colors",
                 currentPath === "/setup"
@@ -115,7 +146,7 @@ export function NavBar() {
                   : "text-muted-foreground hover:text-accent",
               )}
             >
-              <Rocket className="h-3.5 w-3.5" />
+              <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
               Setup
             </Link>
           </nav>

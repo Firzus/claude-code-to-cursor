@@ -18,9 +18,9 @@ function NotFoundPage() {
   return (
     <div className="min-h-screen bg-background">
       <NavBar />
-      <main className="flex flex-col items-center justify-center py-32 px-6 text-center animate-fade-in">
+      <main className="flex flex-col items-center justify-center py-20 sm:py-32 px-6 text-center animate-fade-in">
         <h1 className="text-4xl font-bold font-mono mb-2">404</h1>
-        <p className="text-[14px] text-muted-foreground mb-6">
+        <p className="text-sm text-muted-foreground mb-6">
           This page could not be found.
         </p>
         <Link

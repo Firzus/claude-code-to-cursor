@@ -124,6 +124,7 @@ function AnalyticsPage() {
     setResetting(true);
     apiFetch("/analytics/reset", { method: "POST" })
       .then(() => qc.invalidateQueries({ queryKey: ["analytics"] }))
+      .catch(() => { })
       .finally(() => setResetting(false));
   }
 
@@ -131,10 +132,10 @@ function AnalyticsPage() {
 
   const savings = s
     ? calculateCacheSavings(
-        s.totalInputTokens,
-        s.totalCacheReadTokens,
-        s.totalCacheCreationTokens,
-      )
+      s.totalInputTokens,
+      s.totalCacheReadTokens,
+      s.totalCacheCreationTokens,
+    )
     : null;
 
   const timelineWithRate = timeline.data?.buckets.map((b) => {
@@ -476,7 +477,7 @@ function AnalyticsPage() {
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
                           {fmt(r.inputTokens)}
                         </td>
-                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell" style={{ color: cacheRead > 0 ? "var(--color-success)" : undefined }}>
+                        <td className={cn("px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell", cacheRead > 0 && "text-success")}>
                           {cacheRead > 0 ? fmt(cacheRead) : "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular text-muted-foreground whitespace-nowrap hidden md:table-cell">
@@ -509,12 +510,12 @@ function AnalyticsPage() {
                                 </span>
                               }
                             >
-                              <span className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help" aria-label="Error" />
+                              <span className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help" />
                               <span className="sr-only">Error: {r.error}</span>
                             </Tooltip>
                           ) : (
                             <>
-                              <span className="inline-block h-2 w-2 rounded-full bg-success" />
+                              <span className="inline-block h-2 w-2 rounded-full bg-success" aria-hidden="true" />
                               <span className="sr-only">Success</span>
                             </>
                           )}

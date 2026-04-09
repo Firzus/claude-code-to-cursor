@@ -5,7 +5,7 @@ import { Badge } from "./ui/badge";
 export function HealthIndicator() {
   const { data, isLoading, isError } = useHealth();
 
-  if (isLoading) return <Dot color="muted" />;
+  if (isLoading) return <Dot color="muted" label="Loading" />;
 
   if (isError || !data)
     return (
@@ -49,9 +49,9 @@ function Dot({
   }[color];
 
   return (
-    <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-[13px] text-muted-foreground" role="status">
       {label && <span>{label}</span>}
-      <span className={cn("h-2 w-2 rounded-full", c)} />
+      <span className={cn("h-2 w-2 rounded-full", c)} aria-hidden="true" />
     </div>
   );
 }
