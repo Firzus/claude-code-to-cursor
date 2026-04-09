@@ -1,0 +1,150 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+
+let capturedComponent: React.FC | null = null;
+
+vi.mock("@tanstack/react-router", () => ({
+  createFileRoute: () => (opts: { component: React.FC }) => {
+    capturedComponent = opts.component;
+    return { component: opts.component };
+  },
+}));
+
+vi.mock("~/hooks/use-settings", () => ({
+  useSettings: vi.fn(),
+  useUpdateSettings: vi.fn(),
+}));
+
+import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
+const mockUseSettings = vi.mocked(useSettings);
+const mockUseUpdateSettings = vi.mocked(useUpdateSettings);
+
+function Wrapper({ children }: { children: ReactNode }) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+}
+
+async function renderSettingsPage() {
+  await import("~/routes/settings");
+  const SettingsPage = capturedComponent!;
+  return render(
+    <Wrapper>
+      <SettingsPage />
+    </Wrapper>,
+  );
+}
+
+const mockSettings = {
+  settings: {
+    selectedModel: "claude-opus-4-6" as const,
+    thinkingEnabled: true,
+    thinkingEffort: "high" as const,
+  },
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+
+  mockUseUpdateSettings.mockReturnValue({
+    mutate: vi.fn(),
+    isPending: false,
+    isSuccess: false,
+  } as never);
+});
+
+describe("SettingsPage", () => {
+  it("shows loading skeleton", async () => {
+    mockUseSettings.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    await renderSettingsPage();
+
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+  });
+
+  it("shows error state", async () => {
+    mockUseSettings.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: vi.fn(),
+    } as never);
+
+    await renderSettingsPage();
+
+    expect(screen.getByText("Failed to load settings.")).toBeInTheDocument();
+    expect(screen.getByText("Try again")).toBeInTheDocument();
+  });
+
+  it("renders settings form with model cards", async () => {
+    mockUseSettings.mockReturnValue({
+      data: mockSettings,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    await renderSettingsPage();
+
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Haiku 4.5")).toBeInTheDocument();
+  });
+
+  it("renders thinking toggle and effort buttons", async () => {
+    mockUseSettings.mockReturnValue({
+      data: mockSettings,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    await renderSettingsPage();
+
+    expect(screen.getByText("Extended Thinking")).toBeInTheDocument();
+    expect(screen.getByRole("switch")).toBeInTheDocument();
+    expect(screen.getByText("low")).toBeInTheDocument();
+    expect(screen.getByText("medium")).toBeInTheDocument();
+    expect(screen.getByText("high")).toBeInTheDocument();
+  });
+
+  it("shows save and discard buttons", async () => {
+    mockUseSettings.mockReturnValue({
+      data: mockSettings,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+
+    await renderSettingsPage();
+
+    expect(screen.getByText("Save")).toBeInTheDocument();
+  });
+
+  it("calls refetch on try again click", async () => {
+    const user = userEvent.setup();
+    const refetch = vi.fn();
+
+    mockUseSettings.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    } as never);
+
+    await renderSettingsPage();
+
+    await user.click(screen.getByText("Try again"));
+    expect(refetch).toHaveBeenCalled();
+  });
+});

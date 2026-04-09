@@ -21,6 +21,7 @@ import {
   handleSettingsModelAPI,
 } from "./src/routes/settings";
 import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
+import { startCacheKeepalive } from "./src/cache-keepalive";
 import type { AnthropicError } from "./src/types";
 import { logger } from "./src/logger";
 
@@ -200,7 +201,16 @@ try {
       logger.info(`[REQ] ${req.method} ${url.pathname}`);
 
       // Handle request and add CORS headers to all responses
-      const response = await handleRequest(req, url);
+      let response: Response;
+      try {
+        response = await handleRequest(req, url);
+      } catch (error) {
+        console.error("Unhandled request error:", error);
+        response = Response.json(
+          { error: { type: "internal_error", message: "Internal server error" } },
+          { status: 500 }
+        );
+      }
       const cors = corsHeaders();
       for (const [key, value] of Object.entries(cors)) {
         response.headers.set(key, value);
@@ -235,5 +245,7 @@ console.log(`   Analytics:  /api/analytics`);
 console.log(`   Settings:   /api/settings\n`);
 
 await checkCredentials();
+
+startCacheKeepalive();
 
 console.log(`\n📝 Verbose logging enabled → api.log (gitignored)\n`);

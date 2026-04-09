@@ -1,10 +1,9 @@
+import type { ZodType } from "zod";
+
 function getApiBase(): string {
   if (typeof window !== "undefined") {
-    // Browser: call backend directly on same hostname, port 8082
-    // Works because backend has CORS * headers
     return `${window.location.protocol}//${window.location.hostname}:${window.__CCTC_API_PORT__ || 8082}/api`;
   }
-  // SSR: use Docker internal hostname
   return `${process.env.API_URL || "http://api:8082"}/api`;
 }
 
@@ -14,16 +13,38 @@ declare global {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyZodType<T> = ZodType<T, any, any>;
+
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
+): Promise<T>;
+export async function apiFetch<T>(
+  path: string,
+  schema: AnyZodType<T>,
+  init?: RequestInit,
+): Promise<T>;
+export async function apiFetch<T>(
+  path: string,
+  schemaOrInit?: AnyZodType<T> | RequestInit,
+  init?: RequestInit,
 ): Promise<T> {
+  const isSchema =
+    schemaOrInit != null &&
+    typeof schemaOrInit === "object" &&
+    "parse" in schemaOrInit &&
+    typeof (schemaOrInit as AnyZodType<T>).parse === "function";
+
+  const schema = isSchema ? (schemaOrInit as AnyZodType<T>) : undefined;
+  const fetchInit = isSchema ? init : (schemaOrInit as RequestInit | undefined);
+
   const url = `${getApiBase()}${path}`;
   const res = await fetch(url, {
-    ...init,
+    ...fetchInit,
     headers: {
       "Content-Type": "application/json",
-      ...init?.headers,
+      ...fetchInit?.headers,
     },
   });
 
@@ -34,5 +55,6 @@ export async function apiFetch<T>(
     );
   }
 
-  return res.json() as Promise<T>;
+  const data = await res.json();
+  return schema ? schema.parse(data) : (data as T);
 }

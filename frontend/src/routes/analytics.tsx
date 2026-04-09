@@ -6,6 +6,7 @@ import {
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
 import { apiFetch } from "~/lib/api-client";
+import { calculateCacheSavings } from "~/lib/pricing";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "~/lib/utils";
 import {
@@ -27,6 +28,10 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip } from "~/components/ui/tooltip";
 import { Badge } from "~/components/ui/badge";
 import { EmptyState } from "~/components/empty-state";
+import { StatCard } from "~/components/analytics/stat-card";
+import { Pagination } from "~/components/analytics/pagination";
+import { AgoText } from "~/components/analytics/ago-text";
+import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import {
   Trash2,
   RefreshCw,
@@ -99,21 +104,11 @@ function AnalyticsPage() {
   const qc = useQueryClient();
   const [resetting, setResetting] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
-  const [agoText, setAgoText] = useState("just now");
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (summary.dataUpdatedAt) setLastUpdated(summary.dataUpdatedAt);
   }, [summary.dataUpdatedAt]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const secs = Math.round((Date.now() - lastUpdated) / 1000);
-      if (secs < 5) setAgoText("just now");
-      else if (secs < 60) setAgoText(`${secs}s ago`);
-      else setAgoText(`${Math.floor(secs / 60)}m ago`);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [lastUpdated]);
 
   function handlePeriodChange(value: string) {
     setPeriod(value);
@@ -124,22 +119,24 @@ function AnalyticsPage() {
     qc.invalidateQueries({ queryKey: ["analytics"] });
   }
 
+  function handleReset() {
+    setConfirmOpen(false);
+    setResetting(true);
+    apiFetch("/analytics/reset", { method: "POST" })
+      .then(() => qc.invalidateQueries({ queryKey: ["analytics"] }))
+      .finally(() => setResetting(false));
+  }
+
   const s = summary.data;
 
-  // Compute cost savings
-  const allInput = s
-    ? s.totalInputTokens + s.totalCacheReadTokens + s.totalCacheCreationTokens
-    : 0;
-  const noCacheCost = allInput;
-  const withCacheCost = s
-    ? s.totalInputTokens +
-      s.totalCacheReadTokens * 0.1 +
-      s.totalCacheCreationTokens * 1.25
-    : 0;
-  const savingsPercent =
-    noCacheCost > 0 ? ((noCacheCost - withCacheCost) / noCacheCost) * 100 : 0;
+  const savings = s
+    ? calculateCacheSavings(
+        s.totalInputTokens,
+        s.totalCacheReadTokens,
+        s.totalCacheCreationTokens,
+      )
+    : null;
 
-  // Compute timeline with cache hit rate
   const timelineWithRate = timeline.data?.buckets.map((b) => {
     const total =
       b.inputTokens + b.cacheReadTokens + (b.cacheCreationTokens ?? 0);
@@ -157,16 +154,19 @@ function AnalyticsPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-medium">Analytics</h1>
-          <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1.5">
-            <span className="h-1 w-1 rounded-full bg-success animate-pulse inline-block" />
-            {agoText}
-          </span>
+          <AgoText updatedAt={lastUpdated} />
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md border border-border text-[12px]">
+          <div
+            role="radiogroup"
+            aria-label="Time period"
+            className="flex rounded-md border border-border text-[12px]"
+          >
             {periods.map(({ value, label }) => (
               <button
                 key={value}
+                role="radio"
+                aria-checked={period === value}
                 onClick={() => handlePeriodChange(value)}
                 className={cn(
                   "px-2.5 py-1 font-mono transition-colors cursor-pointer first:rounded-l-md last:rounded-r-md",
@@ -187,15 +187,7 @@ function AnalyticsPage() {
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => {
-              if (!confirm("Reset all analytics?")) return;
-              setResetting(true);
-              apiFetch("/analytics/reset", { method: "POST" })
-                .then(() =>
-                  qc.invalidateQueries({ queryKey: ["analytics"] }),
-                )
-                .finally(() => setResetting(false));
-            }}
+            onClick={() => setConfirmOpen(true)}
             disabled={resetting}
             aria-label="Reset analytics data"
             className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50 cursor-pointer"
@@ -204,6 +196,14 @@ function AnalyticsPage() {
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Reset all analytics?"
+        description="This will permanently delete all recorded requests and statistics. This action cannot be undone."
+        onConfirm={handleReset}
+        onCancel={() => setConfirmOpen(false)}
+      />
 
       {/* Error state */}
       {summary.isError && (
@@ -223,8 +223,8 @@ function AnalyticsPage() {
         </Card>
       )}
 
-      {/* Stat cards — 6 cards */}
-      {s && (
+      {/* Stat cards */}
+      {s && savings && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard
             icon={Activity}
@@ -237,21 +237,21 @@ function AnalyticsPage() {
             icon={Zap}
             label="Cache Hit Rate"
             value={pct(s.cacheHitRate * 100)}
-            sub={`${fmt(s.totalCacheReadTokens)} / ${fmt(allInput)}`}
+            sub={`${fmt(s.totalCacheReadTokens)} / ${fmt(savings.allInput)}`}
             accent="chart-4"
           />
           <StatCard
             icon={TrendingDown}
             label="Tokens Saved"
             value={fmt(s.totalCacheReadTokens)}
-            sub={`of ${fmt(allInput)} total input`}
+            sub={`of ${fmt(savings.allInput)} total input`}
             accent="success"
           />
           <StatCard
             icon={DollarSign}
             label="Est. Savings"
-            value={pct(savingsPercent)}
-            sub={allInput > 0 ? `~${fmt(Math.round(noCacheCost - withCacheCost))} tokens equiv.` : "no data yet"}
+            value={pct(savings.savingsPercent)}
+            sub={savings.allInput > 0 ? `~${fmt(savings.tokensSaved)} tokens equiv.` : "no data yet"}
             accent="success"
           />
           <StatCard
@@ -285,10 +285,9 @@ function AnalyticsPage() {
         </div>
       )}
 
-      {/* Charts — 2 side by side */}
+      {/* Charts */}
       {timelineWithRate && timelineWithRate.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* Chart A: Token Breakdown */}
           <Card>
             <CardContent className="p-4">
               <div className="text-[12px] text-muted-foreground mb-3 font-medium">
@@ -317,189 +316,78 @@ function AnalyticsPage() {
                       <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid
-                    vertical={false}
-                    strokeDasharray="3 3"
-                    stroke="var(--color-border)"
-                    strokeOpacity={0.5}
-                  />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.5} />
                   <XAxis
-                    dataKey="timestamp"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    minTickGap={40}
-                    tick={{ fontSize: 11 }}
-                    stroke="var(--color-muted-foreground)"
+                    dataKey="timestamp" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40}
+                    tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)"
                     tickFormatter={(v) => {
                       const d = new Date(v);
                       if (period === "hour" || period === "day")
-                        return d.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                      return d.toLocaleDateString([], {
-                        month: "short",
-                        day: "numeric",
-                      });
+                        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      return d.toLocaleDateString([], { month: "short", day: "numeric" });
                     }}
                   />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    width={50}
-                    tick={{ fontSize: 11 }}
-                    stroke="var(--color-muted-foreground)"
-                    tickFormatter={(v) => fmt(v)}
-                  />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={50} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" tickFormatter={(v) => fmt(v)} />
                   <RechartsTooltip
                     content={
                       <ChartTooltipContent
                         labelFormatter={(v) => {
                           const d = new Date(Number(v));
-                          return d.toLocaleString([], {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          });
+                          return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                         }}
                         formatter={(value) => fmt(value)}
                       />
                     }
                   />
-                  <Area
-                    type="monotone"
-                    dataKey="cacheReadTokens"
-                    stackId="1"
-                    stroke="var(--color-success)"
-                    strokeWidth={1.5}
-                    fill="url(#fillCacheRead)"
-                    dot={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="inputTokens"
-                    stackId="1"
-                    stroke="var(--color-chart-1)"
-                    strokeWidth={1.5}
-                    fill="url(#fillFreshInput)"
-                    dot={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="cacheCreationTokens"
-                    stackId="1"
-                    stroke="var(--color-chart-3)"
-                    strokeWidth={1.5}
-                    fill="url(#fillCacheWrite)"
-                    dot={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="outputTokens"
-                    stroke="var(--color-chart-2)"
-                    strokeWidth={1.5}
-                    strokeDasharray="4 3"
-                    fill="none"
-                    dot={false}
-                  />
+                  <Area type="monotone" dataKey="cacheReadTokens" stackId="1" stroke="var(--color-success)" strokeWidth={1.5} fill="url(#fillCacheRead)" dot={false} />
+                  <Area type="monotone" dataKey="inputTokens" stackId="1" stroke="var(--color-chart-1)" strokeWidth={1.5} fill="url(#fillFreshInput)" dot={false} />
+                  <Area type="monotone" dataKey="cacheCreationTokens" stackId="1" stroke="var(--color-chart-3)" strokeWidth={1.5} fill="url(#fillCacheWrite)" dot={false} />
+                  <Area type="monotone" dataKey="outputTokens" stroke="var(--color-chart-2)" strokeWidth={1.5} strokeDasharray="4 3" fill="none" dot={false} />
                 </AreaChart>
               </ChartContainer>
             </CardContent>
           </Card>
 
-          {/* Chart B: Cache Hit Rate */}
           <Card>
             <CardContent className="p-4">
               <div className="text-[12px] text-muted-foreground mb-3 font-medium">
                 Cache hit rate over time
               </div>
-              <ChartContainer
-                config={cacheRateConfig}
-                className="aspect-auto h-[220px] w-full"
-              >
-                <AreaChart
-                  accessibilityLayer
-                  data={timelineWithRate}
-                  margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
-                >
+              <ChartContainer config={cacheRateConfig} className="aspect-auto h-[220px] w-full">
+                <AreaChart accessibilityLayer data={timelineWithRate} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
                   <defs>
                     <linearGradient id="fillCacheRate" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--color-chart-4)" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="var(--color-chart-4)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid
-                    vertical={false}
-                    strokeDasharray="3 3"
-                    stroke="var(--color-border)"
-                    strokeOpacity={0.5}
-                  />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.5} />
                   <XAxis
-                    dataKey="timestamp"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    minTickGap={40}
-                    tick={{ fontSize: 11 }}
-                    stroke="var(--color-muted-foreground)"
+                    dataKey="timestamp" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40}
+                    tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)"
                     tickFormatter={(v) => {
                       const d = new Date(v);
                       if (period === "hour" || period === "day")
-                        return d.toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                      return d.toLocaleDateString([], {
-                        month: "short",
-                        day: "numeric",
-                      });
+                        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      return d.toLocaleDateString([], { month: "short", day: "numeric" });
                     }}
                   />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    width={40}
-                    tick={{ fontSize: 11 }}
-                    stroke="var(--color-muted-foreground)"
-                    domain={[0, 100]}
-                    tickFormatter={(v) => `${v}%`}
-                  />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={40} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                   <RechartsTooltip
                     content={
                       <ChartTooltipContent
                         labelFormatter={(v) => {
                           const d = new Date(Number(v));
-                          return d.toLocaleString([], {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          });
+                          return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                         }}
                         formatter={(value) => `${Number(value).toFixed(1)}%`}
                       />
                     }
                   />
                   {avgCacheRate > 0 && (
-                    <ReferenceLine
-                      y={avgCacheRate}
-                      stroke="var(--color-chart-4)"
-                      strokeDasharray="6 4"
-                      strokeOpacity={0.5}
-                    />
+                    <ReferenceLine y={avgCacheRate} stroke="var(--color-chart-4)" strokeDasharray="6 4" strokeOpacity={0.5} />
                   )}
-                  <Area
-                    type="monotone"
-                    dataKey="cacheHitRate"
-                    stroke="var(--color-chart-4)"
-                    strokeWidth={1.5}
-                    fill="url(#fillCacheRate)"
-                    dot={false}
-                  />
+                  <Area type="monotone" dataKey="cacheHitRate" stroke="var(--color-chart-4)" strokeWidth={1.5} fill="url(#fillCacheRate)" dot={false} />
                 </AreaChart>
               </ChartContainer>
             </CardContent>
@@ -578,16 +466,9 @@ function AnalyticsPage() {
                     const rowCacheRate = rowAllInput > 0 ? (cacheRead / rowAllInput) * 100 : 0;
 
                     return (
-                      <tr
-                        key={r.id}
-                        className="border-b border-border/50 hover:bg-card transition-colors"
-                      >
+                      <tr key={r.id} className="border-b border-border/50 hover:bg-card transition-colors">
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap hidden sm:table-cell">
-                          {new Date(r.timestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
+                          {new Date(r.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono truncate">
                           {r.model.replace("claude-", "")}
@@ -596,10 +477,10 @@ function AnalyticsPage() {
                           {fmt(r.inputTokens)}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell" style={{ color: cacheRead > 0 ? "var(--color-success)" : undefined }}>
-                          {cacheRead > 0 ? fmt(cacheRead) : "—"}
+                          {cacheRead > 0 ? fmt(cacheRead) : "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular text-muted-foreground whitespace-nowrap hidden md:table-cell">
-                          {cacheWrite > 0 ? fmt(cacheWrite) : "—"}
+                          {cacheWrite > 0 ? fmt(cacheWrite) : "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
                           {fmt(r.outputTokens)}
@@ -613,13 +494,11 @@ function AnalyticsPage() {
                               {pct(rowCacheRate)}
                             </Badge>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-muted-foreground">{"\u2014"}</span>
                           )}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right text-muted-foreground tabular whitespace-nowrap hidden md:table-cell">
-                          {r.latencyMs
-                            ? `${(r.latencyMs / 1000).toFixed(1)}s`
-                            : "—"}
+                          {r.latencyMs ? `${(r.latencyMs / 1000).toFixed(1)}s` : "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 text-right">
                           {r.source === "error" && r.error ? (
@@ -630,10 +509,7 @@ function AnalyticsPage() {
                                 </span>
                               }
                             >
-                              <span
-                                className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help"
-                                aria-label="Error"
-                              />
+                              <span className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help" aria-label="Error" />
                               <span className="sr-only">Error: {r.error}</span>
                             </Tooltip>
                           ) : (
@@ -659,90 +535,6 @@ function AnalyticsPage() {
           </>
         )}
       </Card>
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  icon: typeof Activity;
-  label: string;
-  value: string;
-  sub: string;
-  accent: string;
-}) {
-  return (
-    <Card className="group transition-colors hover:border-border/80">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="flex h-6 w-6 items-center justify-center rounded-md"
-            style={{
-              backgroundColor: `color-mix(in oklch, var(--color-${accent}) 15%, transparent)`,
-              color: `var(--color-${accent})`,
-            }}
-          >
-            <Icon className="h-3 w-3" />
-          </div>
-          <span className="text-[12px] text-muted-foreground">{label}</span>
-        </div>
-        <div className="font-mono text-xl font-semibold tabular">{value}</div>
-        <div className="mt-0.5 text-[12px] text-muted-foreground font-mono">
-          {sub}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Pagination({
-  page,
-  pageSize,
-  total,
-  onPrev,
-  onNext,
-}: {
-  page: number;
-  pageSize: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  const totalPages = Math.ceil(total / pageSize);
-  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-
-  return (
-    <div className="flex items-center justify-between border-t border-border px-4 py-2.5">
-      <span className="font-mono text-[12px] text-muted-foreground tabular">
-        {total === 0 ? "0 results" : `${from}–${to} of ${total}`}
-      </span>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={onPrev}
-          disabled={page <= 1}
-          aria-label="Previous page"
-          className="rounded border border-border px-2 py-0.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-        >
-          &larr;
-        </button>
-        <span className="font-mono text-[12px] text-muted-foreground tabular px-2">
-          {page} / {totalPages}
-        </span>
-        <button
-          onClick={onNext}
-          disabled={page >= totalPages}
-          aria-label="Next page"
-          className="rounded border border-border px-2 py-0.5 font-mono text-[12px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-        >
-          &rarr;
-        </button>
-      </div>
     </div>
   );
 }

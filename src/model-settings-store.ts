@@ -57,16 +57,21 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
   const thinkingEnabledValue = settings.get("thinking_enabled");
   const thinkingEffortValue = settings.get("thinking_effort");
 
-  return validateModelSettings({
-    selectedModel,
-    thinkingEnabled:
-      thinkingEnabledValue === undefined
-        ? DEFAULT_MODEL_SETTINGS.thinkingEnabled
-        : fromStoredBoolean(thinkingEnabledValue),
-    thinkingEffort:
-      (thinkingEffortValue as ModelSettings["thinkingEffort"] | undefined) ??
-      DEFAULT_MODEL_SETTINGS.thinkingEffort,
-  });
+  try {
+    return validateModelSettings({
+      selectedModel,
+      thinkingEnabled:
+        thinkingEnabledValue === undefined
+          ? DEFAULT_MODEL_SETTINGS.thinkingEnabled
+          : fromStoredBoolean(thinkingEnabledValue),
+      thinkingEffort:
+        (thinkingEffortValue as ModelSettings["thinkingEffort"] | undefined) ??
+        DEFAULT_MODEL_SETTINGS.thinkingEffort,
+    });
+  } catch {
+    console.warn(`Invalid model settings in DB (selectedModel="${selectedModel}"), using defaults`);
+    return DEFAULT_MODEL_SETTINGS;
+  }
 }
 
 export function saveModelSettingsToDb(

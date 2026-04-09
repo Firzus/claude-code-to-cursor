@@ -1,6 +1,5 @@
 import * as React from "react";
 import { cn } from "~/lib/utils";
-import { ResponsiveContainer } from "recharts";
 
 export type ChartConfig = Record<
   string,
@@ -29,8 +28,32 @@ interface ChartContainerProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactElement;
 }
 
+function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
+  const [size, setSize] = React.useState<{ width: number; height: number } | null>(null);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setSize({ width: Math.floor(width), height: Math.floor(height) });
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+
+  return size;
+}
+
 const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
   ({ className, config, children, ...props }, ref) => {
+    const innerRef = React.useRef<HTMLDivElement>(null);
+    const size = useContainerSize(innerRef);
+
     const cssVars = React.useMemo(() => {
       const vars: Record<string, string> = {};
       for (const [key, value] of Object.entries(config)) {
@@ -41,10 +64,19 @@ const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
       return vars;
     }, [config]);
 
+    const setRefs = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        (innerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      },
+      [ref],
+    );
+
     return (
       <ChartContext.Provider value={{ config }}>
         <div
-          ref={ref}
+          ref={setRefs}
           className={cn(
             "[&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/40",
             "[&_.recharts-curve.recharts-tooltip-cursor]:stroke-border",
@@ -59,7 +91,7 @@ const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
           style={cssVars as React.CSSProperties}
           {...props}
         >
-          <ResponsiveContainer>{children}</ResponsiveContainer>
+          {size && React.cloneElement(children, { width: size.width, height: size.height })}
         </div>
       </ChartContext.Provider>
     );

@@ -64,6 +64,8 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
     <div className="space-y-4">
       {result && (
         <div
+          role="alert"
+          aria-live="polite"
           className={cn(
             "flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px] animate-slide-up",
             result.success
@@ -111,6 +113,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
                 href={loginData.authURL}
                 target="_blank"
                 rel="noopener noreferrer"
+                aria-label="Open Anthropic authorization page (opens in new tab)"
                 className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90"
               >
                 Open Anthropic <ExternalLink className="h-3 w-3" />
@@ -142,9 +145,14 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
             onSubmit={form.handleSubmit(onSubmit)}
             className="flex gap-2 pl-7"
           >
+            <label htmlFor="auth-code" className="sr-only">
+              Authorization code
+            </label>
             <input
+              id="auth-code"
               placeholder="Paste code..."
               disabled={!loginData}
+              aria-label="Authorization code"
               className="h-8 flex-1 rounded-md border border-border bg-background px-3 font-mono text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 transition-all"
               {...form.register("code")}
             />

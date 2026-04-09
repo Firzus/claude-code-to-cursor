@@ -63,6 +63,7 @@ export function createOpenAIStreamFromAnthropic(
       let usageOutputTokens = 0;
       let usageCacheReadTokens = 0;
       let usageCacheCreationTokens = 0;
+      let freshInputTokens = 0;
       let messageStopped = false;
 
       // Helper to safely enqueue data, automatically injecting
@@ -134,7 +135,7 @@ export function createOpenAIStreamFromAnthropic(
               safeEnqueue(
                 new TextEncoder().encode("data: [DONE]\n\n")
               );
-              onComplete?.({ inputTokens: usageInputTokens, outputTokens: usageOutputTokens, cacheReadTokens: usageCacheReadTokens, cacheCreationTokens: usageCacheCreationTokens });
+              onComplete?.({ inputTokens: freshInputTokens, outputTokens: usageOutputTokens, cacheReadTokens: usageCacheReadTokens, cacheCreationTokens: usageCacheCreationTokens });
             }
             break;
           }
@@ -220,6 +221,8 @@ export function createOpenAIStreamFromAnthropic(
                 if (event.message?.usage?.input_tokens !== undefined) {
                   usageCacheReadTokens = event.message.usage.cache_read_input_tokens || 0;
                   usageCacheCreationTokens = event.message.usage.cache_creation_input_tokens || 0;
+                  // Fresh (uncached) input tokens for analytics recording
+                  freshInputTokens = event.message.usage.input_tokens;
                   // Total input tokens = uncached + cache_read + cache_creation
                   // Anthropic splits input_tokens into uncached only; we need the full total
                   // so Cursor displays the correct "context used" percentage
@@ -563,7 +566,7 @@ export function createOpenAIStreamFromAnthropic(
                 logger.verbose(
                   `   [Debug] Sent [DONE] chunk with finish_reason: ${finishReason}`
                 );
-                onComplete?.({ inputTokens: usageInputTokens, outputTokens: usageOutputTokens, cacheReadTokens: usageCacheReadTokens, cacheCreationTokens: usageCacheCreationTokens });
+                onComplete?.({ inputTokens: freshInputTokens, outputTokens: usageOutputTokens, cacheReadTokens: usageCacheReadTokens, cacheCreationTokens: usageCacheCreationTokens });
               }
             } catch (parseError) {
               if (!cancelled) {

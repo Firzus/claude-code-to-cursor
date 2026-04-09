@@ -9,6 +9,7 @@ import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest } from "./db";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
+import { updateCachePrefix } from "./cache-keepalive";
 import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
 import { logger } from "./logger";
 
@@ -473,6 +474,9 @@ async function makeClaudeCodeRequest(
       console.log("Rate limit probe succeeded, clearing cache");
       rateLimitCache = null;
     }
+
+    // Update cache keepalive prefix so pings reuse the same tools+system
+    updateCachePrefix(preparedBody);
 
     // Strip mcp_ prefix from tool names in streaming/non-streaming responses
     const strippedResponse = stripMcpPrefixFromResponse(response);

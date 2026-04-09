@@ -9,8 +9,10 @@ RUN bun install --frozen-lockfile --production
 COPY index.ts tsconfig.json ./
 COPY src/ ./src/
 
-# Create data directories
+# Create data directories and entrypoint
 RUN mkdir -p /data /data/logs /data/auth
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Environment defaults
 ENV PORT=8082
@@ -20,4 +22,4 @@ ENV LOG_DIR=/data/logs
 
 EXPOSE 8082
 
-CMD ["bun", "run", "index.ts"]
+ENTRYPOINT ["docker-entrypoint.sh"]
