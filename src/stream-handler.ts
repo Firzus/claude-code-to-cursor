@@ -33,7 +33,11 @@ export function createOpenAIStreamFromAnthropic(
 ): ReadableStream {
   const reader = response.body?.getReader();
   if (!reader) {
-    return new ReadableStream({ start(c) { c.close(); } });
+    return new ReadableStream({
+      start(c) {
+        c.close();
+      },
+    });
   }
   const HEARTBEAT_INTERVAL = 5000;
   const includeUsageNull = !!streamOptions?.include_usage;
