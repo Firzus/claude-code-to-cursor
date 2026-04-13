@@ -1,3 +1,4 @@
+import { logger } from "../logger";
 import {
   exchangeCode,
   generatePKCE,
@@ -96,9 +97,10 @@ export async function handleOAuthCallbackAPI(req: Request): Promise<Response> {
 
     return Response.json({ success: true, message: "Authentication successful.", expiresIn });
   } catch (error) {
-    console.error("OAuth callback error:", error);
+    const fullError = error instanceof Error ? error.message : String(error);
+    logger.error(`OAuth callback error: ${fullError}`);
     return Response.json(
-      { success: false, message: `Authentication failed: ${String(error)}` },
+      { success: false, message: "Authentication failed. Please try again." },
       { status: 500 },
     );
   }

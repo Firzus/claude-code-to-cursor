@@ -1,5 +1,15 @@
 import { getAnalytics, getAnalyticsTimeline, getRecentRequests, resetAnalytics } from "../db";
 
+function validatePaginationParams(
+  limit: number,
+  offset: number,
+): { limit: number; offset: number } {
+  return {
+    limit: Number.isInteger(limit) && limit >= 1 && limit <= 1000 ? limit : 20,
+    offset: Number.isInteger(offset) && offset >= 0 ? offset : 0,
+  };
+}
+
 function calculateSince(period: string | null): number {
   const now = Date.now();
   switch (period) {
@@ -33,12 +43,13 @@ export function handleAnalytics(url: URL): Response {
 }
 
 export function handleAnalyticsRequests(url: URL): Response {
-  const limit = parseInt(url.searchParams.get("limit") || "20", 10);
-  const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+  const rawLimit = parseInt(url.searchParams.get("limit") || "20", 10);
+  const rawOffset = parseInt(url.searchParams.get("offset") || "0", 10);
   const period = url.searchParams.get("period") || "all";
   const since = calculateSince(period);
 
-  const { requests, total } = getRecentRequests(Math.min(limit, 1000), since, offset);
+  const validated = validatePaginationParams(rawLimit, rawOffset);
+  const { requests, total } = getRecentRequests(validated.limit, since, validated.offset);
   return Response.json({ requests, total });
 }
 

@@ -114,5 +114,6 @@ export function corsHeaders(req?: Request): Record<string, string> {
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-settings-key",
     "Access-Control-Allow-Credentials": "true",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
   };
 }

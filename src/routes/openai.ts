@@ -194,18 +194,13 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       const error = (await response.json()) as {
         error?: { message?: string; type?: string };
       };
-      let errorMessage = error?.error?.message || "Unknown error";
-      if (errorMessage.includes("model:")) {
-        errorMessage = errorMessage.replace(
-          /model:\s*x-([^\s,]+)/g,
-          (_match, modelName) => `model: ${modelName}`,
-        );
-      }
+      const fullErrorMessage = error?.error?.message || "Unknown error";
+      logger.error(`Anthropic API error: ${fullErrorMessage}`);
       return Response.json(
         {
           error: {
-            message: errorMessage,
-            type: error?.error?.type,
+            message: "API request failed",
+            type: error?.error?.type || "api_error",
           },
         },
         { status: response.status, headers: responseHeaders },
@@ -218,7 +213,8 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {
     console.error("OpenAI request handling error:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    return Response.json({ error: { message, type: "invalid_request_error" } }, { status: 400 });
+    const fullError = error instanceof Error ? error.message : String(error);
+    logger.error(`OpenAI request handling error: ${fullError}`);
+    return Response.json({ error: { message: "Request processing failed", type: "invalid_request_error" } }, { status: 400 });
   }
 }
