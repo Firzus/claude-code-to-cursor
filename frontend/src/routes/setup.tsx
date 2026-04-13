@@ -314,7 +314,7 @@ function VerifyStep({ onFinish, onPrev }: { onFinish: () => void; onPrev: () => 
           <p className="text-[13px] text-muted-foreground">
             Type the following in your Cursor chat:
           </p>
-          <CopyBlock value="Fait moi signe !" />
+          <CopyBlock value="Analyse mon projet puis présente le moi succintement." />
         </div>
       )}
 
