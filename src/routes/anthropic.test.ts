@@ -5,7 +5,8 @@ describe("handleAnthropicMessages", () => {
   test("removes client thinking controls when saved settings disable thinking", async () => {
     let proxiedBody: AnthropicRequest | undefined;
 
-    mock.module("../db", () => ({
+    const dbMock = {
+      getDb: () => null,
       getModelSettings: () => ({
         selectedModel: "claude-opus-4-6" as const,
         thinkingEnabled: false,
@@ -13,7 +14,12 @@ describe("handleAnthropicMessages", () => {
       }),
       saveModelSettings: () => {},
       recordRequest: () => {},
-    }));
+      getAnalytics: () => ({}),
+      getRecentRequests: () => ({}),
+      getAnalyticsTimeline: () => ({}),
+      resetAnalytics: () => ({}),
+    };
+    mock.module("../db", () => dbMock);
 
     mock.module("../anthropic-client", () => ({
       proxyRequest: async (_path: string, body: AnthropicRequest) => {
@@ -50,6 +56,7 @@ describe("handleAnthropicMessages", () => {
 
   test("rewrites the native sync response model back to Claude Code", async () => {
     mock.module("../db", () => ({
+      getDb: () => null,
       getModelSettings: () => ({
         selectedModel: "claude-sonnet-4-6" as const,
         thinkingEnabled: true,
@@ -57,6 +64,10 @@ describe("handleAnthropicMessages", () => {
       }),
       saveModelSettings: () => {},
       recordRequest: () => {},
+      getAnalytics: () => ({}),
+      getRecentRequests: () => ({}),
+      getAnalyticsTimeline: () => ({}),
+      resetAnalytics: () => ({}),
     }));
 
     mock.module("../anthropic-client", () => ({
@@ -100,6 +111,7 @@ describe("handleAnthropicMessages", () => {
 
   test("rewrites the native SSE message_start model back to Claude Code", async () => {
     mock.module("../db", () => ({
+      getDb: () => null,
       getModelSettings: () => ({
         selectedModel: "claude-haiku-4-5" as const,
         thinkingEnabled: true,
@@ -107,6 +119,10 @@ describe("handleAnthropicMessages", () => {
       }),
       saveModelSettings: () => {},
       recordRequest: () => {},
+      getAnalytics: () => ({}),
+      getRecentRequests: () => ({}),
+      getAnalyticsTimeline: () => ({}),
+      resetAnalytics: () => ({}),
     }));
 
     mock.module("../anthropic-client", () => ({
