@@ -21,7 +21,9 @@ const CHECK_INTERVAL = 200;
 
 let writeCount = 0;
 
-if (existsSync(LOG_FILE)) {
+// Default: preserve api.log across restarts so verbose request bodies survive
+// container reboots. Set LOG_RESET_ON_START=1 to wipe on boot (legacy behavior).
+if (process.env.LOG_RESET_ON_START === "1" && existsSync(LOG_FILE)) {
   unlinkSync(LOG_FILE);
 }
 

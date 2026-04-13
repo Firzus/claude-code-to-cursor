@@ -217,6 +217,7 @@ claude-code-to-cursor/
 │   ├── model-parser.ts         # Model ID parsing utilities
 │   ├── request-normalization.ts # Request preprocessing
 │   ├── internal-tools.ts       # Internal tool text extraction (CreatePlan, TodoWrite)
+│   ├── cache-keepalive.ts     # Periodic ping to keep Anthropic prompt cache warm
 │   ├── middleware.ts           # CORS, IP whitelist, request logging
 │   ├── logger.ts               # File-based logging with auto-rotation
 │   ├── db.ts                   # SQLite database setup + analytics storage
@@ -291,6 +292,7 @@ claude-code-to-cursor/
 ├── docker-compose.yml          # Production orchestration
 ├── docker-compose.dev.yml      # Dev overrides (hot reload, via include)
 ├── Dockerfile                  # Backend container (oven/bun:1, non-root)
+├── docker-entrypoint.sh        # Docker startup script (permissions + bun run)
 └── frontend/Dockerfile         # Frontend container (node:22 → nginx-unprivileged)
 ```
 
@@ -370,6 +372,14 @@ The proxy uses 4 cache breakpoints in `src/anthropic-client.ts` to maximize Anth
 4. Second-to-last user message
 
 Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache keys. TTL-based `cache_control` is stripped (not supported by Claude Code OAuth).
+
+### Cache Keepalive
+
+- `src/cache-keepalive.ts` sends a lightweight ping every 4 minutes to keep the Anthropic prompt cache warm (ephemeral cache TTL is 5 minutes)
+- After each successful request, `updateCachePrefix()` stores the model, system prompt, and tools
+- A `setInterval` timer calls `sendKeepalivePing()` with a minimal `max_tokens=1` request using the same prefix
+- Started automatically on server boot via `startCacheKeepalive()` in `index.ts`
+- Inspired by Aider's `--cache-keepalive-pings` feature
 
 ### Model Settings
 
