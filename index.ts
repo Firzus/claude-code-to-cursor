@@ -225,7 +225,7 @@ try {
 
       // CORS preflight
       if (req.method === "OPTIONS") {
-        return new Response(null, { headers: corsHeaders() });
+        return new Response(null, { headers: corsHeaders(req) });
       }
 
       logger.info(`[REQ] ${req.method} ${url.pathname}`);
@@ -241,7 +241,7 @@ try {
           { status: 500 },
         );
       }
-      const cors = corsHeaders();
+      const cors = corsHeaders(req);
       for (const [key, value] of Object.entries(cors)) {
         response.headers.set(key, value);
       }

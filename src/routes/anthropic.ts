@@ -258,7 +258,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     );
 
     const responseHeaders = new Headers(response.headers);
-    for (const [key, value] of Object.entries(corsHeaders())) {
+    for (const [key, value] of Object.entries(corsHeaders(req))) {
       responseHeaders.set(key, value);
     }
 

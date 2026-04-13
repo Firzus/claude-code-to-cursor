@@ -134,7 +134,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       `   [Debug] Response headers: ${JSON.stringify(Object.fromEntries(response.headers))}`,
     );
 
-    const responseHeaders = new Headers(corsHeaders());
+    const responseHeaders = new Headers(corsHeaders(req));
     responseHeaders.set("Content-Type", "application/json");
 
     // Handle streaming

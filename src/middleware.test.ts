@@ -4,7 +4,7 @@ mock.module("./config", () => ({
   getConfig: () => ({
     port: 8082,
     allowedIPs: ["1.2.3.4", "5.6.7.8"],
-    allowedOrigin: "https://example.com",
+    allowedOrigins: ["https://example.com", "http://localhost:3111"],
   }),
 }));
 
@@ -51,9 +51,30 @@ describe("checkIPWhitelist", () => {
 });
 
 describe("corsHeaders", () => {
-  it("returns the configured allowed origin", () => {
+  it("falls back to the first allowed origin when no request is provided", () => {
     const headers = corsHeaders();
     expect(headers["Access-Control-Allow-Origin"]).toBe("https://example.com");
+  });
+
+  it("echoes the request origin when it is in the allow-list", () => {
+    const req = new Request("http://localhost/test", {
+      headers: { origin: "http://localhost:3111" },
+    });
+    const headers = corsHeaders(req);
+    expect(headers["Access-Control-Allow-Origin"]).toBe("http://localhost:3111");
+  });
+
+  it("falls back to the first allowed origin when request origin is not in the list", () => {
+    const req = new Request("http://localhost/test", {
+      headers: { origin: "https://evil.example" },
+    });
+    const headers = corsHeaders(req);
+    expect(headers["Access-Control-Allow-Origin"]).toBe("https://example.com");
+  });
+
+  it("sets Vary: Origin so caches don't pollute responses across origins", () => {
+    const headers = corsHeaders();
+    expect(headers["Vary"]).toBe("Origin");
   });
 
   it("includes credentials header", () => {

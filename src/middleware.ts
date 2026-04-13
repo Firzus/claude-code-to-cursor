@@ -95,14 +95,24 @@ export function checkIPWhitelist(req: Request): {
 }
 
 /**
- * Create CORS headers for responses
+ * Create CORS headers for responses.
+ *
+ * If the request's `Origin` header is in the allow-list, echo it back so the
+ * browser accepts the response. Otherwise fall back to the first configured
+ * origin (preserves backward-compat for non-browser clients).
  */
-export function corsHeaders(): Record<string, string> {
+export function corsHeaders(req?: Request): Record<string, string> {
+  const requestOrigin = req?.headers.get("origin") ?? null;
+  const allowed = config.allowedOrigins;
+  const origin =
+    requestOrigin && allowed.includes(requestOrigin) ? requestOrigin : (allowed[0] ?? "*");
+
   return {
-    "Access-Control-Allow-Origin": config.allowedOrigin,
+    "Access-Control-Allow-Origin": origin,
+    "Vary": "Origin",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta",
+      "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-settings-key",
     "Access-Control-Allow-Credentials": "true",
   };
 }

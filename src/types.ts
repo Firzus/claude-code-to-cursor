@@ -103,5 +103,5 @@ export interface AnthropicError {
 export interface ProxyConfig {
   port: number;
   allowedIPs: string[];
-  allowedOrigin: string;
+  allowedOrigins: string[];
 }

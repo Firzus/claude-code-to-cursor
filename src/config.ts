@@ -47,14 +47,29 @@ export function getConfig(): ProxyConfig {
           .map((ip) => ip.trim())
           .filter(Boolean);
 
-  const allowedOrigin =
-    process.env.ALLOWED_ORIGIN ||
-    process.env.CLOUDFLARE_TUNNEL_URL ||
-    `http://localhost:${process.env.FRONTEND_PORT || "3111"}`;
+  // Build the allow-list of origins. Always include local dev URLs so the
+  // dashboard works when accessed from the host machine, even when a tunnel
+  // URL is configured for production.
+  const frontendPort = process.env.FRONTEND_PORT || "3111";
+  const localOrigins = [
+    `http://localhost:${frontendPort}`,
+    `http://127.0.0.1:${frontendPort}`,
+  ];
+
+  const explicit = (process.env.ALLOWED_ORIGIN || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  const tunnelOrigin = process.env.CLOUDFLARE_TUNNEL_URL?.trim() || "";
+
+  const allowedOrigins = Array.from(
+    new Set([...localOrigins, ...(tunnelOrigin ? [tunnelOrigin] : []), ...explicit]),
+  );
 
   return {
     port: parseInt(process.env.PORT || "8082", 10),
     allowedIPs,
-    allowedOrigin,
+    allowedOrigins,
   };
 }
