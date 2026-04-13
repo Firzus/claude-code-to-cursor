@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, render } from "@testing-library/react";
-import { vi } from "vitest";
+import { render, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { vi } from "vitest";
 
 let _capturedComponent: React.FC | null = null;
 
@@ -47,9 +47,7 @@ export function renderHookWithQuery<T>(hook: () => T) {
 export function renderWithQuery(ui: ReactNode) {
   const qc = createTestQueryClient();
   return {
-    ...render(
-      <QueryClientProvider client={qc}>{ui}</QueryClientProvider>,
-    ),
+    ...render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>),
     queryClient: qc,
   };
 }

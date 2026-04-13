@@ -14,10 +14,7 @@ declare global {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyZodType<T> = ZodType<T, any, any>;
 
-export async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T>;
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T>;
 export async function apiFetch<T>(
   path: string,
   schema: AnyZodType<T>,
@@ -48,9 +45,7 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(
-      (error as { message?: string }).message || `API error: ${res.status}`,
-    );
+    throw new Error((error as { message?: string }).message || `API error: ${res.status}`);
   }
 
   const data = await res.json();

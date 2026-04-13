@@ -1,20 +1,20 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, useEffect, useCallback } from "react";
-import { Loader2, Check, Zap, Sparkles, Cpu, AlertCircle, RotateCcw } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { AlertCircle, Check, Cpu, Loader2, RotateCcw, Sparkles, Zap } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { Badge } from "~/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
+import { Skeleton } from "~/components/ui/skeleton";
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
+import { cn } from "~/lib/utils";
 import {
+  modelLabels,
+  type SettingsFormValues,
   settingsFormSchema,
   supportedModels,
-  modelLabels,
   thinkingEfforts,
-  type SettingsFormValues,
 } from "~/schemas/settings";
-import { cn } from "~/lib/utils";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
-import { Skeleton } from "~/components/ui/skeleton";
-import { Badge } from "~/components/ui/badge";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -102,9 +102,7 @@ function SettingsPage() {
         <Card className="border-destructive/40">
           <CardContent className="flex flex-col items-center gap-3 py-10">
             <AlertCircle className="h-5 w-5 text-destructive" />
-            <span className="text-[13px] text-destructive">
-              Failed to load settings.
-            </span>
+            <span className="text-[13px] text-destructive">Failed to load settings.</span>
             <button
               onClick={() => refetch()}
               className="inline-flex h-8 items-center gap-2 rounded-md border border-border px-3 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
@@ -136,10 +134,7 @@ function SettingsPage() {
         </div>
       )}
 
-      <form
-        onSubmit={form.handleSubmit((v) => update.mutate(v))}
-        className="space-y-5"
-      >
+      <form onSubmit={form.handleSubmit((v) => update.mutate(v))} className="space-y-5">
         {/* Model */}
         <Card>
           <CardHeader className="p-4 pb-3">
@@ -200,9 +195,7 @@ function SettingsPage() {
                         : "border-muted-foreground/40 group-hover:border-muted-foreground/70",
                     )}
                   >
-                    {isSelected && (
-                      <div className="h-1.5 w-1.5 rounded-full bg-background" />
-                    )}
+                    {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-background" />}
                   </div>
                 </button>
               );
@@ -240,9 +233,7 @@ function SettingsPage() {
                   )}
                 />
               </button>
-              <span className="text-[13px]">
-                {thinkingEnabled ? "On" : "Off"}
-              </span>
+              <span className="text-[13px]">{thinkingEnabled ? "On" : "Off"}</span>
             </div>
 
             {/* Effort */}
@@ -280,9 +271,7 @@ function SettingsPage() {
             disabled={update.isPending}
             className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
           >
-            {update.isPending && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            )}
+            {update.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save
           </button>
           {isDirty && (

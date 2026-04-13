@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { renderHookWithQuery } from "../test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useHealth } from "~/hooks/use-health";
+import { renderHookWithQuery } from "../test-utils";
 
 const mockHealthResponse = {
   status: "ok" as const,
@@ -24,6 +24,7 @@ vi.mock("~/lib/api-client", () => ({
 }));
 
 import { apiFetch } from "~/lib/api-client";
+
 const mockApiFetch = vi.mocked(apiFetch);
 
 beforeEach(() => {

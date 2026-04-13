@@ -4,9 +4,7 @@ const STORAGE_KEY = "cctc:onboarding-complete";
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
-    const done =
-      typeof window !== "undefined" &&
-      localStorage.getItem(STORAGE_KEY) === "true";
+    const done = typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY) === "true";
     throw redirect({ to: done ? "/analytics" : "/setup" });
   },
 });

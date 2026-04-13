@@ -1,16 +1,13 @@
 import {
+  exchangeCode,
   generatePKCE,
   getAuthorizationURL,
-  exchangeCode,
-  hasCredentials,
   getValidToken,
+  hasCredentials,
 } from "../oauth";
 
 // PKCE state storage (module-level, TTL 10 min)
-const pkceStore = new Map<
-  string,
-  { codeVerifier: string; createdAt: number }
->();
+const pkceStore = new Map<string, { codeVerifier: string; createdAt: number }>();
 const PKCE_TTL_MS = 10 * 60 * 1000;
 
 function cleanPkceStore() {

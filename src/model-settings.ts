@@ -1,9 +1,6 @@
 export type ThinkingEffort = "low" | "medium" | "high";
 
-export type SupportedSelectedModel =
-  | "claude-opus-4-6"
-  | "claude-sonnet-4-6"
-  | "claude-haiku-4-5";
+export type SupportedSelectedModel = "claude-opus-4-6" | "claude-sonnet-4-6" | "claude-haiku-4-5";
 
 export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
@@ -70,7 +67,10 @@ export function validateModelSettings(input: unknown): ModelSettings {
 
   const candidate = input as Partial<ModelSettings>;
 
-  if (candidate.selectedModel === undefined || !SUPPORTED_SELECTED_MODELS.includes(candidate.selectedModel)) {
+  if (
+    candidate.selectedModel === undefined ||
+    !SUPPORTED_SELECTED_MODELS.includes(candidate.selectedModel)
+  ) {
     throw new Error(`Unsupported selectedModel: ${String(candidate.selectedModel)}`);
   }
 
@@ -78,7 +78,11 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error("Invalid thinkingEnabled value");
   }
 
-  if (candidate.thinkingEffort !== "low" && candidate.thinkingEffort !== "medium" && candidate.thinkingEffort !== "high") {
+  if (
+    candidate.thinkingEffort !== "low" &&
+    candidate.thinkingEffort !== "medium" &&
+    candidate.thinkingEffort !== "high"
+  ) {
     throw new Error("Invalid thinkingEffort value");
   }
 

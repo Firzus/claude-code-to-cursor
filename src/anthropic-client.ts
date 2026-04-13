@@ -1,17 +1,17 @@
+import { updateCachePrefix } from "./cache-keepalive";
 import {
   ANTHROPIC_API_URL,
   CLAUDE_CODE_BETA_HEADERS,
-  CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_EXTRA_INSTRUCTION,
+  CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_USER_AGENT,
 } from "./config";
-import { getValidToken, clearCachedToken } from "./oauth";
 import { recordRequest } from "./db";
-import { normalizeAnthropicToolIds } from "./request-normalization";
-import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
-import { updateCachePrefix } from "./cache-keepalive";
-import type { AnthropicRequest, AnthropicError, ContentBlock } from "./types";
 import { logger } from "./logger";
+import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
+import { clearCachedToken, getValidToken } from "./oauth";
+import { normalizeAnthropicToolIds } from "./request-normalization";
+import type { AnthropicError, AnthropicRequest, ContentBlock } from "./types";
 
 type RequestResult =
   | { success: true; response: Response; source: "claude_code" }
@@ -22,10 +22,10 @@ const RATE_LIMIT_MAX_CACHE_MS = 900_000; // 15 min
 const RATE_LIMIT_SOFT_MS = 300_000; // 5 min
 
 let rateLimitCache: {
-  resetAt: number;         // capped reset time
+  resetAt: number; // capped reset time
   originalResetAt: number; // what the API actually said
-  cachedAt: number;        // when we cached it
-  probeInFlight: boolean;  // prevent concurrent probes during soft expiry
+  cachedAt: number; // when we cached it
+  probeInFlight: boolean; // prevent concurrent probes during soft expiry
 } | null = null;
 
 function isRateLimited(): boolean {
@@ -91,16 +91,24 @@ export function getRateLimitStatus(): {
 } {
   if (!rateLimitCache) {
     return {
-      isLimited: false, resetAt: null, originalResetAt: null,
-      minutesRemaining: null, inSoftExpiry: false, cachedAt: null
+      isLimited: false,
+      resetAt: null,
+      originalResetAt: null,
+      minutesRemaining: null,
+      inSoftExpiry: false,
+      cachedAt: null,
     };
   }
   const now = Date.now();
   if (now >= rateLimitCache.resetAt) {
     rateLimitCache = null;
     return {
-      isLimited: false, resetAt: null, originalResetAt: null,
-      minutesRemaining: null, inSoftExpiry: false, cachedAt: null
+      isLimited: false,
+      resetAt: null,
+      originalResetAt: null,
+      minutesRemaining: null,
+      inSoftExpiry: false,
+      cachedAt: null,
     };
   }
   const softExpired = now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS;
@@ -127,24 +135,22 @@ function convertReasoningBudget(prepared: AnthropicRequest): void {
   if (!prepared.thinking) {
     const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
     const val = prepared.reasoning_budget;
-    const budgetTokens = typeof val === "string"
-      ? budgetMap[val] || 8192
-      : Number(val) || 8192;
+    const budgetTokens = typeof val === "string" ? budgetMap[val] || 8192 : Number(val) || 8192;
     prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
     prepared.temperature = 1;
     if (prepared.max_tokens < budgetTokens + THINKING_MAX_TOKENS_PADDING) {
       prepared.max_tokens = budgetTokens + THINKING_MAX_TOKENS_PADDING;
     }
-    logger.verbose(`   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
+    logger.verbose(
+      `   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`,
+    );
   }
   delete prepared.reasoning_budget;
 }
 
 function prefixToolNames(prepared: AnthropicRequest): void {
   if (prepared.tools && Array.isArray(prepared.tools)) {
-    prepared.tools = [...prepared.tools].sort((a, b) =>
-      (a.name || "").localeCompare(b.name || "")
-    );
+    prepared.tools = [...prepared.tools].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     prepared.tools = prepared.tools.map((tool) => ({
       ...tool,
       name: tool.name ? `${TOOL_PREFIX}${tool.name}` : tool.name,
@@ -155,7 +161,7 @@ function prefixToolNames(prepared: AnthropicRequest): void {
       prepared.tools[lastIdx] = { ...lastTool, cache_control: { type: "ephemeral" } };
     }
     logger.verbose(
-      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with mcp_, last cached)`
+      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with mcp_, last cached)`,
     );
   }
   if (prepared.tool_choice?.type === "tool" && prepared.tool_choice.name) {
@@ -184,9 +190,7 @@ function prefixToolNames(prepared: AnthropicRequest): void {
 }
 
 function buildSystemPrompt(existing: AnthropicRequest["system"]): ContentBlock[] {
-  const systemPrompts: ContentBlock[] = [
-    { type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT },
-  ];
+  const systemPrompts: ContentBlock[] = [{ type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT }];
   if (CLAUDE_CODE_EXTRA_INSTRUCTION) {
     systemPrompts.push({ type: "text", text: CLAUDE_CODE_EXTRA_INSTRUCTION });
   }
@@ -213,7 +217,9 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
     if (typeof msg.content === "string") {
       messages[idx] = {
         role: msg.role,
-        content: [{ type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" } }],
+        content: [
+          { type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" } },
+        ],
       };
     } else if (Array.isArray(msg.content) && msg.content.length > 0) {
       const blocks = [...msg.content];
@@ -225,7 +231,7 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
 
   const userMsgIndices: number[] = [];
   for (let i = 0; i < messages.length; i++) {
-    if (messages[i]!.role === "user") userMsgIndices.push(i);
+    if (messages[i]?.role === "user") userMsgIndices.push(i);
   }
 
   if (userMsgIndices.length >= 2) {
@@ -278,10 +284,15 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   applyCacheBreakpoints(prepared.messages);
 
   const finalSystemContent = systemPrompts
-    .map((block) => block.type === "text" ? block.text : JSON.stringify(block))
+    .map((block) => (block.type === "text" ? block.text : JSON.stringify(block)))
     .join("\n\n");
   logger.verbose(`\n📋 [Final Claude Code System Prompt] (${finalSystemContent.length} chars):`);
-  logger.verbose(finalSystemContent.split("\n").map((l: string) => `   ${l}`).join("\n"));
+  logger.verbose(
+    finalSystemContent
+      .split("\n")
+      .map((l: string) => `   ${l}`)
+      .join("\n"),
+  );
 
   stripTtlCacheControl(prepared);
   prepared = normalizeAnthropicToolIds(prepared);
@@ -291,13 +302,11 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
 
 async function makeClaudeCodeRequest(
   endpoint: string,
-  body: AnthropicRequest
+  body: AnthropicRequest,
 ): Promise<RequestResult> {
   if (isRateLimited()) {
     const minutes = getRateLimitResetMinutes();
-    console.log(
-      `Claude Code rate limited (cached), skipping request (resets in ${minutes}m)`
-    );
+    console.log(`Claude Code rate limited (cached), skipping request (resets in ${minutes}m)`);
     return {
       success: false,
       error: `Rate limited (cached, resets in ${minutes}m)`,
@@ -317,17 +326,11 @@ async function makeClaudeCodeRequest(
     const preparedBody = prepareClaudeCodeBody(body);
 
     // Debug: log the model name being sent
-    logger.verbose(
-      `   [Debug] Sending model to Claude Code: "${preparedBody.model}"`
-    );
-    logger.verbose(
-      `   [Debug] Request body keys: ${Object.keys(preparedBody).join(", ")}`
-    );
+    logger.verbose(`   [Debug] Sending model to Claude Code: "${preparedBody.model}"`);
+    logger.verbose(`   [Debug] Request body keys: ${Object.keys(preparedBody).join(", ")}`);
 
     // Use ONLY our Claude Code beta headers - don't merge with Cursor's
-    console.log(
-      `   [Debug] Using Claude Code beta headers: "${CLAUDE_CODE_BETA_HEADERS}"`
-    );
+    console.log(`   [Debug] Using Claude Code beta headers: "${CLAUDE_CODE_BETA_HEADERS}"`);
 
     const requestHeaders = {
       Authorization: `Bearer ${token.accessToken}`,
@@ -348,7 +351,10 @@ async function makeClaudeCodeRequest(
     console.log(`   [Debug] Anthropic API response status: ${response.status}`);
 
     if (response.status === 429) {
-      const errorBody429 = await response.clone().text().catch(() => "");
+      const errorBody429 = await response
+        .clone()
+        .text()
+        .catch(() => "");
       console.log(`Claude Code 429 response body: ${errorBody429.substring(0, 500)}`);
       const retryAfter = response.headers.get("retry-after");
       const rateLimitReset = response.headers.get("x-ratelimit-reset");
@@ -357,7 +363,7 @@ async function makeClaudeCodeRequest(
       let resetAt: number | null = null;
 
       if (retryAfter) {
-        const seconds = parseInt(retryAfter);
+        const seconds = parseInt(retryAfter, 10);
         if (!Number.isNaN(seconds)) {
           resetAt = Date.now() + seconds * 1000;
           const minutes = Math.ceil(seconds / 60);
@@ -424,7 +430,10 @@ async function makeClaudeCodeRequest(
 
     // Handle other non-OK status codes (500, 529 overloaded, etc.)
     if (!response.ok) {
-      const errorBody = await response.clone().text().catch(() => "");
+      const errorBody = await response
+        .clone()
+        .text()
+        .catch(() => "");
       console.log(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
 
       // For streaming requests, return the response as-is so the stream handler
@@ -502,7 +511,7 @@ async function extractUsageFromResponse(
   response: Response,
   model: string,
   stream: boolean,
-  startTime: number
+  startTime: number,
 ): Promise<Response> {
   // For streaming, token tracking is handled by the stream handler's onComplete callback
   if (stream) {
@@ -513,7 +522,12 @@ async function extractUsageFromResponse(
   try {
     const cloned = response.clone();
     const data = (await cloned.json()) as {
-      usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_read_input_tokens?: number;
+        cache_creation_input_tokens?: number;
+      };
     };
     const usage = data.usage || {};
 
@@ -542,10 +556,7 @@ async function extractUsageFromResponse(
   return response;
 }
 
-export async function proxyRequest(
-  endpoint: string,
-  body: AnthropicRequest
-): Promise<Response> {
+export async function proxyRequest(endpoint: string, body: AnthropicRequest): Promise<Response> {
   const startTime = Date.now();
   const model = body.model;
   const stream = body.stream || false;

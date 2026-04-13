@@ -4,15 +4,14 @@
 
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import type { ModelSettings } from "./model-settings";
 import {
   getModelSettingsFromDb,
   initModelSettingsSchema,
   saveModelSettingsToDb,
 } from "./model-settings-store";
-import type { ModelSettings } from "./model-settings";
 
-const DB_PATH =
-  process.env.CCTC_DB_PATH || join(process.cwd(), "cctc.db");
+const DB_PATH = process.env.CCTC_DB_PATH || join(process.cwd(), "cctc.db");
 
 let db: Database | null = null;
 
@@ -25,8 +24,14 @@ export function getDb(): Database {
 }
 
 const MIGRATIONS: { version: number; sql: string }[] = [
-  { version: 1, sql: "ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0" },
-  { version: 2, sql: "ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0" },
+  {
+    version: 1,
+    sql: "ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
+  },
+  {
+    version: 2,
+    sql: "ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0",
+  },
   { version: 3, sql: "ALTER TABLE requests ADD COLUMN route TEXT" },
   { version: 4, sql: "ALTER TABLE requests ADD COLUMN message_count INTEGER" },
   { version: 5, sql: "ALTER TABLE requests ADD COLUMN last_msg_role TEXT" },
@@ -42,7 +47,9 @@ const MIGRATIONS: { version: number; sql: string }[] = [
 function runMigrations(database: Database): void {
   database.run("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)");
 
-  const result = database.query("SELECT MAX(version) as v FROM schema_version").get() as { v: number | null } | null;
+  const result = database.query("SELECT MAX(version) as v FROM schema_version").get() as {
+    v: number | null;
+  } | null;
   const current = result?.v ?? 0;
 
   for (const m of MIGRATIONS) {
@@ -74,12 +81,8 @@ function initSchema(database: Database) {
 
   runMigrations(database);
 
-  database.run(
-    `CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`
-  );
-  database.run(
-    `CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`
-  );
+  database.run(`CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`);
+  database.run(`CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`);
 
   initModelSettingsSchema(database);
 
@@ -151,7 +154,7 @@ export function recordRequest(record: RequestRecord): void {
       shape?.toolDefsHash ?? null,
       shape?.clientSystemHash ?? null,
       shape?.clientReasoningEffort ?? null,
-    ]
+    ],
   );
 }
 
@@ -171,10 +174,7 @@ interface AnalyticsSummary {
 /**
  * Get analytics summary for a time period
  */
-export function getAnalytics(
-  since: number,
-  until: number = Date.now()
-): AnalyticsSummary {
+export function getAnalytics(since: number, until: number = Date.now()): AnalyticsSummary {
   const database = getDb();
 
   const totals = database
@@ -188,17 +188,17 @@ export function getAnalytics(
         SUM(cache_read_tokens) as total_cache_read_tokens,
         SUM(cache_creation_tokens) as total_cache_creation_tokens
        FROM requests
-       WHERE timestamp >= ? AND timestamp <= ?`
+       WHERE timestamp >= ? AND timestamp <= ?`,
     )
     .get(since, until) as {
-      total_requests: number;
-      claude_code_requests: number;
-      error_requests: number;
-      total_input_tokens: number;
-      total_output_tokens: number;
-      total_cache_read_tokens: number;
-      total_cache_creation_tokens: number;
-    };
+    total_requests: number;
+    claude_code_requests: number;
+    error_requests: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_cache_read_tokens: number;
+    total_cache_creation_tokens: number;
+  };
 
   const cacheRead = totals.total_cache_read_tokens || 0;
   const cacheCreation = totals.total_cache_creation_tokens || 0;
@@ -225,7 +225,7 @@ export function getAnalytics(
 export function getRecentRequests(
   limit: number = 100,
   since: number = 0,
-  offset: number = 0
+  offset: number = 0,
 ): {
   requests: Array<{
     id: number;
@@ -252,21 +252,21 @@ export function getRecentRequests(
     .query(
       `SELECT id, timestamp, model, source, input_tokens, output_tokens,
               cache_read_tokens, cache_creation_tokens, stream, latency_ms, error
-       FROM requests WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+       FROM requests WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
     )
     .all(since, limit, offset) as Array<{
-      id: number;
-      timestamp: number;
-      model: string;
-      source: RequestSource;
-      input_tokens: number;
-      output_tokens: number;
-      cache_read_tokens: number;
-      cache_creation_tokens: number;
-      stream: number;
-      latency_ms: number | null;
-      error: string | null;
-    }>;
+    id: number;
+    timestamp: number;
+    model: string;
+    source: RequestSource;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    stream: number;
+    latency_ms: number | null;
+    error: string | null;
+  }>;
 
   return {
     total: countResult.count,
@@ -321,14 +321,14 @@ export function getAnalyticsTimeline(
        ORDER BY bucket_ts ASC`,
     )
     .all(bucketSize, bucketSize, since, until) as Array<{
-      bucket_ts: number;
-      requests: number;
-      input_tokens: number;
-      output_tokens: number;
-      cache_read_tokens: number;
-      cache_creation_tokens: number;
-      error_count: number;
-    }>;
+    bucket_ts: number;
+    requests: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    error_count: number;
+  }>;
 
   const rowMap = new Map<number, (typeof rows)[number]>();
   for (const r of rows) rowMap.set(r.bucket_ts, r);
@@ -356,9 +356,9 @@ export function getAnalyticsTimeline(
  */
 export function resetAnalytics(): { deletedCount: number } {
   const database = getDb();
-  const countResult = database
-    .query(`SELECT COUNT(*) as count FROM requests`)
-    .get() as { count: number };
+  const countResult = database.query(`SELECT COUNT(*) as count FROM requests`).get() as {
+    count: number;
+  };
   const deletedCount = countResult.count;
 
   database.run(`DELETE FROM requests`);

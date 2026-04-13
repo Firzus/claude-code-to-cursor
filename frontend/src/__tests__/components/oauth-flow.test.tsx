@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OAuthFlow } from "~/components/oauth-flow";
 
 vi.mock("~/lib/api-client", () => ({
@@ -8,6 +8,7 @@ vi.mock("~/lib/api-client", () => ({
 }));
 
 import { apiFetch } from "~/lib/api-client";
+
 const mockApiFetch = vi.mocked(apiFetch);
 
 beforeEach(() => {
@@ -45,10 +46,7 @@ describe("OAuthFlow", () => {
     });
 
     const link = screen.getByText(/Open Anthropic/).closest("a");
-    expect(link).toHaveAttribute(
-      "href",
-      "https://anthropic.com/auth?code=test",
-    );
+    expect(link).toHaveAttribute("href", "https://anthropic.com/auth?code=test");
   });
 
   it("shows error when initLogin fails", async () => {

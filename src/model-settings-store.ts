@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
-import { DEFAULT_MODEL_SETTINGS, validateModelSettings } from "./model-settings";
 import type { ModelSettings } from "./model-settings";
+import { DEFAULT_MODEL_SETTINGS, validateModelSettings } from "./model-settings";
 
 type ModelSettingKey = "selected_model" | "thinking_enabled" | "thinking_effort";
 
@@ -52,8 +52,7 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
     return DEFAULT_MODEL_SETTINGS;
   }
 
-  const selectedModel =
-    settings.get("selected_model") ?? DEFAULT_MODEL_SETTINGS.selectedModel;
+  const selectedModel = settings.get("selected_model") ?? DEFAULT_MODEL_SETTINGS.selectedModel;
   const thinkingEnabledValue = settings.get("thinking_enabled");
   const thinkingEffortValue = settings.get("thinking_effort");
 
@@ -74,17 +73,10 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
   }
 }
 
-export function saveModelSettingsToDb(
-  database: Database,
-  settings: ModelSettings,
-): void {
+export function saveModelSettingsToDb(database: Database, settings: ModelSettings): void {
   const saveSettings = database.transaction((currentSettings: ModelSettings) => {
     upsertSetting(database, "selected_model", currentSettings.selectedModel);
-    upsertSetting(
-      database,
-      "thinking_enabled",
-      toStoredBoolean(currentSettings.thinkingEnabled),
-    );
+    upsertSetting(database, "thinking_enabled", toStoredBoolean(currentSettings.thinkingEnabled));
     upsertSetting(database, "thinking_effort", currentSettings.thinkingEffort);
   });
 

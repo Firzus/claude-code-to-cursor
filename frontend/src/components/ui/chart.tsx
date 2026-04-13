@@ -91,7 +91,11 @@ const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
           style={cssVars as React.CSSProperties}
           {...props}
         >
-          {size && React.cloneElement(children, { width: size.width, height: size.height } as Record<string, unknown>)}
+          {size &&
+            React.cloneElement(children, { width: size.width, height: size.height } as Record<
+              string,
+              unknown
+            >)}
         </div>
       </ChartContext.Provider>
     );
@@ -99,8 +103,7 @@ const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
 );
 ChartContainer.displayName = "ChartContainer";
 
-interface ChartTooltipContentProps
-  extends React.HTMLAttributes<HTMLDivElement> {
+interface ChartTooltipContentProps extends React.HTMLAttributes<HTMLDivElement> {
   active?: boolean;
   payload?: Array<{
     name?: string;
@@ -127,10 +130,7 @@ interface ChartTooltipContentProps
   ) => React.ReactNode;
 }
 
-const ChartTooltipContent = React.forwardRef<
-  HTMLDivElement,
-  ChartTooltipContentProps
->(
+const ChartTooltipContent = React.forwardRef<HTMLDivElement, ChartTooltipContentProps>(
   (
     {
       active,
@@ -169,10 +169,9 @@ const ChartTooltipContent = React.forwardRef<
           {payload.map((item, index) => {
             const key = nameKey
               ? String(item.payload?.[nameKey] ?? item.name)
-              : (item.dataKey as string) ?? item.name;
+              : ((item.dataKey as string) ?? item.name);
             const configEntry = key ? config[key] : undefined;
-            const indicatorColor =
-              item.fill || item.stroke || item.color || "var(--color-accent)";
+            const indicatorColor = item.fill || item.stroke || item.color || "var(--color-accent)";
             const displayName = configEntry?.label ?? key;
 
             return (
@@ -198,13 +197,7 @@ const ChartTooltipContent = React.forwardRef<
                   <span className="text-muted-foreground">{displayName}</span>
                   <span className="font-mono font-medium text-foreground tabular-nums ml-3">
                     {formatter
-                      ? formatter(
-                        item.value ?? 0,
-                        String(key),
-                        item,
-                        index,
-                        payload,
-                      )
+                      ? formatter(item.value ?? 0, String(key), item, index, payload)
                       : (item.value ?? 0).toLocaleString()}
                   </span>
                 </div>

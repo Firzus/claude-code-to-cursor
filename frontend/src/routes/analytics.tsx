@@ -1,49 +1,45 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
 import {
-  useAnalyticsSummary,
+  Activity,
+  AlertCircle,
+  ArrowUpFromLine,
+  Database,
+  DollarSign,
+  Inbox,
+  RefreshCw,
+  Trash2,
+  TrendingDown,
+  Zap,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ReferenceLine,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { AgoText } from "~/components/analytics/ago-text";
+import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
+import { Pagination } from "~/components/analytics/pagination";
+import { StatCard } from "~/components/analytics/stat-card";
+import { EmptyState } from "~/components/empty-state";
+import { Badge } from "~/components/ui/badge";
+import { Card, CardContent } from "~/components/ui/card";
+import { type ChartConfig, ChartContainer, ChartTooltipContent } from "~/components/ui/chart";
+import { Skeleton } from "~/components/ui/skeleton";
+import { Tooltip } from "~/components/ui/tooltip";
+import {
   useAnalyticsRequests,
+  useAnalyticsSummary,
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
 import { apiFetch } from "~/lib/api-client";
 import { calculateCacheSavings } from "~/lib/pricing";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "~/lib/utils";
-import {
-  AreaChart,
-  Area,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ReferenceLine,
-} from "recharts";
-import {
-  ChartContainer,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "~/components/ui/chart";
-import { Card, CardContent } from "~/components/ui/card";
-import { Skeleton } from "~/components/ui/skeleton";
-import { Tooltip } from "~/components/ui/tooltip";
-import { Badge } from "~/components/ui/badge";
-import { EmptyState } from "~/components/empty-state";
-import { StatCard } from "~/components/analytics/stat-card";
-import { Pagination } from "~/components/analytics/pagination";
-import { AgoText } from "~/components/analytics/ago-text";
-import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
-import {
-  Trash2,
-  RefreshCw,
-  Activity,
-  ArrowUpFromLine,
-  Zap,
-  Inbox,
-  AlertCircle,
-  TrendingDown,
-  DollarSign,
-  Database,
-} from "lucide-react";
 
 export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
@@ -124,23 +120,18 @@ function AnalyticsPage() {
     setResetting(true);
     apiFetch("/analytics/reset", { method: "POST" })
       .then(() => qc.invalidateQueries({ queryKey: ["analytics"] }))
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setResetting(false));
   }
 
   const s = summary.data;
 
   const savings = s
-    ? calculateCacheSavings(
-      s.totalInputTokens,
-      s.totalCacheReadTokens,
-      s.totalCacheCreationTokens,
-    )
+    ? calculateCacheSavings(s.totalInputTokens, s.totalCacheReadTokens, s.totalCacheCreationTokens)
     : null;
 
   const timelineWithRate = timeline.data?.buckets.map((b) => {
-    const total =
-      b.inputTokens + b.cacheReadTokens + (b.cacheCreationTokens ?? 0);
+    const total = b.inputTokens + b.cacheReadTokens + (b.cacheCreationTokens ?? 0);
     return {
       ...b,
       cacheHitRate: total > 0 ? (b.cacheReadTokens / total) * 100 : 0,
@@ -211,9 +202,7 @@ function AnalyticsPage() {
         <Card className="border-destructive/40">
           <CardContent className="flex items-center justify-center gap-3 py-8">
             <AlertCircle className="h-4 w-4 text-destructive" />
-            <span className="text-[13px] text-destructive">
-              Failed to load analytics.
-            </span>
+            <span className="text-[13px] text-destructive">Failed to load analytics.</span>
             <button
               onClick={() => summary.refetch()}
               className="text-[12px] text-foreground underline underline-offset-2 cursor-pointer"
@@ -252,7 +241,9 @@ function AnalyticsPage() {
             icon={DollarSign}
             label="Est. Savings"
             value={pct(savings.savingsPercent)}
-            sub={savings.allInput > 0 ? `~${fmt(savings.tokensSaved)} tokens equiv.` : "no data yet"}
+            sub={
+              savings.allInput > 0 ? `~${fmt(savings.tokensSaved)} tokens equiv.` : "no data yet"
+            }
             accent="success"
           />
           <StatCard
@@ -266,7 +257,11 @@ function AnalyticsPage() {
             icon={ArrowUpFromLine}
             label="Output"
             value={fmt(s.totalOutputTokens)}
-            sub={s.totalRequests > 0 ? `avg ${fmt(Math.round(s.totalOutputTokens / s.totalRequests))} / req` : "—"}
+            sub={
+              s.totalRequests > 0
+                ? `avg ${fmt(Math.round(s.totalOutputTokens / s.totalRequests))} / req`
+                : "—"
+            }
             accent="chart-2"
           />
         </div>
@@ -317,10 +312,20 @@ function AnalyticsPage() {
                       <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.5} />
+                  <CartesianGrid
+                    vertical={false}
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    strokeOpacity={0.5}
+                  />
                   <XAxis
-                    dataKey="timestamp" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40}
-                    tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)"
+                    dataKey="timestamp"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={40}
+                    tick={{ fontSize: 11 }}
+                    stroke="var(--color-muted-foreground)"
                     tickFormatter={(v) => {
                       const d = new Date(v);
                       if (period === "hour" || period === "day")
@@ -328,22 +333,67 @@ function AnalyticsPage() {
                       return d.toLocaleDateString([], { month: "short", day: "numeric" });
                     }}
                   />
-                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={50} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" tickFormatter={(v: number) => fmt(v)} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={50}
+                    tick={{ fontSize: 11 }}
+                    stroke="var(--color-muted-foreground)"
+                    tickFormatter={(v: number) => fmt(v)}
+                  />
                   <RechartsTooltip
                     content={
                       <ChartTooltipContent
                         labelFormatter={(v: string | number) => {
                           const d = new Date(Number(v));
-                          return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                          return d.toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          });
                         }}
                         formatter={(value: number) => fmt(value)}
                       />
                     }
                   />
-                  <Area type="monotone" dataKey="cacheReadTokens" stackId="1" stroke="var(--color-success)" strokeWidth={1.5} fill="url(#fillCacheRead)" dot={false} />
-                  <Area type="monotone" dataKey="inputTokens" stackId="1" stroke="var(--color-chart-1)" strokeWidth={1.5} fill="url(#fillFreshInput)" dot={false} />
-                  <Area type="monotone" dataKey="cacheCreationTokens" stackId="1" stroke="var(--color-chart-3)" strokeWidth={1.5} fill="url(#fillCacheWrite)" dot={false} />
-                  <Area type="monotone" dataKey="outputTokens" stroke="var(--color-chart-2)" strokeWidth={1.5} strokeDasharray="4 3" fill="none" dot={false} />
+                  <Area
+                    type="monotone"
+                    dataKey="cacheReadTokens"
+                    stackId="1"
+                    stroke="var(--color-success)"
+                    strokeWidth={1.5}
+                    fill="url(#fillCacheRead)"
+                    dot={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="inputTokens"
+                    stackId="1"
+                    stroke="var(--color-chart-1)"
+                    strokeWidth={1.5}
+                    fill="url(#fillFreshInput)"
+                    dot={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="cacheCreationTokens"
+                    stackId="1"
+                    stroke="var(--color-chart-3)"
+                    strokeWidth={1.5}
+                    fill="url(#fillCacheWrite)"
+                    dot={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="outputTokens"
+                    stroke="var(--color-chart-2)"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                    fill="none"
+                    dot={false}
+                  />
                 </AreaChart>
               </ChartContainer>
             </CardContent>
@@ -355,17 +405,31 @@ function AnalyticsPage() {
                 Cache hit rate over time
               </div>
               <ChartContainer config={cacheRateConfig} className="aspect-auto h-[220px] w-full">
-                <AreaChart accessibilityLayer data={timelineWithRate} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+                <AreaChart
+                  accessibilityLayer
+                  data={timelineWithRate}
+                  margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
+                >
                   <defs>
                     <linearGradient id="fillCacheRate" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="var(--color-chart-4)" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="var(--color-chart-4)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="var(--color-border)" strokeOpacity={0.5} />
+                  <CartesianGrid
+                    vertical={false}
+                    strokeDasharray="3 3"
+                    stroke="var(--color-border)"
+                    strokeOpacity={0.5}
+                  />
                   <XAxis
-                    dataKey="timestamp" tickLine={false} axisLine={false} tickMargin={8} minTickGap={40}
-                    tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)"
+                    dataKey="timestamp"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={40}
+                    tick={{ fontSize: 11 }}
+                    stroke="var(--color-muted-foreground)"
                     tickFormatter={(v) => {
                       const d = new Date(v);
                       if (period === "hour" || period === "day")
@@ -373,22 +437,48 @@ function AnalyticsPage() {
                       return d.toLocaleDateString([], { month: "short", day: "numeric" });
                     }}
                   />
-                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={40} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={40}
+                    tick={{ fontSize: 11 }}
+                    stroke="var(--color-muted-foreground)"
+                    domain={[0, 100]}
+                    tickFormatter={(v: number) => `${v}%`}
+                  />
                   <RechartsTooltip
                     content={
                       <ChartTooltipContent
                         labelFormatter={(v: string | number) => {
                           const d = new Date(Number(v));
-                          return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+                          return d.toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          });
                         }}
                         formatter={(value: number) => `${Number(value).toFixed(1)}%`}
                       />
                     }
                   />
                   {avgCacheRate > 0 && (
-                    <ReferenceLine y={avgCacheRate} stroke="var(--color-chart-4)" strokeDasharray="6 4" strokeOpacity={0.5} />
+                    <ReferenceLine
+                      y={avgCacheRate}
+                      stroke="var(--color-chart-4)"
+                      strokeDasharray="6 4"
+                      strokeOpacity={0.5}
+                    />
                   )}
-                  <Area type="monotone" dataKey="cacheHitRate" stroke="var(--color-chart-4)" strokeWidth={1.5} fill="url(#fillCacheRate)" dot={false} />
+                  <Area
+                    type="monotone"
+                    dataKey="cacheHitRate"
+                    stroke="var(--color-chart-4)"
+                    strokeWidth={1.5}
+                    fill="url(#fillCacheRate)"
+                    dot={false}
+                  />
                 </AreaChart>
               </ChartContainer>
             </CardContent>
@@ -422,9 +512,7 @@ function AnalyticsPage() {
           </div>
         ) : requests.isError ? (
           <div className="px-4 py-10 text-center">
-            <span className="text-[13px] text-destructive">
-              Failed to load requests.
-            </span>
+            <span className="text-[13px] text-destructive">Failed to load requests.</span>
             <button
               onClick={() => requests.refetch()}
               className="ml-2 text-[12px] text-foreground underline underline-offset-2 cursor-pointer"
@@ -444,19 +532,36 @@ function AnalyticsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]" aria-label="Recent API requests">
                 <caption className="sr-only">
-                  List of recent API requests with timing, model, tokens, cache efficiency, and status
+                  List of recent API requests with timing, model, tokens, cache efficiency, and
+                  status
                 </caption>
                 <thead>
                   <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap hidden sm:table-cell">Time</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap hidden sm:table-cell">
+                      Time
+                    </th>
                     <th className="px-3 sm:px-4 py-2 font-normal">Model</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Fresh In</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache Read</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">Cache Write</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Out</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">Cache %</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">Latency</th>
-                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">Status</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
+                      Fresh In
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">
+                      Cache Read
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">
+                      Cache Write
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
+                      Out
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">
+                      Cache %
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden md:table-cell">
+                      Latency
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
+                      Status
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -467,9 +572,16 @@ function AnalyticsPage() {
                     const rowCacheRate = rowAllInput > 0 ? (cacheRead / rowAllInput) * 100 : 0;
 
                     return (
-                      <tr key={r.id} className="border-b border-border/50 hover:bg-card transition-colors">
+                      <tr
+                        key={r.id}
+                        className="border-b border-border/50 hover:bg-card transition-colors"
+                      >
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-muted-foreground tabular whitespace-nowrap hidden sm:table-cell">
-                          {new Date(r.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          {new Date(r.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono truncate">
                           {r.model.replace("claude-", "")}
@@ -477,7 +589,12 @@ function AnalyticsPage() {
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
                           {fmt(r.inputTokens)}
                         </td>
-                        <td className={cn("px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell", cacheRead > 0 && "text-success")}>
+                        <td
+                          className={cn(
+                            "px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell",
+                            cacheRead > 0 && "text-success",
+                          )}
+                        >
                           {cacheRead > 0 ? fmt(cacheRead) : "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular text-muted-foreground whitespace-nowrap hidden md:table-cell">
@@ -489,7 +606,13 @@ function AnalyticsPage() {
                         <td className="px-3 sm:px-4 py-2.5 text-right whitespace-nowrap hidden sm:table-cell">
                           {rowCacheRate > 0 ? (
                             <Badge
-                              variant={rowCacheRate >= 80 ? "success" : rowCacheRate >= 40 ? "warning" : "secondary"}
+                              variant={
+                                rowCacheRate >= 80
+                                  ? "success"
+                                  : rowCacheRate >= 40
+                                    ? "warning"
+                                    : "secondary"
+                              }
                               className="text-[11px] px-1.5 py-0 font-mono"
                             >
                               {pct(rowCacheRate)}
@@ -505,9 +628,7 @@ function AnalyticsPage() {
                           {r.source === "error" && r.error ? (
                             <Tooltip
                               content={
-                                <span className="max-w-[200px] block truncate">
-                                  {r.error}
-                                </span>
+                                <span className="max-w-[200px] block truncate">{r.error}</span>
                               }
                             >
                               <span className="inline-block h-2 w-2 rounded-full bg-destructive cursor-help" />
@@ -515,7 +636,10 @@ function AnalyticsPage() {
                             </Tooltip>
                           ) : (
                             <>
-                              <span className="inline-block h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+                              <span
+                                className="inline-block h-2 w-2 rounded-full bg-success"
+                                aria-hidden="true"
+                              />
                               <span className="sr-only">Success</span>
                             </>
                           )}

@@ -5,8 +5,8 @@
  */
 
 import { createHash } from "node:crypto";
-import type { AnthropicRequest, ContentBlock } from "./types";
 import type { RequestShapeMetrics } from "./db";
+import type { AnthropicRequest, ContentBlock } from "./types";
 
 function shortHash(input: string): string {
   return createHash("sha1").update(input).digest("hex").slice(0, 12);
@@ -16,7 +16,7 @@ function extractSystemText(system: AnthropicRequest["system"]): string {
   if (!system) return "";
   if (typeof system === "string") return system;
   return system
-    .map((b) => (b && typeof b === "object" && b.type === "text" ? b.text ?? "" : ""))
+    .map((b) => (b && typeof b === "object" && b.type === "text" ? (b.text ?? "") : ""))
     .join("\n")
     .trim();
 }

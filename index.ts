@@ -1,38 +1,29 @@
+import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
+import { startCacheKeepalive, stopCacheKeepalive } from "./src/cache-keepalive";
 import { getConfig, TUNNEL_URL } from "./src/config";
-import { hasCredentials, getValidToken } from "./src/oauth";
 import { getDb } from "./src/db";
+import { logger } from "./src/logger";
 import { checkIPWhitelist, corsHeaders } from "./src/middleware";
-import { handleAnthropicMessages } from "./src/routes/anthropic";
-import { handleOpenAIChatCompletions } from "./src/routes/openai";
-import { handleModels } from "./src/routes/models";
+import { getValidToken, hasCredentials } from "./src/oauth";
 import {
   handleAnalytics,
   handleAnalyticsRequests,
   handleAnalyticsReset,
   handleAnalyticsTimeline,
 } from "./src/routes/analytics";
-import {
-  handleLoginAPI,
-  handleOAuthCallbackAPI,
-  handleAuthStatus,
-} from "./src/routes/auth";
-import {
-  handleSettingsAPI,
-  handleSettingsModelAPI,
-} from "./src/routes/settings";
-import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
-import { startCacheKeepalive, stopCacheKeepalive } from "./src/cache-keepalive";
+import { handleAnthropicMessages } from "./src/routes/anthropic";
+import { handleAuthStatus, handleLoginAPI, handleOAuthCallbackAPI } from "./src/routes/auth";
+import { handleModels } from "./src/routes/models";
+import { handleOpenAIChatCompletions } from "./src/routes/openai";
+import { handleSettingsAPI, handleSettingsModelAPI } from "./src/routes/settings";
 import type { AnthropicError } from "./src/types";
-import { logger } from "./src/logger";
 
 const config = getConfig();
 
 async function checkCredentials(): Promise<boolean> {
   if (!hasCredentials()) {
     console.log("\n⚠️  No OAuth credentials found.");
-    console.log(
-      "   >>> To authenticate: open the dashboard and go to the Auth page"
-    );
+    console.log("   >>> To authenticate: open the dashboard and go to the Auth page");
     return false;
   }
 
@@ -61,13 +52,11 @@ process.on("unhandledRejection", (reason) => {
 function printPortInUseHelp(port: number) {
   console.error(`\nPort ${port} is already in use.`);
   console.error(
-    "Usually another claude-code-to-cursor (bun) instance is still running, or another app bound this port."
+    "Usually another claude-code-to-cursor (bun) instance is still running, or another app bound this port.",
   );
   console.error("\nTo free the port on Windows:");
   console.error(`  netstat -ano | findstr :${port}`);
-  console.error(
-    "  Then: taskkill /PID <pid> /F   or   Stop-Process -Id <pid> -Force"
-  );
+  console.error("  Then: taskkill /PID <pid> /F   or   Stop-Process -Id <pid> -Force");
   console.error("\nOr use a different port: set PORT=8083 (or in .env)\n");
 }
 
@@ -75,11 +64,14 @@ const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 
 async function handleRequest(req: Request, url: URL): Promise<Response> {
   // Reject oversized request bodies
-  const contentLength = parseInt(req.headers.get("content-length") || "0");
+  const contentLength = parseInt(req.headers.get("content-length") || "0", 10);
   if (contentLength > MAX_BODY_SIZE) {
     return Response.json(
-      { type: "error", error: { type: "invalid_request_error", message: "Request body too large" } },
-      { status: 413 }
+      {
+        type: "error",
+        error: { type: "invalid_request_error", message: "Request body too large" },
+      },
+      { status: 413 },
     );
   }
 
@@ -102,7 +94,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
             message: `Unauthorized: ${ipCheck.reason || "IP not whitelisted"}`,
           },
         },
-        { status: 403 }
+        { status: 403 },
       );
     }
   }
@@ -112,10 +104,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
     try {
       getDb().query("SELECT 1").get();
     } catch {
-      return Response.json(
-        { status: "error", message: "Database unreachable" },
-        { status: 503 }
-      );
+      return Response.json({ status: "error", message: "Database unreachable" }, { status: 503 });
     }
     const token = await getValidToken();
     const rateLimit = getRateLimitStatus();
@@ -144,28 +133,46 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
   }
 
   // --- Analytics ---
-  if ((url.pathname === "/analytics" || url.pathname === "/api/analytics") && req.method === "GET") {
+  if (
+    (url.pathname === "/analytics" || url.pathname === "/api/analytics") &&
+    req.method === "GET"
+  ) {
     return handleAnalytics(url);
   }
 
-  if ((url.pathname === "/analytics/requests" || url.pathname === "/api/analytics/requests") && req.method === "GET") {
+  if (
+    (url.pathname === "/analytics/requests" || url.pathname === "/api/analytics/requests") &&
+    req.method === "GET"
+  ) {
     return handleAnalyticsRequests(url);
   }
 
-  if ((url.pathname === "/analytics/timeline" || url.pathname === "/api/analytics/timeline") && req.method === "GET") {
+  if (
+    (url.pathname === "/analytics/timeline" || url.pathname === "/api/analytics/timeline") &&
+    req.method === "GET"
+  ) {
     return handleAnalyticsTimeline(url);
   }
 
-  if ((url.pathname === "/analytics/reset" || url.pathname === "/api/analytics/reset") && req.method === "POST") {
+  if (
+    (url.pathname === "/analytics/reset" || url.pathname === "/api/analytics/reset") &&
+    req.method === "POST"
+  ) {
     return handleAnalyticsReset();
   }
 
   // --- Rate limit management ---
-  if ((url.pathname === "/rate-limit" || url.pathname === "/api/rate-limit") && req.method === "GET") {
+  if (
+    (url.pathname === "/rate-limit" || url.pathname === "/api/rate-limit") &&
+    req.method === "GET"
+  ) {
     return Response.json(getRateLimitStatus());
   }
 
-  if ((url.pathname === "/rate-limit/reset" || url.pathname === "/api/rate-limit/reset") && req.method === "POST") {
+  if (
+    (url.pathname === "/rate-limit/reset" || url.pathname === "/api/rate-limit/reset") &&
+    req.method === "POST"
+  ) {
     const result = clearRateLimitCache();
     console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
     return Response.json(result);
@@ -203,7 +210,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
         message: `Unknown endpoint: ${url.pathname}`,
       },
     } satisfies AnthropicError,
-    { status: 404 }
+    { status: 404 },
   );
 }
 
@@ -231,7 +238,7 @@ try {
         console.error("Unhandled request error:", error);
         response = Response.json(
           { error: { type: "internal_error", message: "Internal server error" } },
-          { status: 500 }
+          { status: 500 },
         );
       }
       const cors = corsHeaders();
@@ -242,7 +249,8 @@ try {
     },
   });
 } catch (err) {
-  const code = err instanceof Error && "code" in err ? String((err as NodeJS.ErrnoException).code) : "";
+  const code =
+    err instanceof Error && "code" in err ? String((err as NodeJS.ErrnoException).code) : "";
   if (code === "EADDRINUSE") {
     printPortInUseHelp(config.port);
     process.exit(1);
@@ -278,7 +286,9 @@ function shutdown() {
   logger.info("Shutting down gracefully...");
   server.stop();
   stopCacheKeepalive();
-  try { getDb().close(); } catch {}
+  try {
+    getDb().close();
+  } catch {}
   process.exit(0);
 }
 

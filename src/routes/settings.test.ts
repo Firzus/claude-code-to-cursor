@@ -31,16 +31,11 @@ mock.module("../logger", () => ({
   logger: { info: () => {}, warn: () => {}, error: () => {}, verbose: () => {} },
 }));
 
-const {
-  handleSettingsAPI,
-  handleSettingsModelAPI,
-} = await import("./settings");
+const { handleSettingsAPI, handleSettingsModelAPI } = await import("./settings");
 
 describe("settings JSON API", () => {
   test("returns current settings as JSON", async () => {
-    const response = handleSettingsAPI(
-      new Request("http://localhost/api/settings"),
-    );
+    const response = handleSettingsAPI(new Request("http://localhost/api/settings"));
     const body = (await response.json()) as SettingsGetResponse;
 
     expect(response.status).toBe(200);
@@ -105,9 +100,7 @@ describe("settings JSON API", () => {
     process.env.SETTINGS_API_KEY = "test-secret";
 
     try {
-      const response = handleSettingsAPI(
-        new Request("http://localhost/api/settings"),
-      );
+      const response = handleSettingsAPI(new Request("http://localhost/api/settings"));
       const body = (await response.json()) as SettingsGetResponse;
 
       expect(response.status).toBe(403);

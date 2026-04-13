@@ -1,25 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "~/lib/api-client";
 import { queryKeys } from "~/lib/query-keys";
-import {
-  analyticsResponseSchema,
-  requestsResponseSchema,
-  timelineResponseSchema,
-} from "~/schemas/api-responses";
 import type {
   AnalyticsResponse,
   RequestsResponse,
   TimelineResponse,
+} from "~/schemas/api-responses";
+import {
+  analyticsResponseSchema,
+  requestsResponseSchema,
+  timelineResponseSchema,
 } from "~/schemas/api-responses";
 
 export function useAnalyticsSummary(period: string) {
   return useQuery({
     queryKey: queryKeys.analytics(period),
     queryFn: () =>
-      apiFetch<AnalyticsResponse>(
-        `/analytics?period=${period}`,
-        analyticsResponseSchema,
-      ),
+      apiFetch<AnalyticsResponse>(`/analytics?period=${period}`, analyticsResponseSchema),
     refetchInterval: 30_000,
   });
 }
@@ -45,10 +42,7 @@ export function useAnalyticsTimeline(period: string) {
   return useQuery({
     queryKey: queryKeys.analyticsTimeline(period),
     queryFn: () =>
-      apiFetch<TimelineResponse>(
-        `/analytics/timeline?period=${period}`,
-        timelineResponseSchema,
-      ),
+      apiFetch<TimelineResponse>(`/analytics/timeline?period=${period}`, timelineResponseSchema),
     refetchInterval: 30_000,
   });
 }

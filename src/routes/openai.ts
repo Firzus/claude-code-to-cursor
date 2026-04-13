@@ -1,26 +1,20 @@
 import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
-import { logRequestDetails, corsHeaders } from "../middleware";
-import {
-  openaiToAnthropic,
-  anthropicToOpenai,
-  type OpenAIChatRequest,
-} from "../openai-adapter";
-import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import { logger } from "../logger";
+import { corsHeaders, logRequestDetails } from "../middleware";
+import { anthropicToOpenai, type OpenAIChatRequest, openaiToAnthropic } from "../openai-adapter";
 import { computeRequestShape } from "../request-metrics";
+import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
 
-function stringifyContent(
-  content: string | ContentBlock[] | null | undefined
-): string {
+function stringifyContent(content: string | ContentBlock[] | null | undefined): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return JSON.stringify(content);
   return content
     .map((block) =>
       block && typeof block === "object" && "type" in block && block.type === "text"
         ? block.text
-        : JSON.stringify(block)
+        : JSON.stringify(block),
     )
     .join("\n");
 }
@@ -33,7 +27,9 @@ function indentBlock(text: string, prefix = "      "): string {
 }
 
 function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
-  console.log(`\n📋 [Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`);
+  console.log(
+    `\n📋 [Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
+  );
 
   if (openaiBody.reasoning_effort) {
     console.log(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
@@ -45,8 +41,7 @@ function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
   if (openaiBody.messages && openaiBody.messages.length > 0) {
     logger.verbose(`\n📝 [Cursor Messages]:`);
     openaiBody.messages.forEach((msg, idx) => {
-      const content =
-        typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
       logger.verbose(`   [${idx}] ${msg.role} (${content.length} chars):`);
       logger.verbose(`   ${indentBlock(content)}`);
     });
@@ -55,10 +50,10 @@ function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
 
 function logAnthropicConversion(
   openaiBody: OpenAIChatRequest,
-  anthropicBody: AnthropicRequest
+  anthropicBody: AnthropicRequest,
 ): void {
   const thinkingEnabled = !!anthropicBody.thinking;
-  const thinkingBudget = thinkingEnabled ? anthropicBody.thinking!.budget_tokens : null;
+  const thinkingBudget = thinkingEnabled ? anthropicBody.thinking?.budget_tokens : null;
   const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (${thinkingBudget} tokens)` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
   console.log(`\n→ ${routeSummary}`);
   logger.info(routeSummary);
@@ -120,7 +115,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     }
 
     logger.verbose(
-      `   [Debug] Response headers: ${JSON.stringify(Object.fromEntries(response.headers))}`
+      `   [Debug] Response headers: ${JSON.stringify(Object.fromEntries(response.headers))}`,
     );
 
     const responseHeaders = new Headers(corsHeaders());
@@ -136,19 +131,17 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       const streamId = Date.now().toString();
 
       if (!response.body) {
-        return Response.json(
-          { error: { message: "No response body" } },
-          { status: 500 }
-        );
+        return Response.json({ error: { message: "No response body" } }, { status: 500 });
       }
 
       let userToolNames: Set<string> | undefined;
       if (openaiBody.tools && openaiBody.tools.length > 0) {
         userToolNames = new Set<string>();
         for (const tool of openaiBody.tools) {
-          const name = tool.type === "function" && tool.function?.name
-            ? tool.function.name
-            : (tool as any).name;
+          const name =
+            tool.type === "function" && tool.function?.name
+              ? tool.function.name
+              : (tool as any).name;
           if (name) userToolNames.add(name);
         }
       }
@@ -187,7 +180,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       if (errorMessage.includes("model:")) {
         errorMessage = errorMessage.replace(
           /model:\s*x-([^\s,]+)/g,
-          (_match, modelName) => `model: ${modelName}`
+          (_match, modelName) => `model: ${modelName}`,
         );
       }
       return Response.json(
@@ -197,7 +190,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
             type: error?.error?.type,
           },
         },
-        { status: response.status, headers: responseHeaders }
+        { status: response.status, headers: responseHeaders },
       );
     }
 
@@ -208,9 +201,6 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
   } catch (error) {
     console.error("OpenAI request handling error:", error);
     const message = error instanceof Error ? error.message : String(error);
-    return Response.json(
-      { error: { message, type: "invalid_request_error" } },
-      { status: 400 }
-    );
+    return Response.json({ error: { message, type: "invalid_request_error" } }, { status: 400 });
   }
 }

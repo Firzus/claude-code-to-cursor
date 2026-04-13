@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -48,10 +48,7 @@ describe("apiFetch", () => {
     const apiFetch = await getApiFetch();
     await apiFetch("/health");
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:8082/api/health",
-      expect.any(Object),
-    );
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8082/api/health", expect.any(Object));
   });
 
   it("throws on non-ok response", async () => {

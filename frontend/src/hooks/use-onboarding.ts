@@ -32,10 +32,7 @@ export function useNeedsOnboarding() {
   const { complete } = useOnboardingComplete();
   const health = useHealth();
 
-  const isNew =
-    !complete &&
-    health.data !== undefined &&
-    !health.data.claudeCode.authenticated;
+  const isNew = !complete && health.data !== undefined && !health.data.claudeCode.authenticated;
 
   return { needsOnboarding: isNew, isLoading: health.isLoading };
 }

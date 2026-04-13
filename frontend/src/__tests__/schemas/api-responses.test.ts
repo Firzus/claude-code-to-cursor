@@ -1,14 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  healthResponseSchema,
   analyticsResponseSchema,
+  authStatusResponseSchema,
+  healthResponseSchema,
+  loginResponseSchema,
   requestRecordSchema,
   requestsResponseSchema,
+  settingsResponseSchema,
   timelineBucketSchema,
   timelineResponseSchema,
-  loginResponseSchema,
-  authStatusResponseSchema,
-  settingsResponseSchema,
 } from "~/schemas/api-responses";
 
 describe("healthResponseSchema", () => {
@@ -70,9 +70,7 @@ describe("healthResponseSchema", () => {
         cachedAt: null,
       },
     };
-    expect(healthResponseSchema.parse(data).tunnelUrl).toBe(
-      "https://my.tunnel.dev",
-    );
+    expect(healthResponseSchema.parse(data).tunnelUrl).toBe("https://my.tunnel.dev");
   });
 });
 

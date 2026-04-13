@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setupRouteComponentCapture, renderWithQuery } from "../test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithQuery, setupRouteComponentCapture } from "../test-utils";
 
 const { getCapturedComponent } = setupRouteComponentCapture();
 
@@ -11,6 +11,7 @@ vi.mock("~/hooks/use-settings", () => ({
 }));
 
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
+
 const mockUseSettings = vi.mocked(useSettings);
 const mockUseUpdateSettings = vi.mocked(useUpdateSettings);
 

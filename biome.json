@@ -1,8 +1,15 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.11/schema.json",
   "files": {
-    "include": ["index.ts", "src/**/*.ts", "frontend/src/**/*.ts", "frontend/src/**/*.tsx"],
-    "ignore": ["frontend/src/routeTree.gen.ts", "node_modules", "frontend/node_modules", "dist", "frontend/dist"]
+    "includes": [
+      "index.ts",
+      "src/**/*.ts",
+      "frontend/src/**/*.ts",
+      "frontend/src/**/*.tsx",
+      "!frontend/src/routeTree.gen.ts",
+      "!**/node_modules",
+      "!**/dist"
+    ]
   },
   "linter": {
     "enabled": true,
@@ -11,13 +18,22 @@
       "complexity": {
         "noExcessiveCognitiveComplexity": "warn"
       },
+      "correctness": {
+        "noUnusedFunctionParameters": "warn",
+        "useParseIntRadix": "warn"
+      },
       "suspicious": {
         "noExplicitAny": "warn",
-        "noConsole": "off"
+        "noConsole": "off",
+        "noArrayIndexKey": "warn"
       },
       "style": {
         "noNonNullAssertion": "warn",
         "useConst": "error"
+      },
+      "a11y": {
+        "useButtonType": "warn",
+        "useSemanticElements": "warn"
       }
     }
   },

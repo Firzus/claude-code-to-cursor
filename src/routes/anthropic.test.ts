@@ -113,9 +113,9 @@ describe("handleAnthropicMessages", () => {
       proxyRequest: async () =>
         new Response(
           [
-            'event: message_start\n',
+            "event: message_start\n",
             'data: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-haiku-4-5","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":0}}}\n\n',
-            'event: message_stop\n',
+            "event: message_stop\n",
             'data: {"type":"message_stop"}\n\n',
           ].join(""),
           {

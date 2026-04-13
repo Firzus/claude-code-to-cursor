@@ -1,5 +1,5 @@
-import { getExposedModels, getContextLength } from "../model-settings";
 import { getModelSettings } from "../db";
+import { getContextLength, getExposedModels } from "../model-settings";
 
 export function handleModels(): Response {
   const modelSettings = getModelSettings();

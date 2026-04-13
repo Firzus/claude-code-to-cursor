@@ -7,12 +7,9 @@ export const CCTC_AUTH_DIR = process.env.CCTC_AUTH_DIR || join(homedir(), ".cctc
 export const CCTC_AUTH_PATH = join(CCTC_AUTH_DIR, "auth.json");
 
 export const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-export const ANTHROPIC_TOKEN_URL =
-  "https://console.anthropic.com/v1/oauth/token";
-export const ANTHROPIC_AUTHORIZE_URL =
-  "https://claude.ai/oauth/authorize";
-export const OAUTH_REDIRECT_URI =
-  "https://console.anthropic.com/oauth/code/callback";
+export const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
+export const ANTHROPIC_AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
+export const OAUTH_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
 export const OAUTH_SCOPES = "org:create_api_key user:profile user:inference";
 export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 export const TUNNEL_URL = process.env.CLOUDFLARE_TUNNEL_URL || "";
@@ -36,22 +33,19 @@ export const CLAUDE_CODE_SYSTEM_PROMPT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
 
 // Additional instruction appended after the required prompt (optional)
-export const CLAUDE_CODE_EXTRA_INSTRUCTION =
-  process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ?? "";
-
+export const CLAUDE_CODE_EXTRA_INSTRUCTION = process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ?? "";
 
 export function getConfig(): ProxyConfig {
   // IP whitelist for requests coming through the Cloudflare tunnel.
   // Set to "disabled" to allow all IPs.
-  const allowedIPsEnv =
-    process.env.ALLOWED_IPS || "52.44.113.131,184.73.225.134";
+  const allowedIPsEnv = process.env.ALLOWED_IPS || "52.44.113.131,184.73.225.134";
   const allowedIPs =
     allowedIPsEnv.trim().toLowerCase() === "disabled"
       ? []
       : allowedIPsEnv
-        .split(",")
-        .map((ip) => ip.trim())
-        .filter(Boolean);
+          .split(",")
+          .map((ip) => ip.trim())
+          .filter(Boolean);
 
   const allowedOrigin =
     process.env.ALLOWED_ORIGIN ||

@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Rocket, Menu, X } from "lucide-react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Menu, Rocket, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 import { HealthIndicator } from "./health-indicator";
 
@@ -26,10 +26,7 @@ export function NavBar() {
     }
 
     function handleClickOutside(e: MouseEvent) {
-      if (
-        mobileMenuRef.current &&
-        !mobileMenuRef.current.contains(e.target as Node)
-      ) {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
         closeMobile();
       }
     }
@@ -62,11 +59,11 @@ export function NavBar() {
               <polyline points="17 4 23 12 17 20" />
               <line x1="8" y1="12" x2="16" y2="12" opacity="0.4" />
             </svg>
-            <span className="text-sm font-semibold tracking-tight">
-              claude-code-to-cursor
-            </span>
+            <span className="text-sm font-semibold tracking-tight">claude-code-to-cursor</span>
           </Link>
-          <span className="text-border hidden sm:inline" aria-hidden="true">/</span>
+          <span className="text-border hidden sm:inline" aria-hidden="true">
+            /
+          </span>
           <nav className="hidden sm:flex items-center gap-1" aria-label="Main navigation">
             {navItems.map(({ to, label }) => (
               <Link
@@ -106,11 +103,7 @@ export function NavBar() {
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileOpen}
           >
-            {mobileOpen ? (
-              <X className="h-4 w-4" />
-            ) : (
-              <Menu className="h-4 w-4" />
-            )}
+            {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
         </div>
       </div>

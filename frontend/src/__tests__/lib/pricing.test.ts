@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  calculateCacheSavings,
-  CACHE_READ_COST_RATIO,
   CACHE_CREATION_COST_RATIO,
+  CACHE_READ_COST_RATIO,
+  calculateCacheSavings,
 } from "~/lib/pricing";
 
 describe("calculateCacheSavings", () => {
@@ -12,7 +12,7 @@ describe("calculateCacheSavings", () => {
     expect(result.allInput).toBe(8000);
     expect(result.noCacheCost).toBe(8000);
     expect(result.withCacheCost).toBe(
-      1000 + 5000 * CACHE_READ_COST_RATIO + 2000 * CACHE_CREATION_COST_RATIO
+      1000 + 5000 * CACHE_READ_COST_RATIO + 2000 * CACHE_CREATION_COST_RATIO,
     );
     expect(result.savingsPercent).toBeGreaterThan(0);
     expect(result.tokensSaved).toBeGreaterThan(0);

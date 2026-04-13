@@ -4,13 +4,7 @@
  * Auto-truncates when file exceeds MAX_LOG_SIZE_MB (keeps recent half).
  */
 
-import {
-  existsSync,
-  unlinkSync,
-  statSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -48,8 +42,7 @@ function trimLogIfNeeded(): void {
     const buf = readFileSync(LOG_FILE);
     const start = buf.length - keepBytes;
     const newlineIdx = buf.indexOf(0x0a, start);
-    const trimmed =
-      newlineIdx !== -1 ? buf.subarray(newlineIdx + 1) : buf.subarray(start);
+    const trimmed = newlineIdx !== -1 ? buf.subarray(newlineIdx + 1) : buf.subarray(start);
 
     const header = `[${formatTimestamp()}] [INFO] --- Log truncated (exceeded ${MAX_LOG_SIZE_MB} MB, kept recent ${Math.round(trimmed.length / 1024 / 1024)} MB) ---\n`;
     writeFileSync(LOG_FILE, header + trimmed.toString("utf-8"), "utf-8");

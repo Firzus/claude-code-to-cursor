@@ -1,4 +1,4 @@
-import { getAnalytics, getRecentRequests, resetAnalytics, getAnalyticsTimeline } from "../db";
+import { getAnalytics, getAnalyticsTimeline, getRecentRequests, resetAnalytics } from "../db";
 
 function calculateSince(period: string | null): number {
   const now = Date.now();
@@ -11,7 +11,6 @@ function calculateSince(period: string | null): number {
       return now - 30 * 86_400_000;
     case "all":
       return 0;
-    case "day":
     default:
       return now - 86_400_000;
   }
@@ -34,8 +33,8 @@ export function handleAnalytics(url: URL): Response {
 }
 
 export function handleAnalyticsRequests(url: URL): Response {
-  const limit = parseInt(url.searchParams.get("limit") || "20");
-  const offset = parseInt(url.searchParams.get("offset") || "0");
+  const limit = parseInt(url.searchParams.get("limit") || "20", 10);
+  const offset = parseInt(url.searchParams.get("offset") || "0", 10);
   const period = url.searchParams.get("period") || "all";
   const since = calculateSince(period);
 
@@ -68,7 +67,7 @@ export function handleAnalyticsReset(): Response {
     console.error("Reset analytics error:", error);
     return Response.json(
       { error: { message: error instanceof Error ? error.message : "Reset failed" } },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

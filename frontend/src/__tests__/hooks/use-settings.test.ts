@@ -1,13 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { renderHookWithQuery } from "../test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
+import { renderHookWithQuery } from "../test-utils";
 
 vi.mock("~/lib/api-client", () => ({
   apiFetch: vi.fn(),
 }));
 
 import { apiFetch } from "~/lib/api-client";
+
 const mockApiFetch = vi.mocked(apiFetch);
 
 beforeEach(() => {
@@ -60,8 +61,6 @@ describe("useUpdateSettings", () => {
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ["settings"] }),
-    );
+    expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["settings"] }));
   });
 });

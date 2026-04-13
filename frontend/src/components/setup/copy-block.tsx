@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { useState } from "react";
 
 export function CopyBlock({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
@@ -24,11 +24,7 @@ export function CopyBlock({ value }: { value: string }) {
         className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-muted-foreground opacity-0 transition-all group-hover:opacity-100 focus:opacity-100 hover:text-foreground cursor-pointer"
         aria-label="Copy to clipboard"
       >
-        {copied ? (
-          <Check className="h-3 w-3 text-success" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
+        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
       </button>
     </div>
   );

@@ -1,9 +1,9 @@
-import { Suspense } from "react";
-import { Outlet, Link, createRootRouteWithContext } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-import { NavBar } from "~/components/nav-bar";
-import { ErrorBoundary } from "~/components/error-boundary";
+import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
+import { Suspense } from "react";
+import { ErrorBoundary } from "~/components/error-boundary";
+import { NavBar } from "~/components/nav-bar";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -20,9 +20,7 @@ function NotFoundPage() {
       <NavBar />
       <main className="flex flex-col items-center justify-center py-20 sm:py-32 px-6 text-center animate-fade-in">
         <h1 className="text-4xl font-bold font-mono mb-2">404</h1>
-        <p className="text-sm text-muted-foreground mb-6">
-          This page could not be found.
-        </p>
+        <p className="text-sm text-muted-foreground mb-6">This page could not be found.</p>
         <Link
           to="/analytics"
           className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90"

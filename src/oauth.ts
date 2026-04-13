@@ -1,10 +1,10 @@
 import { mkdirSync } from "node:fs";
 import {
+  ANTHROPIC_AUTHORIZE_URL,
+  ANTHROPIC_TOKEN_URL,
   CCTC_AUTH_DIR,
   CCTC_AUTH_PATH,
   CLAUDE_CLIENT_ID,
-  ANTHROPIC_TOKEN_URL,
-  ANTHROPIC_AUTHORIZE_URL,
   OAUTH_REDIRECT_URI,
   OAUTH_SCOPES,
 } from "./config";
@@ -57,7 +57,7 @@ export function getAuthorizationURL(codeChallenge: string, state: string): strin
 export async function exchangeCode(
   code: string,
   codeVerifier: string,
-  state: string
+  state: string,
 ): Promise<CctcAuth> {
   // Anthropic may return code in format "code#state" — strip the fragment
   const cleanCode = code.includes("#") ? code.split("#")[0] : code;
@@ -133,9 +133,7 @@ export function hasCredentials(): boolean {
 // Token refresh
 // ---------------------------------------------------------------------------
 
-async function refreshAccessToken(
-  refreshTokenValue: string
-): Promise<TokenInfo | null> {
+async function refreshAccessToken(refreshTokenValue: string): Promise<TokenInfo | null> {
   try {
     console.log("Refreshing OAuth token...");
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useId } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -52,9 +52,7 @@ export function ConfirmDialog({
       previousFocusRef.current = document.activeElement as HTMLElement;
       document.addEventListener("keydown", handleKeyDown);
       requestAnimationFrame(() => {
-        const cancel = dialogRef.current?.querySelector<HTMLElement>(
-          "[data-autofocus]",
-        );
+        const cancel = dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]");
         cancel?.focus();
       });
     }
@@ -83,10 +81,7 @@ export function ConfirmDialog({
         ref={dialogRef}
         className="relative z-10 w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl animate-slide-up"
       >
-        <h2
-          id={titleId}
-          className="text-sm font-semibold mb-1"
-        >
+        <h2 id={titleId} className="text-sm font-semibold mb-1">
           {title}
         </h2>
         <p id={descId} className="text-[13px] text-muted-foreground mb-5">

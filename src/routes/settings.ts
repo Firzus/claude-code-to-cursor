@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { getModelSettings, saveModelSettings } from "../db";
-import { validateModelSettings } from "../model-settings";
 import { logger } from "../logger";
+import { validateModelSettings } from "../model-settings";
 
 if (!process.env.SETTINGS_API_KEY) {
   logger.warn("SETTINGS_API_KEY is not set — settings API is unrestricted");
@@ -12,10 +12,7 @@ function isAuthorizedSettingsRequest(req: Request): boolean {
   if (!apiKey) return true;
   const provided = req.headers.get("x-settings-key") ?? "";
   if (provided.length !== apiKey.length) return false;
-  return timingSafeEqual(
-    Buffer.from(provided),
-    Buffer.from(apiKey),
-  );
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(apiKey));
 }
 
 export function handleSettingsAPI(req: Request): Response {
@@ -41,9 +38,10 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
     const body = (await req.json()) as Record<string, unknown>;
     const settings = validateModelSettings({
       selectedModel: (body.selectedModel as string) ?? "",
-      thinkingEnabled: typeof body.thinkingEnabled === "boolean"
-        ? body.thinkingEnabled
-        : body.thinkingEnabled === "true",
+      thinkingEnabled:
+        typeof body.thinkingEnabled === "boolean"
+          ? body.thinkingEnabled
+          : body.thinkingEnabled === "true",
       thinkingEffort: (body.thinkingEffort as string) ?? "",
     });
 

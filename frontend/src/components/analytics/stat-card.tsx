@@ -26,9 +26,7 @@ export function StatCard({ icon: Icon, label, value, sub, accent }: StatCardProp
           <span className="text-[12px] text-muted-foreground">{label}</span>
         </div>
         <div className="font-mono text-xl font-semibold tabular">{value}</div>
-        <div className="mt-0.5 text-[12px] text-muted-foreground font-mono">
-          {sub}
-        </div>
+        <div className="mt-0.5 text-[12px] text-muted-foreground font-mono">{sub}</div>
       </CardContent>
     </Card>
   );

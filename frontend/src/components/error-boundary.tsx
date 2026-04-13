@@ -1,5 +1,5 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
@@ -30,8 +30,14 @@ export class ErrorBoundary extends Component<Props, State> {
       if (this.props.fallback) return this.props.fallback;
 
       return (
-        <div role="alert" className="flex flex-col items-center justify-center py-20 px-6 text-center animate-fade-in">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-4" aria-hidden="true">
+        <div
+          role="alert"
+          className="flex flex-col items-center justify-center py-20 px-6 text-center animate-fade-in"
+        >
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-4"
+            aria-hidden="true"
+          >
             <AlertTriangle className="h-6 w-6" />
           </div>
           <h2 className="text-sm font-semibold mb-1">Something went wrong</h2>

@@ -1,8 +1,6 @@
 import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
-import { logRequestDetails, corsHeaders } from "../middleware";
-import { normalizeAnthropicRequestModel } from "../request-normalization";
-import { computeRequestShape } from "../request-metrics";
+import { corsHeaders, logRequestDetails } from "../middleware";
 import {
   getApiModelId,
   getInvalidPublicModelMessage,
@@ -12,7 +10,9 @@ import {
   THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "../model-settings";
-import type { AnthropicRequest, AnthropicError, AnthropicResponse } from "../types";
+import { computeRequestShape } from "../request-metrics";
+import { normalizeAnthropicRequestModel } from "../request-normalization";
+import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
 
 function rewriteAnthropicJsonResponseModel(bodyText: string): string {
   try {
@@ -63,7 +63,12 @@ function rewriteAnthropicSseLine(line: string): string {
 
 function rewriteAnthropicSseResponseModel(
   body: ReadableStream<Uint8Array>,
-  onComplete?: (usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) => void,
+  onComplete?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+  }) => void,
 ): ReadableStream<Uint8Array> {
   const reader = body.getReader();
   const encoder = new TextEncoder();
@@ -97,7 +102,13 @@ function rewriteAnthropicSseResponseModel(
               try {
                 const data = JSON.parse(line.slice(6)) as {
                   type?: string;
-                  message?: { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+                  message?: {
+                    usage?: {
+                      input_tokens?: number;
+                      cache_read_input_tokens?: number;
+                      cache_creation_input_tokens?: number;
+                    };
+                  };
                   usage?: { output_tokens?: number };
                 };
                 if (data.type === "message_start" && data.message?.usage) {
@@ -138,7 +149,12 @@ function rewriteAnthropicSseResponseModel(
 
 async function rewriteAnthropicResponseModel(
   response: Response,
-  onStreamComplete?: (usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) => void,
+  onStreamComplete?: (usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+  }) => void,
 ): Promise<Response> {
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("Content-Length");
@@ -181,16 +197,17 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
             message: getInvalidPublicModelMessage(incomingBody.model),
           },
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
     const targetModel = modelSettings.selectedModel;
     const apiModel = getApiModelId(targetModel);
     // Respect client's reasoning_budget if it maps to a known effort level
-    const clientEffort = typeof incomingBody.reasoning_budget === "string"
-      && ["low", "medium", "high"].includes(incomingBody.reasoning_budget)
-      ? incomingBody.reasoning_budget as ThinkingEffort
-      : null;
+    const clientEffort =
+      typeof incomingBody.reasoning_budget === "string" &&
+      ["low", "medium", "high"].includes(incomingBody.reasoning_budget)
+        ? (incomingBody.reasoning_budget as ThinkingEffort)
+        : null;
     const effectiveEffort = clientEffort || modelSettings.thinkingEffort;
     const thinkingBudget = modelSettings.thinkingEnabled
       ? getThinkingBudget(effectiveEffort)
@@ -213,11 +230,14 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
             ...bodyWithoutClientThinkingControls,
             thinking: { type: "enabled" as const, budget_tokens: thinkingBudget },
             temperature: 1,
-            max_tokens: Math.max(normalizedBody.max_tokens ?? 0, thinkingBudget + THINKING_MAX_TOKENS_PADDING),
+            max_tokens: Math.max(
+              normalizedBody.max_tokens ?? 0,
+              thinkingBudget + THINKING_MAX_TOKENS_PADDING,
+            ),
           };
 
     console.log(
-      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`
+      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
     );
 
     const shape = computeRequestShape(
@@ -264,7 +284,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
         type: "error",
         error: { type: "invalid_request_error", message },
       } satisfies AnthropicError,
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

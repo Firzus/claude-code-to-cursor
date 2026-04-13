@@ -72,8 +72,7 @@ export function checkIPWhitelist(req: Request): {
   }
 
   const cfConnectingIp = req.headers.get("cf-connecting-ip");
-  const clientIP =
-    cfConnectingIp || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const clientIP = cfConnectingIp || req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
 
   if (!clientIP) {
     return { allowed: false, reason: "No IP found in headers" };
@@ -83,9 +82,7 @@ export function checkIPWhitelist(req: Request): {
 
   if (!isAllowed) {
     const cfRay = req.headers.get("cf-ray") || "none";
-    console.log(
-      `\n🚫 [SECURITY] Blocked request from unauthorized IP: ${clientIP}`
-    );
+    console.log(`\n🚫 [SECURITY] Blocked request from unauthorized IP: ${clientIP}`);
     console.log(`   Allowed IPs: ${config.allowedIPs.join(", ")}`);
     console.log(`   CF-Ray: ${cfRay}`);
   }

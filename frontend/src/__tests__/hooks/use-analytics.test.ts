@@ -1,17 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { renderHookWithQuery } from "../test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  useAnalyticsSummary,
   useAnalyticsRequests,
+  useAnalyticsSummary,
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
+import { renderHookWithQuery } from "../test-utils";
 
 vi.mock("~/lib/api-client", () => ({
   apiFetch: vi.fn(),
 }));
 
 import { apiFetch } from "~/lib/api-client";
+
 const mockApiFetch = vi.mocked(apiFetch);
 
 beforeEach(() => {
@@ -89,9 +90,7 @@ describe("useAnalyticsRequests", () => {
   it("returns request data with correct pagination", async () => {
     mockApiFetch.mockResolvedValueOnce(mockRequests);
 
-    const { result } = renderHookWithQuery(() =>
-      useAnalyticsRequests(20, "day", 1),
-    );
+    const { result } = renderHookWithQuery(() => useAnalyticsRequests(20, "day", 1));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.requests).toHaveLength(1);
@@ -103,9 +102,7 @@ describe("useAnalyticsTimeline", () => {
   it("returns timeline data", async () => {
     mockApiFetch.mockResolvedValueOnce(mockTimeline);
 
-    const { result } = renderHookWithQuery(() =>
-      useAnalyticsTimeline("day"),
-    );
+    const { result } = renderHookWithQuery(() => useAnalyticsTimeline("day"));
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.buckets).toHaveLength(1);

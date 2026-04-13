@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { settingsFormSchema } from "../../schemas/settings";
 
 describe("settingsFormSchema", () => {
@@ -12,11 +12,7 @@ describe("settingsFormSchema", () => {
   });
 
   it("accepts all supported models", () => {
-    for (const model of [
-      "claude-opus-4-6",
-      "claude-sonnet-4-6",
-      "claude-haiku-4-5",
-    ]) {
+    for (const model of ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"]) {
       const result = settingsFormSchema.safeParse({
         selectedModel: model,
         thinkingEnabled: false,

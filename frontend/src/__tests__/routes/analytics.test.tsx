@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { setupRouteComponentCapture, renderWithQuery } from "../test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithQuery, setupRouteComponentCapture } from "../test-utils";
 
 const { getCapturedComponent } = setupRouteComponentCapture();
 
@@ -25,14 +25,12 @@ vi.mock("recharts", () => ({
   YAxis: () => null,
   Tooltip: () => null,
   ReferenceLine: () => null,
-  ResponsiveContainer: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 import {
-  useAnalyticsSummary,
   useAnalyticsRequests,
+  useAnalyticsSummary,
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
 

@@ -1,11 +1,11 @@
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Check, ExternalLink, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { ExternalLink, Check, X, Loader2 } from "lucide-react";
 import { apiFetch } from "~/lib/api-client";
-import { loginFormSchema, type LoginFormValues } from "~/schemas/login";
-import type { LoginResponse } from "~/schemas/api-responses";
 import { cn } from "~/lib/utils";
+import type { LoginResponse } from "~/schemas/api-responses";
+import { type LoginFormValues, loginFormSchema } from "~/schemas/login";
 
 interface OAuthFlowProps {
   onSuccess?: () => void;
@@ -92,9 +92,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
         <div className="p-4 space-y-3">
           <div className="flex items-center gap-2">
             <StepNumber n={1} />
-            <span className="text-[13px] font-medium">
-              Start authorization
-            </span>
+            <span className="text-[13px] font-medium">Start authorization</span>
           </div>
           <div className="pl-7">
             {!loginData ? (
@@ -103,9 +101,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
                 disabled={loadingAuth}
                 className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
               >
-                {loadingAuth && (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                )}
+                {loadingAuth && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Initialize
               </button>
             ) : (
@@ -126,9 +122,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
         <div className="p-4">
           <div className="flex items-center gap-2">
             <StepNumber n={2} />
-            <span className="text-[13px] font-medium">
-              Approve and copy the code
-            </span>
+            <span className="text-[13px] font-medium">Approve and copy the code</span>
           </div>
           <p className="mt-1.5 pl-7 text-[12px] text-muted-foreground leading-relaxed">
             After approving on Anthropic, copy the authorization code displayed.
@@ -141,10 +135,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
             <StepNumber n={3} />
             <span className="text-[13px] font-medium">Paste the code</span>
           </div>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex gap-2 pl-7"
-          >
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex gap-2 pl-7">
             <label htmlFor="auth-code" className="sr-only">
               Authorization code
             </label>
@@ -161,9 +152,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
               disabled={!loginData || form.formState.isSubmitting}
               className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
             >
-              {form.formState.isSubmitting && (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              )}
+              {form.formState.isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Submit
             </button>
           </form>
@@ -176,9 +165,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
       </div>
 
       {!compact && (
-        <p className="text-[12px] text-muted-foreground">
-          Codes expire after ~10 minutes.
-        </p>
+        <p className="text-[12px] text-muted-foreground">Codes expire after ~10 minutes.</p>
       )}
     </div>
   );

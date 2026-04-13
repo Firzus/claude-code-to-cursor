@@ -34,10 +34,7 @@ function getUniqueToolId(originalId: string, state: ToolIdState): string {
   return candidate;
 }
 
-function normalizeContentBlocks(
-  content: ContentBlock[],
-  state: ToolIdState
-): ContentBlock[] {
+function normalizeContentBlocks(content: ContentBlock[], state: ToolIdState): ContentBlock[] {
   return content.map((block) => {
     const normalizedBlock: ContentBlock = { ...block };
 
@@ -59,7 +56,7 @@ function normalizeContentBlocks(
 
 export function normalizeAnthropicRequestModel(
   request: AnthropicRequest,
-  model: string
+  model: string,
 ): AnthropicRequest {
   return {
     ...request,
@@ -67,9 +64,7 @@ export function normalizeAnthropicRequestModel(
   };
 }
 
-export function normalizeAnthropicToolIds(
-  request: AnthropicRequest
-): AnthropicRequest {
+export function normalizeAnthropicToolIds(request: AnthropicRequest): AnthropicRequest {
   const state: ToolIdState = {
     idMap: new Map(),
     usedIds: new Set(),
@@ -91,9 +86,7 @@ export function normalizeAnthropicToolIds(
 
 export function normalizeAnthropicRequest(
   request: AnthropicRequest,
-  model: string
+  model: string,
 ): AnthropicRequest {
-  return normalizeAnthropicToolIds(
-    normalizeAnthropicRequestModel(request, model)
-  );
+  return normalizeAnthropicToolIds(normalizeAnthropicRequestModel(request, model));
 }

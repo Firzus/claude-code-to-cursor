@@ -1,27 +1,26 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
 import {
-  ExternalLink,
-  Check,
-  Copy,
-  ArrowRight,
   ArrowLeft,
-  Zap,
-  Shield,
+  ArrowRight,
   BarChart3,
-  Terminal,
+  Check,
   CheckCircle2,
+  Copy,
+  Shield,
+  Terminal,
+  Zap,
 } from "lucide-react";
-import { apiFetch } from "~/lib/api-client";
-import type { AnalyticsResponse } from "~/schemas/api-responses";
+import { useCallback, useEffect, useState } from "react";
+import { OAuthFlow } from "~/components/oauth-flow";
+import { CopyBlock } from "~/components/setup/copy-block";
+import { NavButtons } from "~/components/setup/nav-buttons";
+import { StatusRow } from "~/components/setup/status-row";
+import { StepIndicator } from "~/components/setup/step-indicator";
 import { useHealth } from "~/hooks/use-health";
 import { useOnboardingComplete } from "~/hooks/use-onboarding";
-import { OAuthFlow } from "~/components/oauth-flow";
+import { apiFetch } from "~/lib/api-client";
 import { cn } from "~/lib/utils";
-import { StepIndicator } from "~/components/setup/step-indicator";
-import { NavButtons } from "~/components/setup/nav-buttons";
-import { CopyBlock } from "~/components/setup/copy-block";
-import { StatusRow } from "~/components/setup/status-row";
+import type { AnalyticsResponse } from "~/schemas/api-responses";
 
 export const Route = createFileRoute("/setup")({
   component: SetupPage,
@@ -84,12 +83,8 @@ function SetupPage() {
       <div className="mt-8">
         {currentStep === "welcome" && <WelcomeStep onNext={next} />}
         {currentStep === "auth" && <AuthStep onNext={next} onPrev={prev} />}
-        {currentStep === "configure" && (
-          <ConfigureStep onNext={next} onPrev={prev} />
-        )}
-        {currentStep === "verify" && (
-          <VerifyStep onFinish={finish} onPrev={prev} />
-        )}
+        {currentStep === "configure" && <ConfigureStep onNext={next} onPrev={prev} />}
+        {currentStep === "verify" && <VerifyStep onFinish={finish} onPrev={prev} />}
       </div>
     </div>
   );
@@ -103,12 +98,10 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           <Zap className="h-3 w-3" />
           First-time setup
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome to claude-code-to-cursor
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome to claude-code-to-cursor</h1>
         <p className="text-[14px] text-muted-foreground leading-relaxed max-w-md mx-auto">
-          Route API requests through Claude Code OAuth. Use Claude in Cursor and
-          other tools — no API key needed.
+          Route API requests through Claude Code OAuth. Use Claude in Cursor and other tools — no
+          API key needed.
         </p>
       </div>
 
@@ -158,29 +151,19 @@ function FeatureCard({
         <Icon className="h-4 w-4" />
       </div>
       <div className="text-[13px] font-medium">{title}</div>
-      <div className="text-[12px] text-muted-foreground leading-relaxed">
-        {description}
-      </div>
+      <div className="text-[12px] text-muted-foreground leading-relaxed">{description}</div>
     </div>
   );
 }
 
-function AuthStep({
-  onNext,
-  onPrev,
-}: {
-  onNext: () => void;
-  onPrev: () => void;
-}) {
+function AuthStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
   const health = useHealth();
   const isAuthenticated = health.data?.claudeCode.authenticated === true;
 
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Authenticate with Anthropic
-        </h2>
+        <h2 className="text-lg font-semibold tracking-tight">Authenticate with Anthropic</h2>
         <p className="text-[13px] text-muted-foreground">
           Connect to Claude Code via OAuth. This is a one-time setup.
         </p>
@@ -200,13 +183,7 @@ function AuthStep({
   );
 }
 
-function ConfigureStep({
-  onNext,
-  onPrev,
-}: {
-  onNext: () => void;
-  onPrev: () => void;
-}) {
+function ConfigureStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }) {
   const health = useHealth();
   const tunnelUrl = health.data?.tunnelUrl;
   const baseUrl = tunnelUrl ? `${tunnelUrl}/v1` : `${getProxyBase()}/v1`;
@@ -214,9 +191,7 @@ function ConfigureStep({
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Configure your client
-        </h2>
+        <h2 className="text-lg font-semibold tracking-tight">Configure your client</h2>
         <p className="text-[13px] text-muted-foreground">
           Point Cursor (or any compatible client) to claude-code-to-cursor.
         </p>
@@ -224,18 +199,8 @@ function ConfigureStep({
 
       <div className="space-y-3">
         <ConfigField label="Base URL" value={baseUrl} sub="Override the OpenAI Base URL" mono />
-        <ConfigField
-          label="API Key"
-          value="sk-cctc"
-          sub="Any non-empty string"
-          mono
-        />
-        <ConfigField
-          label="Model"
-          value="Claude Code"
-          sub="Add as a custom model in Cursor"
-          mono
-        />
+        <ConfigField label="API Key" value="sk-cctc" sub="Any non-empty string" mono />
+        <ConfigField label="Model" value="Claude Code" sub="Add as a custom model in Cursor" mono />
       </div>
 
       <NavButtons onPrev={onPrev} onNext={onNext} />
@@ -270,35 +235,21 @@ function ConfigField({
     <div className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-border/80">
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="text-[12px] text-muted-foreground">{label}</div>
-        <div className={cn("text-[13px] truncate", mono && "font-mono")}>
-          {value}
-        </div>
-        {sub && (
-          <div className="text-[11px] text-muted-foreground">{sub}</div>
-        )}
+        <div className={cn("text-[13px] truncate", mono && "font-mono")}>{value}</div>
+        {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
       </div>
       <button
         onClick={copy}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-all hover:text-foreground hover:border-foreground/20 cursor-pointer"
         aria-label="Copy to clipboard"
       >
-        {copied ? (
-          <Check className="h-3 w-3 text-success" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
+        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
       </button>
     </div>
   );
 }
 
-function VerifyStep({
-  onFinish,
-  onPrev,
-}: {
-  onFinish: () => void;
-  onPrev: () => void;
-}) {
+function VerifyStep({ onFinish, onPrev }: { onFinish: () => void; onPrev: () => void }) {
   const health = useHealth();
   const [detected, setDetected] = useState(false);
   const [polling, setPolling] = useState(true);
@@ -316,9 +267,7 @@ function VerifyStep({
     if (!polling || baseline === null) return;
     const id = setInterval(async () => {
       try {
-        const data = await apiFetch<AnalyticsResponse>(
-          "/analytics?period=hour",
-        );
+        const data = await apiFetch<AnalyticsResponse>("/analytics?period=hour");
         if (data.totalRequests > baseline) {
           setDetected(true);
           setPolling(false);
@@ -333,9 +282,7 @@ function VerifyStep({
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Verify your setup
-        </h2>
+        <h2 className="text-lg font-semibold tracking-tight">Verify your setup</h2>
         <p className="text-[13px] text-muted-foreground">
           Send a request from your client to confirm everything works.
         </p>
@@ -345,11 +292,7 @@ function VerifyStep({
         <StatusRow
           ok={isAuthenticated}
           label="OAuth authentication"
-          sub={
-            isAuthenticated
-              ? "Connected to Claude Code"
-              : "Not yet authenticated"
-          }
+          sub={isAuthenticated ? "Connected to Claude Code" : "Not yet authenticated"}
         />
         <StatusRow
           ok={detected}
@@ -380,8 +323,7 @@ function VerifyStep({
           <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
           <div className="text-[15px] font-semibold">Setup complete</div>
           <p className="text-[13px] text-muted-foreground">
-            claude-code-to-cursor is working. Your requests will appear in the Analytics
-            dashboard.
+            claude-code-to-cursor is working. Your requests will appear in the Analytics dashboard.
           </p>
         </div>
       )}

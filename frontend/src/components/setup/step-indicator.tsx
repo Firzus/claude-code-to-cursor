@@ -29,9 +29,7 @@ export function StepIndicator({ steps, currentIndex }: StepIndicatorProps) {
                   done && "bg-accent text-background",
                   active &&
                     "border-2 border-accent text-accent shadow-[0_0_12px_-2px_var(--color-accent)]",
-                  !done &&
-                    !active &&
-                    "border border-border text-muted-foreground",
+                  !done && !active && "border border-border text-muted-foreground",
                 )}
               >
                 {done ? <Check className="h-3 w-3" /> : i + 1}
@@ -39,9 +37,7 @@ export function StepIndicator({ steps, currentIndex }: StepIndicatorProps) {
               <span
                 className={cn(
                   "hidden text-[12px] sm:inline transition-colors",
-                  active
-                    ? "text-foreground font-medium"
-                    : "text-muted-foreground",
+                  active ? "text-foreground font-medium" : "text-muted-foreground",
                 )}
               >
                 {step.label}

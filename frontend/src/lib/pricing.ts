@@ -12,8 +12,7 @@ export function calculateCacheSavings(
     inputTokens +
     cacheReadTokens * CACHE_READ_COST_RATIO +
     cacheCreationTokens * CACHE_CREATION_COST_RATIO;
-  const savingsPercent =
-    noCacheCost > 0 ? ((noCacheCost - withCacheCost) / noCacheCost) * 100 : 0;
+  const savingsPercent = noCacheCost > 0 ? ((noCacheCost - withCacheCost) / noCacheCost) * 100 : 0;
   const tokensSaved = noCacheCost > 0 ? Math.round(noCacheCost - withCacheCost) : 0;
 
   return { allInput, noCacheCost, withCacheCost, savingsPercent, tokensSaved };

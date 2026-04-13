@@ -3,7 +3,6 @@
  * Converts OpenAI chat completion format to/from Anthropic messages format
  */
 
-import type { AnthropicRequest, AnthropicMessage, AnthropicResponse, ContentBlock } from "./types";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
@@ -11,10 +10,11 @@ import {
   getInvalidPublicModelMessage,
   getThinkingBudget,
   isAllowedPublicModel,
-  THINKING_MAX_TOKENS_PADDING,
   type ModelSettings,
+  THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "./model-settings";
+import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -168,7 +168,7 @@ export function computeOpenAIUsage(
 }
 
 function convertContent(
-  content: string | OpenAIContentPart[] | ContentBlock[]
+  content: string | OpenAIContentPart[] | ContentBlock[],
 ): string | ContentBlock[] {
   if (typeof content === "string") {
     return content;
@@ -181,14 +181,18 @@ function convertContent(
     // Cursor sends these in Anthropic format, not OpenAI format
     if ((part as ContentBlock).type === "tool_use") {
       const toolUse = part as ContentBlock;
-      logger.verbose(`    [convertContent] Passing through tool_use block: id=${toolUse.id}, name=${toolUse.name}`);
+      logger.verbose(
+        `    [convertContent] Passing through tool_use block: id=${toolUse.id}, name=${toolUse.name}`,
+      );
       blocks.push(toolUse);
       continue;
     }
 
     if ((part as ContentBlock).type === "tool_result") {
       const toolResult = part as ContentBlock;
-      logger.verbose(`    [convertContent] Passing through tool_result block: tool_use_id=${toolResult.tool_use_id}`);
+      logger.verbose(
+        `    [convertContent] Passing through tool_result block: tool_use_id=${toolResult.tool_use_id}`,
+      );
       blocks.push(toolResult);
       continue;
     }
@@ -210,11 +214,7 @@ function convertContent(
             type: "image",
             source: {
               type: "base64",
-              media_type: match[1] as
-                | "image/jpeg"
-                | "image/png"
-                | "image/gif"
-                | "image/webp",
+              media_type: match[1] as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
               data: match[2],
             },
           });
@@ -262,9 +262,7 @@ export function openaiToAnthropic(
   // Respect Cursor's reasoning_effort if provided, otherwise use stored settings
   const effectiveEffort: ThinkingEffort =
     (request.reasoning_effort as ThinkingEffort) || modelSettings.thinkingEffort;
-  const thinkingBudget = modelSettings.thinkingEnabled
-    ? getThinkingBudget(effectiveEffort)
-    : null;
+  const thinkingBudget = modelSettings.thinkingEnabled ? getThinkingBudget(effectiveEffort) : null;
 
   console.log(
     `   [Debug] Request model "${request.model}" → using model="${apiModel}" with thinking ${thinkingBudget === null ? "disabled" : `budget=${thinkingBudget} tokens (effort=${effectiveEffort}${request.reasoning_effort ? ", from client" : ""})`}`,
@@ -280,19 +278,24 @@ export function openaiToAnthropic(
     const msg = request.messages[i]!;
     const hasToolCalls = (msg as OpenAIMessage).tool_calls?.length || 0;
     const hasToolCallId = (msg as OpenAIMessage).tool_call_id || null;
-    const contentPreview = typeof msg.content === "string"
-      ? msg.content.slice(0, 100)
-      : Array.isArray(msg.content)
-        ? `[${msg.content.length} parts]`
-        : String(msg.content).slice(0, 100);
-    logger.verbose(`  [${i}] role=${msg.role}, tool_calls=${hasToolCalls}, tool_call_id=${hasToolCallId}, content=${contentPreview}...`);
+    const contentPreview =
+      typeof msg.content === "string"
+        ? msg.content.slice(0, 100)
+        : Array.isArray(msg.content)
+          ? `[${msg.content.length} parts]`
+          : String(msg.content).slice(0, 100);
+    logger.verbose(
+      `  [${i}] role=${msg.role}, tool_calls=${hasToolCalls}, tool_call_id=${hasToolCallId}, content=${contentPreview}...`,
+    );
   }
 
   for (const msg of request.messages) {
     if (msg.role === "system") {
       // Collect system messages
       const content =
-        typeof msg.content === "string" ? msg.content : (msg.content || []).map((p) => p.text || "").join("\n");
+        typeof msg.content === "string"
+          ? msg.content
+          : (msg.content || []).map((p) => p.text || "").join("\n");
       if (system) {
         system = typeof system === "string" ? `${system}\n${content}` : system;
       } else {
@@ -323,7 +326,9 @@ export function openaiToAnthropic(
             // If arguments aren't valid JSON, wrap in object
             input = { raw: toolCall.function.arguments };
           }
-          logger.verbose(`    -> tool_use: id=${toolCall.id}, name=${toolCall.function.name}, input=${JSON.stringify(input).slice(0, 200)}`);
+          logger.verbose(
+            `    -> tool_use: id=${toolCall.id}, name=${toolCall.function.name}, input=${JSON.stringify(input).slice(0, 200)}`,
+          );
           contentBlocks.push({
             type: "tool_use",
             id: toolCall.id,
@@ -342,14 +347,19 @@ export function openaiToAnthropic(
     } else if (msg.role === "tool") {
       // Convert tool results to Anthropic tool_result blocks
       logger.verbose(`  Converting tool result: tool_call_id=${msg.tool_call_id}`);
-      const resultContent = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-      logger.verbose(`    -> tool_result content (first 500 chars): ${resultContent.slice(0, 500)}`);
+      const resultContent =
+        typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      logger.verbose(
+        `    -> tool_result content (first 500 chars): ${resultContent.slice(0, 500)}`,
+      );
 
-      const toolResultContent: ContentBlock[] = [{
-        type: "tool_result",
-        tool_use_id: msg.tool_call_id || "",
-        content: resultContent,
-      }];
+      const toolResultContent: ContentBlock[] = [
+        {
+          type: "tool_result",
+          tool_use_id: msg.tool_call_id || "",
+          content: resultContent,
+        },
+      ];
 
       // Check if the last message is a user message - if so, append to it
       const lastMsg = messages[messages.length - 1];
@@ -398,7 +408,7 @@ export function openaiToAnthropic(
 
   // Ensure messages alternate properly (Anthropic requirement)
   // If first message isn't user, prepend an empty user message
-  if (messages.length > 0 && messages[0]!.role !== "user") {
+  if (messages.length > 0 && messages[0]?.role !== "user") {
     messages.unshift({ role: "user", content: "Continue." });
   }
 
@@ -447,7 +457,10 @@ export function openaiToAnthropic(
     if (firstTool.type === "function" && firstTool.function) {
       // OpenAI format - convert to Anthropic
       result.tools = request.tools.map((tool) => {
-        const t = tool as { type: string; function: { name: string; description?: string; parameters?: Record<string, unknown> } };
+        const t = tool as {
+          type: string;
+          function: { name: string; description?: string; parameters?: Record<string, unknown> };
+        };
         return {
           name: t.function.name,
           description: t.function.description || "",
@@ -471,21 +484,22 @@ export function openaiToAnthropic(
 
 export function anthropicToOpenai(
   anthropicResponse: AnthropicResponse,
-  model: string
+  model: string,
 ): OpenAIChatResponse {
-  let content = anthropicResponse.content
-    ?.map((block: ContentBlock) => {
-      if (block.type === "text") return block.text;
-      if (block.type === "tool_use") {
-        const rawName = block.name || "";
-        const name = rawName.startsWith("mcp_") ? rawName.slice(4) : rawName;
-        const extracted = formatInternalToolContent(name, block.input);
-        if (extracted) return extracted;
-        return `[Tool: ${name}]`;
-      }
-      return "";
-    })
-    .join("") || "";
+  let content =
+    anthropicResponse.content
+      ?.map((block: ContentBlock) => {
+        if (block.type === "text") return block.text;
+        if (block.type === "tool_use") {
+          const rawName = block.name || "";
+          const name = rawName.startsWith("mcp_") ? rawName.slice(4) : rawName;
+          const extracted = formatInternalToolContent(name, block.input);
+          if (extracted) return extracted;
+          return `[Tool: ${name}]`;
+        }
+        return "";
+      })
+      .join("") || "";
 
   // Strip <thinking>...</thinking> tags that Claude may emit in plain text
   // (separate from the API thinking blocks which are already filtered by type)
@@ -513,8 +527,8 @@ export function anthropicToOpenai(
     ],
     usage: computeOpenAIUsage(
       (anthropicResponse.usage?.input_tokens || 0) +
-      (anthropicResponse.usage?.cache_read_input_tokens || 0) +
-      (anthropicResponse.usage?.cache_creation_input_tokens || 0),
+        (anthropicResponse.usage?.cache_read_input_tokens || 0) +
+        (anthropicResponse.usage?.cache_creation_input_tokens || 0),
       anthropicResponse.usage?.output_tokens || 0,
       anthropicResponse.usage?.cache_read_input_tokens || 0,
     ),
@@ -526,7 +540,7 @@ export function createOpenAIStreamChunk(
   model: string,
   content?: string,
   finishReason?: "stop" | "length" | null,
-  usage?: OpenAIStreamChunk["usage"]
+  usage?: OpenAIStreamChunk["usage"],
 ): string {
   const chunk: OpenAIStreamChunk = {
     id: `chatcmpl-${id}`,
@@ -580,7 +594,7 @@ export function createOpenAIToolCallChunk(
   toolCallId?: string,
   functionName?: string,
   functionArgs?: string,
-  finishReason?: "tool_calls" | null
+  finishReason?: "tool_calls" | null,
 ): string {
   const toolCall: OpenAIStreamChunkToolCall = {
     index: toolCallIndex,
@@ -614,7 +628,9 @@ export function createOpenAIToolCallChunk(
   };
 
   const result = `data: ${JSON.stringify(chunk)}\n\n`;
-  logger.verbose(`   [EMIT TOOL CALL CHUNK] index=${toolCallIndex}, id=${toolCallId || '-'}, name=${functionName || '-'}, args=${functionArgs ? functionArgs.slice(0, 200) : '-'}, finish=${finishReason || '-'}`);
+  logger.verbose(
+    `   [EMIT TOOL CALL CHUNK] index=${toolCallIndex}, id=${toolCallId || "-"}, name=${functionName || "-"}, args=${functionArgs ? functionArgs.slice(0, 200) : "-"}, finish=${finishReason || "-"}`,
+  );
   return result;
 }
 
@@ -629,7 +645,7 @@ export function createOpenAIStreamUsageChunk(
   promptTokens: number,
   completionTokens: number,
   cacheReadTokens: number = 0,
-  cacheCreationTokens: number = 0,
+  _cacheCreationTokens: number = 0,
 ): string {
   const chunk: OpenAIStreamChunk = {
     id: `chatcmpl-${id}`,
@@ -642,5 +658,3 @@ export function createOpenAIStreamUsageChunk(
 
   return `data: ${JSON.stringify(chunk)}\n\n`;
 }
-
-

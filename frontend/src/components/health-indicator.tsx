@@ -34,13 +34,7 @@ export function HealthIndicator() {
   return <Dot color="green" label="Online" />;
 }
 
-function Dot({
-  color,
-  label,
-}: {
-  color: "green" | "red" | "amber" | "muted";
-  label?: string;
-}) {
+function Dot({ color, label }: { color: "green" | "red" | "amber" | "muted"; label?: string }) {
   const c = {
     green: "bg-success",
     red: "bg-destructive",

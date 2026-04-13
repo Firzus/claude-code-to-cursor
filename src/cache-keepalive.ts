@@ -9,13 +9,9 @@
  * with a trivial user message and max_tokens=1 so the response is minimal.
  */
 
-import {
-  ANTHROPIC_API_URL,
-  CLAUDE_CODE_BETA_HEADERS,
-  CLAUDE_CODE_USER_AGENT,
-} from "./config";
-import { getValidToken } from "./oauth";
+import { ANTHROPIC_API_URL, CLAUDE_CODE_BETA_HEADERS, CLAUDE_CODE_USER_AGENT } from "./config";
 import { logger } from "./logger";
+import { getValidToken } from "./oauth";
 import type { AnthropicRequest, ContentBlock, Tool } from "./types";
 
 const KEEPALIVE_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
@@ -34,9 +30,7 @@ let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
  * Only updates if the prefix actually changed.
  */
 export function updateCachePrefix(prepared: AnthropicRequest): void {
-  const system = Array.isArray(prepared.system)
-    ? (prepared.system as ContentBlock[])
-    : [];
+  const system = Array.isArray(prepared.system) ? (prepared.system as ContentBlock[]) : [];
   const tools = prepared.tools ?? [];
 
   lastPrefix = {
