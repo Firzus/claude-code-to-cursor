@@ -44,6 +44,18 @@ function initSchema(database: Database) {
   try { database.run("ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0"); } catch { }
   try { database.run("ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0"); } catch { }
 
+  // Migration: instrumentation columns for request shape (nullable on existing rows)
+  try { database.run("ALTER TABLE requests ADD COLUMN route TEXT"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN message_count INTEGER"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN last_msg_role TEXT"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN last_msg_has_tool_result INTEGER"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN tool_use_count INTEGER"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN tool_result_count INTEGER"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN tool_defs_count INTEGER"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN tool_defs_hash TEXT"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN client_system_hash TEXT"); } catch { }
+  try { database.run("ALTER TABLE requests ADD COLUMN client_reasoning_effort TEXT"); } catch { }
+
   // Create indexes for common queries
   database.run(
     `CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`
@@ -59,6 +71,19 @@ function initSchema(database: Database) {
 
 type RequestSource = "claude_code" | "error";
 
+export interface RequestShapeMetrics {
+  route: "anthropic" | "openai";
+  messageCount: number;
+  lastMsgRole: string | null;
+  lastMsgHasToolResult: boolean;
+  toolUseCount: number;
+  toolResultCount: number;
+  toolDefsCount: number;
+  toolDefsHash: string | null;
+  clientSystemHash: string | null;
+  clientReasoningEffort: string | null;
+}
+
 interface RequestRecord {
   model: string;
   source: RequestSource;
@@ -69,6 +94,7 @@ interface RequestRecord {
   stream: boolean;
   latencyMs?: number;
   error?: string;
+  shape?: RequestShapeMetrics;
 }
 
 /**
@@ -76,10 +102,17 @@ interface RequestRecord {
  */
 export function recordRequest(record: RequestRecord): void {
   const database = getDb();
+  const shape = record.shape;
 
   database.run(
-    `INSERT INTO requests (timestamp, model, source, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, stream, latency_ms, error)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO requests (
+       timestamp, model, source, input_tokens, output_tokens,
+       cache_read_tokens, cache_creation_tokens, stream, latency_ms, error,
+       route, message_count, last_msg_role, last_msg_has_tool_result,
+       tool_use_count, tool_result_count, tool_defs_count, tool_defs_hash,
+       client_system_hash, client_reasoning_effort
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Date.now(),
       record.model,
@@ -91,6 +124,16 @@ export function recordRequest(record: RequestRecord): void {
       record.stream ? 1 : 0,
       record.latencyMs ?? null,
       record.error ?? null,
+      shape?.route ?? null,
+      shape?.messageCount ?? null,
+      shape?.lastMsgRole ?? null,
+      shape ? (shape.lastMsgHasToolResult ? 1 : 0) : null,
+      shape?.toolUseCount ?? null,
+      shape?.toolResultCount ?? null,
+      shape?.toolDefsCount ?? null,
+      shape?.toolDefsHash ?? null,
+      shape?.clientSystemHash ?? null,
+      shape?.clientReasoningEffort ?? null,
     ]
   );
 }

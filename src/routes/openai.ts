@@ -8,6 +8,7 @@ import {
 } from "../openai-adapter";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import { logger } from "../logger";
+import { computeRequestShape } from "../request-metrics";
 import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
 
 function stringifyContent(
@@ -100,6 +101,12 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     logAnthropicConversion(openaiBody, anthropicBody);
 
+    const shape = computeRequestShape(
+      anthropicBody,
+      "openai",
+      typeof openaiBody.reasoning_effort === "string" ? openaiBody.reasoning_effort : null,
+    );
+
     const response = await proxyRequest("/v1/messages", anthropicBody);
 
     console.log(`   [Debug] Response status: ${response.status}, ok: ${response.ok}`);
@@ -163,6 +170,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
             cacheCreationTokens: usage.cacheCreationTokens,
             stream: true,
             latencyMs: Date.now() - streamStartTime,
+            shape,
           });
         },
       );

@@ -2,6 +2,7 @@ import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
 import { logRequestDetails, corsHeaders } from "../middleware";
 import { normalizeAnthropicRequestModel } from "../request-normalization";
+import { computeRequestShape } from "../request-metrics";
 import {
   getApiModelId,
   getInvalidPublicModelMessage,
@@ -219,6 +220,12 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`
     );
 
+    const shape = computeRequestShape(
+      body,
+      "anthropic",
+      typeof incomingBody.reasoning_budget === "string" ? incomingBody.reasoning_budget : null,
+    );
+
     const proxiedResponse = await proxyRequest("/v1/messages", body);
     const streamStartTime = Date.now();
     const response = await rewriteAnthropicResponseModel(
@@ -234,6 +241,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
               cacheCreationTokens: usage.cacheCreationTokens,
               stream: true,
               latencyMs: Date.now() - streamStartTime,
+              shape,
             });
           }
         : undefined,
