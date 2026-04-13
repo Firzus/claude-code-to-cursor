@@ -28,6 +28,7 @@ const mockSettings = {
     thinkingEffort: "high" as const,
     adaptiveRouting: true,
     continuationModel: "claude-sonnet-4-6" as const,
+    cacheTTL: "5m" as const,
   },
 };
 

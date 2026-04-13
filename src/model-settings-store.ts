@@ -7,7 +7,8 @@ type ModelSettingKey =
   | "thinking_enabled"
   | "thinking_effort"
   | "adaptive_routing"
-  | "continuation_model";
+  | "continuation_model"
+  | "cache_ttl";
 
 interface ModelSettingsRow {
   key: ModelSettingKey;
@@ -63,6 +64,7 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
 
   const adaptiveRoutingValue = settings.get("adaptive_routing");
   const continuationModelValue = settings.get("continuation_model");
+  const cacheTTLValue = settings.get("cache_ttl");
 
   try {
     return validateModelSettings({
@@ -81,6 +83,8 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
       continuationModel:
         (continuationModelValue as ModelSettings["continuationModel"] | undefined) ??
         DEFAULT_MODEL_SETTINGS.continuationModel,
+      cacheTTL:
+        (cacheTTLValue as ModelSettings["cacheTTL"] | undefined) ?? DEFAULT_MODEL_SETTINGS.cacheTTL,
     });
   } catch {
     console.warn(`Invalid model settings in DB (selectedModel="${selectedModel}"), using defaults`);
@@ -95,6 +99,7 @@ export function saveModelSettingsToDb(database: Database, settings: ModelSetting
     upsertSetting(database, "thinking_effort", currentSettings.thinkingEffort);
     upsertSetting(database, "adaptive_routing", toStoredBoolean(currentSettings.adaptiveRouting));
     upsertSetting(database, "continuation_model", currentSettings.continuationModel);
+    upsertSetting(database, "cache_ttl", currentSettings.cacheTTL);
   });
 
   saveSettings(settings);

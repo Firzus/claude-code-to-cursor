@@ -24,6 +24,7 @@ describe("openaiToAnthropic", () => {
       thinkingEffort: "high",
       adaptiveRouting: false,
       continuationModel: "claude-sonnet-4-6",
+      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -41,6 +42,7 @@ describe("openaiToAnthropic", () => {
       thinkingEffort: "low",
       adaptiveRouting: false,
       continuationModel: "claude-haiku-4-5",
+      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -61,6 +63,7 @@ describe("openaiToAnthropic", () => {
       thinkingEffort: "high",
       adaptiveRouting: false,
       continuationModel: "claude-sonnet-4-6",
+      cacheTTL: "5m",
     };
 
     const request = {
@@ -84,6 +87,7 @@ describe("openaiToAnthropic", () => {
       thinkingEffort: "high",
       adaptiveRouting: false,
       continuationModel: "claude-sonnet-4-6",
+      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -101,6 +105,7 @@ describe("openaiToAnthropic", () => {
       thinkingEffort: "medium",
       adaptiveRouting: false,
       continuationModel: "claude-sonnet-4-6",
+      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);

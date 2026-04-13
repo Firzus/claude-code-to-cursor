@@ -10,12 +10,14 @@ if (!SKIP) {
     thinkingEffort: string;
     adaptiveRouting: boolean;
     continuationModel: string;
+    cacheTTL: string;
   } = {
     selectedModel: "claude-opus-4-6",
     thinkingEnabled: false,
     thinkingEffort: "high",
     adaptiveRouting: true,
     continuationModel: "claude-sonnet-4-6",
+    cacheTTL: "5m",
   };
 
   let proxiedBody: AnthropicRequest | undefined;
@@ -59,6 +61,7 @@ if (!SKIP) {
         thinkingEffort: "high",
         adaptiveRouting: true,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -94,6 +97,7 @@ if (!SKIP) {
         thinkingEffort: "medium",
         adaptiveRouting: false,
         continuationModel: "claude-haiku-4-5",
+        cacheTTL: "5m",
       };
       proxyResponse = new Response(
         JSON.stringify({
@@ -137,6 +141,7 @@ if (!SKIP) {
         thinkingEffort: "low",
         adaptiveRouting: false,
         continuationModel: "claude-haiku-4-5",
+        cacheTTL: "5m",
       };
       proxyResponse = new Response(
         [
@@ -178,6 +183,7 @@ if (!SKIP) {
         thinkingEffort: "high",
         adaptiveRouting: true,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -220,6 +226,7 @@ if (!SKIP) {
         thinkingEffort: "high",
         adaptiveRouting: false,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,

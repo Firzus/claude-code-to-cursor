@@ -2,12 +2,22 @@ export type ThinkingEffort = "low" | "medium" | "high";
 
 export type SupportedSelectedModel = "claude-opus-4-6" | "claude-sonnet-4-6" | "claude-haiku-4-5";
 
+/**
+ * Anthropic prompt cache TTL. "5m" is the default (free cache writes); "1h"
+ * requires the extended-cache-ttl-2025-04-11 beta header and 2× write cost,
+ * useful for async/batch workflows where the 5m default would expire.
+ */
+export type CacheTTL = "5m" | "1h";
+
+export const CACHE_TTL_VALUES: readonly CacheTTL[] = ["5m", "1h"];
+
 export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
   thinkingEnabled: boolean;
   thinkingEffort: ThinkingEffort;
   adaptiveRouting: boolean;
   continuationModel: SupportedSelectedModel;
+  cacheTTL: CacheTTL;
 }
 
 export const PUBLIC_MODEL_ID = "Claude Code" as const;
@@ -18,6 +28,7 @@ export const DEFAULT_MODEL_SETTINGS = {
   thinkingEffort: "high",
   adaptiveRouting: true,
   continuationModel: "claude-sonnet-4-6",
+  cacheTTL: "5m",
 } as const satisfies ModelSettings;
 
 /** Padding added to thinking budget to compute max_tokens */
@@ -101,11 +112,16 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error(`Unsupported continuationModel: ${String(candidate.continuationModel)}`);
   }
 
+  if (candidate.cacheTTL === undefined || !CACHE_TTL_VALUES.includes(candidate.cacheTTL)) {
+    throw new Error(`Invalid cacheTTL value: ${String(candidate.cacheTTL)}`);
+  }
+
   return {
     selectedModel: candidate.selectedModel,
     thinkingEnabled: candidate.thinkingEnabled,
     thinkingEffort: candidate.thinkingEffort,
     adaptiveRouting: candidate.adaptiveRouting,
     continuationModel: candidate.continuationModel,
+    cacheTTL: candidate.cacheTTL,
   };
 }

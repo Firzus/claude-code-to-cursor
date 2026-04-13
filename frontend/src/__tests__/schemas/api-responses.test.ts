@@ -248,6 +248,7 @@ describe("settingsResponseSchema", () => {
         thinkingEffort: "high",
         adaptiveRouting: true,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       },
     };
     expect(settingsResponseSchema.parse(data)).toEqual(data);
@@ -261,6 +262,7 @@ describe("settingsResponseSchema", () => {
         thinkingEffort: "high",
         adaptiveRouting: true,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -274,6 +276,7 @@ describe("settingsResponseSchema", () => {
         thinkingEffort: "ultra",
         adaptiveRouting: true,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();

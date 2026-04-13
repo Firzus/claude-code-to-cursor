@@ -22,6 +22,7 @@ const mockSettings = {
     thinkingEffort: "high" as const,
     adaptiveRouting: true,
     continuationModel: "claude-sonnet-4-6" as const,
+    cacheTTL: "5m" as const,
   },
 };
 
@@ -62,6 +63,7 @@ describe("useUpdateSettings", () => {
       thinkingEffort: "low",
       adaptiveRouting: false,
       continuationModel: "claude-haiku-4-5",
+      cacheTTL: "1h",
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

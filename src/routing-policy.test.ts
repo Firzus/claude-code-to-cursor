@@ -9,6 +9,7 @@ const BASE_SETTINGS: ModelSettings = {
   thinkingEffort: "high",
   adaptiveRouting: true,
   continuationModel: "claude-sonnet-4-6",
+  cacheTTL: "5m",
 };
 
 const FRESH_SHAPE = {

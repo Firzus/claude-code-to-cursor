@@ -48,6 +48,7 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
           ? body.adaptiveRouting
           : body.adaptiveRouting === "true",
       continuationModel: (body.continuationModel as string) ?? "",
+      cacheTTL: (body.cacheTTL as string) ?? "",
     });
 
     saveModelSettings(settings);

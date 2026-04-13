@@ -32,6 +32,7 @@ describe("model settings store", () => {
         thinkingEffort: "medium",
         adaptiveRouting: false,
         continuationModel: "claude-haiku-4-5",
+        cacheTTL: "1h",
       } as const;
 
       saveModelSettingsToDb(database, settings);
@@ -54,6 +55,7 @@ describe("model settings store", () => {
         thinkingEffort: "high",
         adaptiveRouting: true,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       });
 
       const updatedSettings = {
@@ -62,6 +64,7 @@ describe("model settings store", () => {
         thinkingEffort: "low",
         adaptiveRouting: false,
         continuationModel: "claude-haiku-4-5",
+        cacheTTL: "1h",
       } as const;
 
       saveModelSettingsToDb(database, updatedSettings);

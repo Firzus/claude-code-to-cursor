@@ -27,6 +27,7 @@ describe("model settings contract", () => {
       thinkingEffort: "high",
       adaptiveRouting: true,
       continuationModel: "claude-sonnet-4-6",
+      cacheTTL: "5m",
     });
   });
 
@@ -47,6 +48,7 @@ describe("model settings contract", () => {
         thinkingEffort: "low",
         adaptiveRouting: true,
         continuationModel: "claude-haiku-4-5",
+        cacheTTL: "1h",
       }),
     ).toEqual({
       selectedModel: "claude-sonnet-4-6",
@@ -54,6 +56,7 @@ describe("model settings contract", () => {
       thinkingEffort: "low",
       adaptiveRouting: true,
       continuationModel: "claude-haiku-4-5",
+      cacheTTL: "1h",
     });
     expect(
       validateModelSettings({
@@ -62,6 +65,7 @@ describe("model settings contract", () => {
         thinkingEffort: "medium",
         adaptiveRouting: false,
         continuationModel: "claude-sonnet-4-6",
+        cacheTTL: "5m",
       }),
     ).toEqual({
       selectedModel: "claude-haiku-4-5",
@@ -69,7 +73,21 @@ describe("model settings contract", () => {
       thinkingEffort: "medium",
       adaptiveRouting: false,
       continuationModel: "claude-sonnet-4-6",
+      cacheTTL: "5m",
     });
+  });
+
+  test("rejects invalid cacheTTL values", () => {
+    expect(() =>
+      validateModelSettings({
+        ...DEFAULT_MODEL_SETTINGS,
+        cacheTTL: "1d",
+      }),
+    ).toThrow(/cacheTTL/);
+    expect(() => {
+      const { cacheTTL: _omit, ...partial } = DEFAULT_MODEL_SETTINGS;
+      return validateModelSettings(partial);
+    }).toThrow(/cacheTTL/);
   });
 
   test("returns API model ID unchanged", () => {

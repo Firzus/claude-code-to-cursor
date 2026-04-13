@@ -1,14 +1,14 @@
 import { updateCachePrefix } from "./cache-keepalive";
 import {
   ANTHROPIC_API_URL,
-  CLAUDE_CODE_BETA_HEADERS,
   CLAUDE_CODE_EXTRA_INSTRUCTION,
   CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_USER_AGENT,
+  getClaudeCodeBetaHeaders,
 } from "./config";
-import { recordRequest } from "./db";
+import { getModelSettings, recordRequest } from "./db";
 import { logger } from "./logger";
-import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
+import { type CacheTTL, THINKING_MAX_TOKENS_PADDING } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import type { AnthropicError, AnthropicRequest, ContentBlock } from "./types";
@@ -247,13 +247,31 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
   }
 }
 
-function stripTtlCacheControl(prepared: AnthropicRequest): void {
-  const stripTtl = (content: ContentBlock[] | undefined) => {
+/**
+ * Normalize every `cache_control` block in the request to match the configured
+ * cache TTL.
+ *
+ * - `"5m"` (default): strip any `ttl` field so Anthropic falls back to the
+ *   free 5-minute cache.
+ * - `"1h"`: stamp `ttl: "1h"` on every cache_control block so Anthropic uses
+ *   the 1-hour cache (2× write cost, requires `extended-cache-ttl-2025-04-11`
+ *   beta header).
+ *
+ * Tools are also checked — they can carry `cache_control` on the last entry
+ * (see `prefixToolNames`).
+ *
+ * Exported for unit tests only.
+ */
+export function applyCacheTtl(prepared: AnthropicRequest, cacheTTL: CacheTTL): void {
+  const applyTo = (content: ContentBlock[] | undefined) => {
     if (!Array.isArray(content)) return;
     for (const item of content) {
       if (item && typeof item === "object" && "cache_control" in item) {
-        const cc = item.cache_control as Record<string, unknown>;
-        if (cc && "ttl" in cc) {
+        const cc = item.cache_control as Record<string, unknown> | null | undefined;
+        if (!cc) continue;
+        if (cacheTTL === "1h") {
+          cc.ttl = "1h";
+        } else if ("ttl" in cc) {
           delete cc.ttl;
         }
       }
@@ -261,18 +279,31 @@ function stripTtlCacheControl(prepared: AnthropicRequest): void {
   };
 
   if (Array.isArray(prepared.system)) {
-    stripTtl(prepared.system as ContentBlock[]);
+    applyTo(prepared.system as ContentBlock[]);
   }
   if (Array.isArray(prepared.messages)) {
     for (const message of prepared.messages) {
       if (Array.isArray(message.content)) {
-        stripTtl(message.content);
+        applyTo(message.content);
+      }
+    }
+  }
+  if (Array.isArray(prepared.tools)) {
+    // Tools carry cache_control directly on the tool object, not inside a
+    // content array, so walk them separately.
+    for (const tool of prepared.tools) {
+      const cc = (tool as { cache_control?: Record<string, unknown> }).cache_control;
+      if (!cc) continue;
+      if (cacheTTL === "1h") {
+        cc.ttl = "1h";
+      } else if ("ttl" in cc) {
+        delete cc.ttl;
       }
     }
   }
 }
 
-function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
+function prepareClaudeCodeBody(body: AnthropicRequest, cacheTTL: CacheTTL): AnthropicRequest {
   let prepared = { ...body };
 
   convertReasoningBudget(prepared);
@@ -294,7 +325,7 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
       .join("\n"),
   );
 
-  stripTtlCacheControl(prepared);
+  applyCacheTtl(prepared, cacheTTL);
   prepared = normalizeAnthropicToolIds(prepared);
 
   return prepared;
@@ -322,19 +353,26 @@ async function makeClaudeCodeRequest(
   }
 
   try {
+    // Read persisted settings once per request so cacheTTL + beta headers stay
+    // in sync even if the setting changes mid-session.
+    const modelSettings = getModelSettings();
+
     // Prepare the body with required Claude Code modifications
-    const preparedBody = prepareClaudeCodeBody(body);
+    const preparedBody = prepareClaudeCodeBody(body, modelSettings.cacheTTL);
 
     // Debug: log the model name being sent
     logger.verbose(`   [Debug] Sending model to Claude Code: "${preparedBody.model}"`);
     logger.verbose(`   [Debug] Request body keys: ${Object.keys(preparedBody).join(", ")}`);
 
     // Use ONLY our Claude Code beta headers - don't merge with Cursor's
-    console.log(`   [Debug] Using Claude Code beta headers: "${CLAUDE_CODE_BETA_HEADERS}"`);
+    const betaHeaders = getClaudeCodeBetaHeaders({
+      extendedCacheTtl: modelSettings.cacheTTL === "1h",
+    });
+    console.log(`   [Debug] Using Claude Code beta headers: "${betaHeaders}"`);
 
     const requestHeaders = {
       Authorization: `Bearer ${token.accessToken}`,
-      "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
+      "anthropic-beta": betaHeaders,
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
       "User-Agent": CLAUDE_CODE_USER_AGENT,

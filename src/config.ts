@@ -16,13 +16,28 @@ export const TUNNEL_URL = process.env.CLOUDFLARE_TUNNEL_URL || "";
 // Required beta headers for Claude Code OAuth
 const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
 const ANTHROPIC_BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14";
+const ANTHROPIC_BETA_EXTENDED_CACHE_TTL = "extended-cache-ttl-2025-04-11";
 
-// Combined beta header string for Claude Code OAuth requests
-// Note: context-1m header removed — 1M context is GA for Opus 4.6
-export const CLAUDE_CODE_BETA_HEADERS = [
-  ANTHROPIC_BETA_OAUTH,
-  ANTHROPIC_BETA_INTERLEAVED_THINKING,
-].join(",");
+/**
+ * Build the `anthropic-beta` header value for Claude Code requests.
+ *
+ * The extended-cache-ttl beta is opt-in: only emit it when the caller
+ * explicitly wants the 1-hour cache TTL, so the 5-minute (free) default
+ * keeps shipping with the minimal set of betas.
+ */
+export function getClaudeCodeBetaHeaders(opts?: { extendedCacheTtl?: boolean }): string {
+  const headers: string[] = [ANTHROPIC_BETA_OAUTH, ANTHROPIC_BETA_INTERLEAVED_THINKING];
+  if (opts?.extendedCacheTtl) {
+    headers.push(ANTHROPIC_BETA_EXTENDED_CACHE_TTL);
+  }
+  return headers.join(",");
+}
+
+/**
+ * Default beta header string (5m cache TTL, no extended-cache-ttl).
+ * Callers that need the 1h TTL variant should call `getClaudeCodeBetaHeaders`.
+ */
+export const CLAUDE_CODE_BETA_HEADERS = getClaudeCodeBetaHeaders();
 
 // Centralized User-Agent for all Claude Code requests
 export const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.97 (external, cli)";

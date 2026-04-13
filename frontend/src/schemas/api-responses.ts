@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { supportedModels, thinkingEfforts } from "./settings";
+import { cacheTTLValues, supportedModels, thinkingEfforts } from "./settings";
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "rate_limited"]),
@@ -99,6 +99,7 @@ export const settingsResponseSchema = z.object({
     thinkingEffort: z.enum(thinkingEfforts),
     adaptiveRouting: z.boolean(),
     continuationModel: z.enum(supportedModels),
+    cacheTTL: z.enum(cacheTTLValues),
   }),
 });
 
