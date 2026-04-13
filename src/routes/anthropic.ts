@@ -138,7 +138,7 @@ function rewriteAnthropicSseResponseModel(
 
 async function rewriteAnthropicResponseModel(
   response: Response,
-  onStreamComplete?: (usage: { inputTokens: number; outputTokens: number }) => void,
+  onStreamComplete?: (usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }) => void,
 ): Promise<Response> {
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("Content-Length");

@@ -91,7 +91,7 @@ const ChartContainer = React.forwardRef<HTMLDivElement, ChartContainerProps>(
           style={cssVars as React.CSSProperties}
           {...props}
         >
-          {size && React.cloneElement(children, { width: size.width, height: size.height })}
+          {size && React.cloneElement(children, { width: size.width, height: size.height } as Record<string, unknown>)}
         </div>
       </ChartContext.Provider>
     );

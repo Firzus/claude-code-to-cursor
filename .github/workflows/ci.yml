@@ -36,4 +36,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose build
+      - run: docker compose build api frontend
+        env:
+          CLOUDFLARE_TUNNEL_TOKEN: ci-placeholder

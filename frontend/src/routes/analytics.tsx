@@ -328,15 +328,15 @@ function AnalyticsPage() {
                       return d.toLocaleDateString([], { month: "short", day: "numeric" });
                     }}
                   />
-                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={50} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" tickFormatter={(v) => fmt(v)} />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={50} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" tickFormatter={(v: number) => fmt(v)} />
                   <RechartsTooltip
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(v) => {
+                        labelFormatter={(v: string | number) => {
                           const d = new Date(Number(v));
                           return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                         }}
-                        formatter={(value) => fmt(value)}
+                        formatter={(value: number) => fmt(value)}
                       />
                     }
                   />
@@ -373,15 +373,15 @@ function AnalyticsPage() {
                       return d.toLocaleDateString([], { month: "short", day: "numeric" });
                     }}
                   />
-                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={40} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <YAxis tickLine={false} axisLine={false} tickMargin={8} width={40} tick={{ fontSize: 11 }} stroke="var(--color-muted-foreground)" domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} />
                   <RechartsTooltip
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(v) => {
+                        labelFormatter={(v: string | number) => {
                           const d = new Date(Number(v));
                           return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                         }}
-                        formatter={(value) => `${Number(value).toFixed(1)}%`}
+                        formatter={(value: number) => `${Number(value).toFixed(1)}%`}
                       />
                     }
                   />

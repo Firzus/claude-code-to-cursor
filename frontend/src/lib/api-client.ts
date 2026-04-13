@@ -1,10 +1,8 @@
 import type { ZodType } from "zod";
 
 function getApiBase(): string {
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:${window.__CCTC_API_PORT__ || 8082}/api`;
-  }
-  return `${process.env.API_URL || "http://api:8082"}/api`;
+  if (typeof window === "undefined") return "http://api:8082/api";
+  return `${window.location.protocol}//${window.location.hostname}:${window.__CCTC_API_PORT__ || 8082}/api`;
 }
 
 declare global {

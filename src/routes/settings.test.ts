@@ -1,6 +1,17 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { ModelSettings } from "../model-settings";
 
+interface SettingsGetResponse {
+  settings: ModelSettings;
+  error?: string;
+}
+
+interface SettingsUpdateResponse {
+  success: boolean;
+  settings?: ModelSettings;
+  error?: string;
+}
+
 const currentSettings: ModelSettings = {
   selectedModel: "claude-sonnet-4-6",
   thinkingEnabled: true,
@@ -30,7 +41,7 @@ describe("settings JSON API", () => {
     const response = handleSettingsAPI(
       new Request("http://localhost/api/settings"),
     );
-    const body = await response.json();
+    const body = (await response.json()) as SettingsGetResponse;
 
     expect(response.status).toBe(200);
     expect(body.settings.selectedModel).toBe("claude-sonnet-4-6");
@@ -52,7 +63,7 @@ describe("settings JSON API", () => {
     });
 
     const response = await handleSettingsModelAPI(request);
-    const body = await response.json();
+    const body = (await response.json()) as SettingsUpdateResponse;
 
     expect(response.status).toBe(400);
     expect(body.success).toBe(false);
@@ -74,11 +85,11 @@ describe("settings JSON API", () => {
     });
 
     const response = await handleSettingsModelAPI(request);
-    const body = await response.json();
+    const body = (await response.json()) as SettingsUpdateResponse;
 
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
-    expect(body.settings.selectedModel).toBe("claude-haiku-4-5");
+    expect(body.settings?.selectedModel).toBe("claude-haiku-4-5");
     expect(savedSettingsCalls).toEqual([
       {
         selectedModel: "claude-haiku-4-5",
@@ -97,7 +108,7 @@ describe("settings JSON API", () => {
       const response = handleSettingsAPI(
         new Request("http://localhost/api/settings"),
       );
-      const body = await response.json();
+      const body = (await response.json()) as SettingsGetResponse;
 
       expect(response.status).toBe(403);
       expect(body.error).toContain("Unauthorized");
@@ -120,7 +131,7 @@ describe("settings JSON API", () => {
           headers: { "x-settings-key": "test-secret" },
         }),
       );
-      const body = await response.json();
+      const body = (await response.json()) as SettingsGetResponse;
 
       expect(response.status).toBe(200);
       expect(body.settings).toBeDefined();
