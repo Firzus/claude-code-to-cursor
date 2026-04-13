@@ -16,6 +16,8 @@ const currentSettings: ModelSettings = {
   selectedModel: "claude-sonnet-4-6",
   thinkingEnabled: true,
   thinkingEffort: "medium",
+  adaptiveRouting: true,
+  continuationModel: "claude-haiku-4-5",
 };
 
 const savedSettingsCalls: ModelSettings[] = [];
@@ -54,6 +56,8 @@ describe("settings JSON API", () => {
         selectedModel: "claude-unknown",
         thinkingEnabled: true,
         thinkingEffort: "medium",
+        adaptiveRouting: true,
+        continuationModel: "claude-sonnet-4-6",
       }),
     });
 
@@ -76,6 +80,8 @@ describe("settings JSON API", () => {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: false,
         thinkingEffort: "low",
+        adaptiveRouting: false,
+        continuationModel: "claude-sonnet-4-6",
       }),
     });
 
@@ -90,6 +96,8 @@ describe("settings JSON API", () => {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: false,
         thinkingEffort: "low",
+        adaptiveRouting: false,
+        continuationModel: "claude-sonnet-4-6",
       },
     ]);
   });

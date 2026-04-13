@@ -6,14 +6,13 @@
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
-  getApiModelId,
   getInvalidPublicModelMessage,
-  getThinkingBudget,
   isAllowedPublicModel,
   type ModelSettings,
-  THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "./model-settings";
+import { computeRequestShape } from "./request-metrics";
+import { applyThinkingToBody, pickRoute } from "./routing-policy";
 import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
 interface OpenAIMessage {
@@ -235,9 +234,19 @@ function convertContent(
   return blocks;
 }
 
-export function openaiToAnthropic(
+/**
+ * Convert an OpenAI chat request to Anthropic format.
+ * This base version does NOT apply thinking or model routing — those are
+ * handled separately via applyThinkingToBody() from routing-policy.ts.
+ *
+ * @param originalRequest  The incoming OpenAI-format request
+ * @param targetApiModel   The raw Anthropic model ID string to set on the body
+ *                         (e.g. "claude-opus-4-6"). Use getApiModelId() from
+ *                         the caller to resolve from ModelSettings.
+ */
+export function openaiToAnthropicBase(
   originalRequest: OpenAIChatRequest,
-  modelSettings: ModelSettings,
+  targetApiModel: string,
 ): AnthropicRequest {
   const request = { ...originalRequest };
 
@@ -256,17 +265,6 @@ export function openaiToAnthropic(
   if (!isAllowedPublicModel(request.model)) {
     throw new Error(getInvalidPublicModelMessage(request.model));
   }
-
-  const targetModel = modelSettings.selectedModel;
-  const apiModel = getApiModelId(targetModel);
-  // Respect Cursor's reasoning_effort if provided, otherwise use stored settings
-  const effectiveEffort: ThinkingEffort =
-    (request.reasoning_effort as ThinkingEffort) || modelSettings.thinkingEffort;
-  const thinkingBudget = modelSettings.thinkingEnabled ? getThinkingBudget(effectiveEffort) : null;
-
-  console.log(
-    `   [Debug] Request model "${request.model}" → using model="${apiModel}" with thinking ${thinkingBudget === null ? "disabled" : `budget=${thinkingBudget} tokens (effort=${effectiveEffort}${request.reasoning_effort ? ", from client" : ""})`}`,
-  );
 
   const messages: AnthropicMessage[] = [];
   let system: string | ContentBlock[] | undefined;
@@ -413,26 +411,22 @@ export function openaiToAnthropic(
   }
 
   // Determine max_tokens: use Cursor's value or default to 4096
-  let maxTokens = request.max_tokens || request.max_completion_tokens || 4096;
+  const maxTokens = request.max_tokens || request.max_completion_tokens || 4096;
   const maxTokensSource = request.max_tokens
     ? "Cursor (max_tokens)"
     : request.max_completion_tokens
       ? "Cursor (max_completion_tokens)"
       : "Default (4096)";
 
-  // Ensure max_tokens is large enough for thinking budget + output
-  if (thinkingBudget !== null && maxTokens < thinkingBudget + THINKING_MAX_TOKENS_PADDING) {
-    maxTokens = thinkingBudget + THINKING_MAX_TOKENS_PADDING;
-  }
-
   console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
 
+  // Note: thinking block and temperature are applied later via applyThinkingToBody()
   const result: AnthropicRequest = {
-    model: apiModel,
+    model: targetApiModel,
     messages,
     system,
     max_tokens: maxTokens,
-    temperature: thinkingBudget === null ? request.temperature : 1,
+    temperature: request.temperature,
     top_p: request.top_p,
     stream: request.stream,
     stop_sequences: request.stop
@@ -440,13 +434,6 @@ export function openaiToAnthropic(
         ? request.stop
         : [request.stop]
       : undefined,
-    thinking:
-      thinkingBudget === null
-        ? undefined
-        : {
-            type: "enabled",
-            budget_tokens: thinkingBudget,
-          },
   };
 
   // Pass through tools - Cursor already sends them in Anthropic format
@@ -480,6 +467,30 @@ export function openaiToAnthropic(
   }
 
   return result;
+}
+
+/**
+ * @deprecated Use openaiToAnthropicBase + pickRoute + applyThinkingToBody instead.
+ * Kept for backward-compatibility; internally applies the routing policy.
+ */
+export function openaiToAnthropic(
+  originalRequest: OpenAIChatRequest,
+  modelSettings: ModelSettings,
+): AnthropicRequest {
+  const base = openaiToAnthropicBase(originalRequest, modelSettings.selectedModel);
+  const clientEffort =
+    typeof originalRequest.reasoning_effort === "string" &&
+    ["low", "medium", "high"].includes(originalRequest.reasoning_effort)
+      ? (originalRequest.reasoning_effort as ThinkingEffort)
+      : null;
+  const shape = computeRequestShape(base, "openai", clientEffort);
+  const decision = pickRoute({ settings: modelSettings, shape, clientEffort });
+  return applyThinkingToBody(
+    base,
+    decision,
+    originalRequest.max_tokens ?? originalRequest.max_completion_tokens,
+    originalRequest.temperature,
+  );
 }
 
 export function anthropicToOpenai(

@@ -2,7 +2,12 @@ import type { Database } from "bun:sqlite";
 import type { ModelSettings } from "./model-settings";
 import { DEFAULT_MODEL_SETTINGS, validateModelSettings } from "./model-settings";
 
-type ModelSettingKey = "selected_model" | "thinking_enabled" | "thinking_effort";
+type ModelSettingKey =
+  | "selected_model"
+  | "thinking_enabled"
+  | "thinking_effort"
+  | "adaptive_routing"
+  | "continuation_model";
 
 interface ModelSettingsRow {
   key: ModelSettingKey;
@@ -56,6 +61,9 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
   const thinkingEnabledValue = settings.get("thinking_enabled");
   const thinkingEffortValue = settings.get("thinking_effort");
 
+  const adaptiveRoutingValue = settings.get("adaptive_routing");
+  const continuationModelValue = settings.get("continuation_model");
+
   try {
     return validateModelSettings({
       selectedModel,
@@ -66,6 +74,13 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
       thinkingEffort:
         (thinkingEffortValue as ModelSettings["thinkingEffort"] | undefined) ??
         DEFAULT_MODEL_SETTINGS.thinkingEffort,
+      adaptiveRouting:
+        adaptiveRoutingValue === undefined
+          ? DEFAULT_MODEL_SETTINGS.adaptiveRouting
+          : fromStoredBoolean(adaptiveRoutingValue),
+      continuationModel:
+        (continuationModelValue as ModelSettings["continuationModel"] | undefined) ??
+        DEFAULT_MODEL_SETTINGS.continuationModel,
     });
   } catch {
     console.warn(`Invalid model settings in DB (selectedModel="${selectedModel}"), using defaults`);
@@ -78,6 +93,8 @@ export function saveModelSettingsToDb(database: Database, settings: ModelSetting
     upsertSetting(database, "selected_model", currentSettings.selectedModel);
     upsertSetting(database, "thinking_enabled", toStoredBoolean(currentSettings.thinkingEnabled));
     upsertSetting(database, "thinking_effort", currentSettings.thinkingEffort);
+    upsertSetting(database, "adaptive_routing", toStoredBoolean(currentSettings.adaptiveRouting));
+    upsertSetting(database, "continuation_model", currentSettings.continuationModel);
   });
 
   saveSettings(settings);

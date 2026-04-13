@@ -6,6 +6,8 @@ export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
   thinkingEnabled: boolean;
   thinkingEffort: ThinkingEffort;
+  adaptiveRouting: boolean;
+  continuationModel: SupportedSelectedModel;
 }
 
 export const PUBLIC_MODEL_ID = "Claude Code" as const;
@@ -14,6 +16,8 @@ export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-6",
   thinkingEnabled: true,
   thinkingEffort: "high",
+  adaptiveRouting: true,
+  continuationModel: "claude-sonnet-4-6",
 } as const satisfies ModelSettings;
 
 /** Padding added to thinking budget to compute max_tokens */
@@ -86,9 +90,22 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error("Invalid thinkingEffort value");
   }
 
+  if (typeof candidate.adaptiveRouting !== "boolean") {
+    throw new Error("Invalid adaptiveRouting value");
+  }
+
+  if (
+    candidate.continuationModel === undefined ||
+    !SUPPORTED_SELECTED_MODELS.includes(candidate.continuationModel)
+  ) {
+    throw new Error(`Unsupported continuationModel: ${String(candidate.continuationModel)}`);
+  }
+
   return {
     selectedModel: candidate.selectedModel,
     thinkingEnabled: candidate.thinkingEnabled,
     thinkingEffort: candidate.thinkingEffort,
+    adaptiveRouting: candidate.adaptiveRouting,
+    continuationModel: candidate.continuationModel,
   };
 }

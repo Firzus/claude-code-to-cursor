@@ -10,6 +10,7 @@ import {
   initModelSettingsSchema,
   saveModelSettingsToDb,
 } from "./model-settings-store";
+import type { RoutingDecision } from "./routing-policy";
 
 const DB_PATH = process.env.CCTC_DB_PATH || join(process.cwd(), "cctc.db");
 
@@ -42,6 +43,9 @@ const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 10, sql: "ALTER TABLE requests ADD COLUMN tool_defs_hash TEXT" },
   { version: 11, sql: "ALTER TABLE requests ADD COLUMN client_system_hash TEXT" },
   { version: 12, sql: "ALTER TABLE requests ADD COLUMN client_reasoning_effort TEXT" },
+  { version: 13, sql: "ALTER TABLE requests ADD COLUMN applied_model TEXT" },
+  { version: 14, sql: "ALTER TABLE requests ADD COLUMN applied_thinking_effort TEXT" },
+  { version: 15, sql: "ALTER TABLE requests ADD COLUMN routing_policy TEXT" },
 ];
 
 function runMigrations(database: Database): void {
@@ -115,6 +119,7 @@ interface RequestRecord {
   latencyMs?: number;
   error?: string;
   shape?: RequestShapeMetrics;
+  decision?: RoutingDecision;
 }
 
 /**
@@ -123,6 +128,7 @@ interface RequestRecord {
 export function recordRequest(record: RequestRecord): void {
   const database = getDb();
   const shape = record.shape;
+  const decision = record.decision;
 
   database.run(
     `INSERT INTO requests (
@@ -130,9 +136,10 @@ export function recordRequest(record: RequestRecord): void {
        cache_read_tokens, cache_creation_tokens, stream, latency_ms, error,
        route, message_count, last_msg_role, last_msg_has_tool_result,
        tool_use_count, tool_result_count, tool_defs_count, tool_defs_hash,
-       client_system_hash, client_reasoning_effort
+       client_system_hash, client_reasoning_effort,
+       applied_model, applied_thinking_effort, routing_policy
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Date.now(),
       record.model,
@@ -154,6 +161,9 @@ export function recordRequest(record: RequestRecord): void {
       shape?.toolDefsHash ?? null,
       shape?.clientSystemHash ?? null,
       shape?.clientReasoningEffort ?? null,
+      decision?.model ?? null,
+      decision?.effort ?? null,
+      decision?.policy ?? null,
     ],
   );
 }

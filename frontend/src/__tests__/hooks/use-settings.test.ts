@@ -20,6 +20,8 @@ const mockSettings = {
     selectedModel: "claude-opus-4-6" as const,
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
+    adaptiveRouting: true,
+    continuationModel: "claude-sonnet-4-6" as const,
   },
 };
 
@@ -58,6 +60,8 @@ describe("useUpdateSettings", () => {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: false,
       thinkingEffort: "low",
+      adaptiveRouting: false,
+      continuationModel: "claude-haiku-4-5",
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

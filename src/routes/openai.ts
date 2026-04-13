@@ -2,8 +2,10 @@ import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
-import { anthropicToOpenai, type OpenAIChatRequest, openaiToAnthropic } from "../openai-adapter";
+import { getApiModelId } from "../model-settings";
+import { anthropicToOpenai, type OpenAIChatRequest, openaiToAnthropicBase } from "../openai-adapter";
 import { computeRequestShape } from "../request-metrics";
+import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
 
@@ -92,15 +94,29 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     logOpenAIRequest(openaiBody);
 
-    const anthropicBody = openaiToAnthropic(openaiBody, modelSettings);
+    const clientEffort =
+      typeof openaiBody.reasoning_effort === "string" &&
+      ["low", "medium", "high"].includes(openaiBody.reasoning_effort)
+        ? (openaiBody.reasoning_effort as "low" | "medium" | "high")
+        : null;
+
+    const converted = openaiToAnthropicBase(
+      openaiBody,
+      getApiModelId(modelSettings.selectedModel),
+    );
+
+    const shape = computeRequestShape(converted, "openai", clientEffort);
+
+    const decision = pickRoute({ settings: modelSettings, shape, clientEffort });
+
+    const anthropicBody = applyThinkingToBody(
+      converted,
+      decision,
+      openaiBody.max_tokens ?? openaiBody.max_completion_tokens,
+      openaiBody.temperature,
+    );
 
     logAnthropicConversion(openaiBody, anthropicBody);
-
-    const shape = computeRequestShape(
-      anthropicBody,
-      "openai",
-      typeof openaiBody.reasoning_effort === "string" ? openaiBody.reasoning_effort : null,
-    );
 
     const response = await proxyRequest("/v1/messages", anthropicBody);
 
@@ -164,6 +180,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
             stream: true,
             latencyMs: Date.now() - streamStartTime,
             shape,
+            decision,
           });
         },
       );

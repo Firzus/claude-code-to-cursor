@@ -2,16 +2,14 @@ import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
-  getApiModelId,
   getInvalidPublicModelMessage,
-  getThinkingBudget,
   isAllowedPublicModel,
   PUBLIC_MODEL_ID,
-  THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "../model-settings";
 import { computeRequestShape } from "../request-metrics";
 import { normalizeAnthropicRequestModel } from "../request-normalization";
+import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
 
 function rewriteAnthropicJsonResponseModel(bodyText: string): string {
@@ -200,50 +198,41 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
         { status: 400 },
       );
     }
-    const targetModel = modelSettings.selectedModel;
-    const apiModel = getApiModelId(targetModel);
     // Respect client's reasoning_budget if it maps to a known effort level
     const clientEffort =
       typeof incomingBody.reasoning_budget === "string" &&
       ["low", "medium", "high"].includes(incomingBody.reasoning_budget)
         ? (incomingBody.reasoning_budget as ThinkingEffort)
         : null;
-    const effectiveEffort = clientEffort || modelSettings.thinkingEffort;
-    const thinkingBudget = modelSettings.thinkingEnabled
-      ? getThinkingBudget(effectiveEffort)
-      : null;
-    const normalizedBody = normalizeAnthropicRequestModel(incomingBody, apiModel);
+
+    // Normalize to default model placeholder first; routing-policy will set the real model
+    const normalizedBody = normalizeAnthropicRequestModel(
+      incomingBody,
+      modelSettings.selectedModel,
+    );
     const {
       reasoning_budget: _clientReasoningBudget,
       thinking: _clientThinking,
       ...bodyWithoutClientThinkingControls
     } = normalizedBody;
 
-    const body: AnthropicRequest =
-      thinkingBudget === null
-        ? {
-            ...bodyWithoutClientThinkingControls,
-            temperature: incomingBody.temperature,
-            max_tokens: normalizedBody.max_tokens,
-          }
-        : {
-            ...bodyWithoutClientThinkingControls,
-            thinking: { type: "enabled" as const, budget_tokens: thinkingBudget },
-            temperature: 1,
-            max_tokens: Math.max(
-              normalizedBody.max_tokens ?? 0,
-              thinkingBudget + THINKING_MAX_TOKENS_PADDING,
-            ),
-          };
-
-    console.log(
-      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
-    );
-
     const shape = computeRequestShape(
-      body,
+      bodyWithoutClientThinkingControls,
       "anthropic",
       typeof incomingBody.reasoning_budget === "string" ? incomingBody.reasoning_budget : null,
+    );
+
+    const decision = pickRoute({ settings: modelSettings, shape, clientEffort });
+
+    const body = applyThinkingToBody(
+      bodyWithoutClientThinkingControls,
+      decision,
+      normalizedBody.max_tokens,
+      incomingBody.temperature,
+    );
+
+    console.log(
+      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
     );
 
     const proxiedResponse = await proxyRequest("/v1/messages", body);
@@ -262,6 +251,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
               stream: true,
               latencyMs: Date.now() - streamStartTime,
               shape,
+              decision,
             });
           }
         : undefined,

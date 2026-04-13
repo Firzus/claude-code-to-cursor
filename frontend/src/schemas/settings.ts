@@ -18,6 +18,8 @@ export const settingsFormSchema = z.object({
   selectedModel: z.enum(supportedModels),
   thinkingEnabled: z.boolean(),
   thinkingEffort: z.enum(thinkingEfforts),
+  adaptiveRouting: z.boolean(),
+  continuationModel: z.enum(supportedModels),
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;

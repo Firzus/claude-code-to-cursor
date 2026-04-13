@@ -30,6 +30,8 @@ describe("model settings store", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: false,
         thinkingEffort: "medium",
+        adaptiveRouting: false,
+        continuationModel: "claude-haiku-4-5",
       } as const;
 
       saveModelSettingsToDb(database, settings);
@@ -50,12 +52,16 @@ describe("model settings store", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "high",
+        adaptiveRouting: true,
+        continuationModel: "claude-sonnet-4-6",
       });
 
       const updatedSettings = {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: false,
         thinkingEffort: "low",
+        adaptiveRouting: false,
+        continuationModel: "claude-haiku-4-5",
       } as const;
 
       saveModelSettingsToDb(database, updatedSettings);

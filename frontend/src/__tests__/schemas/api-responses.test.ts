@@ -246,6 +246,8 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "high",
+        adaptiveRouting: true,
+        continuationModel: "claude-sonnet-4-6",
       },
     };
     expect(settingsResponseSchema.parse(data)).toEqual(data);
@@ -257,6 +259,8 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-invalid",
         thinkingEnabled: true,
         thinkingEffort: "high",
+        adaptiveRouting: true,
+        continuationModel: "claude-sonnet-4-6",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -268,6 +272,8 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "ultra",
+        adaptiveRouting: true,
+        continuationModel: "claude-sonnet-4-6",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
