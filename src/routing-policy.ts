@@ -5,6 +5,7 @@
  * Pure module: no I/O, no logger dependency → easy to unit-test.
  */
 
+import type { RequestShapeMetrics } from "./db";
 import {
   getApiModelId,
   getThinkingBudget,
@@ -13,7 +14,6 @@ import {
   THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "./model-settings";
-import type { RequestShapeMetrics } from "./db";
 import type { AnthropicRequest } from "./types";
 
 export type RoutingPolicyLabel =

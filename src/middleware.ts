@@ -109,7 +109,7 @@ export function corsHeaders(req?: Request): Record<string, string> {
 
   return {
     "Access-Control-Allow-Origin": origin,
-    "Vary": "Origin",
+    Vary: "Origin",
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-settings-key",

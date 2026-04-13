@@ -51,10 +51,7 @@ export function getConfig(): ProxyConfig {
   // dashboard works when accessed from the host machine, even when a tunnel
   // URL is configured for production.
   const frontendPort = process.env.FRONTEND_PORT || "3111";
-  const localOrigins = [
-    `http://localhost:${frontendPort}`,
-    `http://127.0.0.1:${frontendPort}`,
-  ];
+  const localOrigins = [`http://localhost:${frontendPort}`, `http://127.0.0.1:${frontendPort}`];
 
   const explicit = (process.env.ALLOWED_ORIGIN || "")
     .split(",")

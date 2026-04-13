@@ -3,7 +3,11 @@ import { getModelSettings, recordRequest } from "../db";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import { getApiModelId } from "../model-settings";
-import { anthropicToOpenai, type OpenAIChatRequest, openaiToAnthropicBase } from "../openai-adapter";
+import {
+  anthropicToOpenai,
+  type OpenAIChatRequest,
+  openaiToAnthropicBase,
+} from "../openai-adapter";
 import { computeRequestShape } from "../request-metrics";
 import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
@@ -100,10 +104,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         ? (openaiBody.reasoning_effort as "low" | "medium" | "high")
         : null;
 
-    const converted = openaiToAnthropicBase(
-      openaiBody,
-      getApiModelId(modelSettings.selectedModel),
-    );
+    const converted = openaiToAnthropicBase(openaiBody, getApiModelId(modelSettings.selectedModel));
 
     const shape = computeRequestShape(converted, "openai", clientEffort);
 
