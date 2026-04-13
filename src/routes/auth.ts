@@ -6,9 +6,15 @@ import {
   hasCredentials,
 } from "../oauth";
 
-// PKCE state storage (module-level, TTL 10 min)
+// PKCE state storage (module-level, TTL 10 min, capped).
+// Map iteration order is insertion order so the oldest entry is at the front
+// — eviction when we hit the cap simply deletes the first entry.
 const pkceStore = new Map<string, { codeVerifier: string; createdAt: number }>();
 const PKCE_TTL_MS = 10 * 60 * 1000;
+const PKCE_MAX_ENTRIES = 100;
+const PKCE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+let pkceCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 function cleanPkceStore() {
   const now = Date.now();
@@ -17,11 +23,46 @@ function cleanPkceStore() {
   }
 }
 
+/**
+ * Insert a new PKCE entry, evicting the oldest one when we reach the cap.
+ * Combined with the periodic cleanup timer, this guarantees the map stays
+ * bounded even under a flood of abandoned login flows.
+ */
+function insertPkceEntry(state: string, codeVerifier: string): void {
+  if (pkceStore.size >= PKCE_MAX_ENTRIES) {
+    const oldestKey = pkceStore.keys().next().value;
+    if (oldestKey !== undefined) pkceStore.delete(oldestKey);
+  }
+  pkceStore.set(state, { codeVerifier, createdAt: Date.now() });
+}
+
+/**
+ * Start a periodic background sweep of expired PKCE entries. Safe to call
+ * multiple times (previous timer is cleared first).
+ */
+export function startPkceCleanup(intervalMs: number = PKCE_CLEANUP_INTERVAL_MS): void {
+  stopPkceCleanup();
+  pkceCleanupTimer = setInterval(cleanPkceStore, intervalMs);
+}
+
+/** Stop the periodic PKCE cleanup timer. */
+export function stopPkceCleanup(): void {
+  if (pkceCleanupTimer) {
+    clearInterval(pkceCleanupTimer);
+    pkceCleanupTimer = null;
+  }
+}
+
+/** @internal for tests */
+export function __getPkceStoreSize(): number {
+  return pkceStore.size;
+}
+
 export async function handleLoginAPI(): Promise<Response> {
   cleanPkceStore();
   const { codeVerifier, codeChallenge } = await generatePKCE();
   const state = crypto.randomUUID();
-  pkceStore.set(state, { codeVerifier, createdAt: Date.now() });
+  insertPkceEntry(state, codeVerifier);
   const authURL = getAuthorizationURL(codeChallenge, state);
 
   return Response.json({ authURL, state });

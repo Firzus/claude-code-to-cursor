@@ -42,13 +42,13 @@ export const CLAUDE_CODE_BETA_HEADERS = getClaudeCodeBetaHeaders();
 // Centralized User-Agent for all Claude Code requests
 export const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.97 (external, cli)";
 
-// System prompt prefix that identifies requests as coming from Claude Code
-// This exact string is required for Claude Code OAuth to work - do not modify
+// System prompt prefix that identifies requests as coming from Claude Code.
+// This exact string is required for Claude Code OAuth to work — removing or
+// modifying it causes the token-exchange server to reject the request. It is
+// the ONLY system content the proxy contributes; the upstream client (Cursor)
+// owns everything that follows in the system array.
 export const CLAUDE_CODE_SYSTEM_PROMPT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
-
-// Additional instruction appended after the required prompt (optional)
-export const CLAUDE_CODE_EXTRA_INSTRUCTION = process.env.CLAUDE_CODE_EXTRA_INSTRUCTION ?? "";
 
 export function getConfig(): ProxyConfig {
   // IP whitelist for requests coming through the Cloudflare tunnel.

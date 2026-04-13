@@ -43,6 +43,16 @@ export function createOpenAIStreamFromAnthropic(
   const includeUsageNull = !!streamOptions?.include_usage;
 
   let cancelled = false;
+  // Hoisted so the outer `cancel(reason)` handler can clear the timer
+  // directly instead of waiting up to HEARTBEAT_INTERVAL for the timer
+  // callback to observe `cancelled = true` on its next tick.
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  };
 
   return new ReadableStream({
     async start(controller) {
@@ -93,10 +103,11 @@ export function createOpenAIStreamFromAnthropic(
         }
       };
 
-      // Global heartbeat timer
-      const heartbeatTimer = setInterval(() => {
+      // Global heartbeat timer — assigned to the outer `heartbeatTimer` ref
+      // so the `cancel(reason)` handler can stop it immediately.
+      heartbeatTimer = setInterval(() => {
         if (cancelled || messageStopped) {
-          clearInterval(heartbeatTimer);
+          stopHeartbeat();
           return;
         }
         const elapsed = Date.now() - lastChunkTime;
@@ -571,7 +582,7 @@ export function createOpenAIStreamFromAnthropic(
           }
         }
       } finally {
-        clearInterval(heartbeatTimer);
+        stopHeartbeat();
 
         try {
           if (!cancelled) {
@@ -593,6 +604,9 @@ export function createOpenAIStreamFromAnthropic(
     cancel(reason) {
       logger.verbose(`   [Debug] Stream cancelled by client: ${reason}`);
       cancelled = true;
+      // Stop the timer immediately so we don't keep firing heartbeats for
+      // up to HEARTBEAT_INTERVAL ms after the client disconnects.
+      stopHeartbeat();
       reader.cancel(reason).catch(() => {});
     },
   });

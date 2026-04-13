@@ -1,7 +1,6 @@
 import { updateCachePrefix } from "./cache-keepalive";
 import {
   ANTHROPIC_API_URL,
-  CLAUDE_CODE_EXTRA_INSTRUCTION,
   CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_USER_AGENT,
   getClaudeCodeBetaHeaders,
@@ -20,6 +19,7 @@ type RequestResult =
 // Rate limit cache with soft expiry and max cap
 const RATE_LIMIT_MAX_CACHE_MS = 900_000; // 15 min
 const RATE_LIMIT_SOFT_MS = 300_000; // 5 min
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 60_000; // 1 min
 
 let rateLimitCache: {
   resetAt: number; // capped reset time
@@ -28,30 +28,118 @@ let rateLimitCache: {
   probeInFlight: boolean; // prevent concurrent probes during soft expiry
 } | null = null;
 
-function isRateLimited(): boolean {
-  if (!rateLimitCache) return false;
-  const now = Date.now();
+let rateLimitCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Cache expired → clear
-  if (now >= rateLimitCache.resetAt) {
+/**
+ * Lazy cleanup: clear the cache if its (capped) reset time has passed.
+ * Called from every entry point that touches `rateLimitCache` so the
+ * in-memory state never outlives its TTL.
+ */
+function cleanupExpiredRateLimit(): void {
+  if (!rateLimitCache) return;
+  if (Date.now() >= rateLimitCache.resetAt) {
     rateLimitCache = null;
-    return false;
   }
+}
+
+/**
+ * Check the rate-limit state and claim a probe slot if we're in the
+ * soft-expiry window.
+ *
+ * The second field `isProbe` is critical for the caller:
+ * - `true`  → this request holds the probe slot and MUST finalize it via
+ *             `finalizeRateLimitProbe(outcome)` after the upstream call,
+ *             otherwise `probeInFlight` stays set forever and subsequent
+ *             requests are blocked until the hard TTL elapses.
+ * - `false` → either no rate limit, or another probe is already in flight.
+ */
+function checkRateLimit(): { limited: boolean; isProbe: boolean } {
+  cleanupExpiredRateLimit();
+  if (!rateLimitCache) return { limited: false, isProbe: false };
+
+  const now = Date.now();
 
   // Soft expiry reached → allow one probe request at a time
   if (now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS) {
     if (!rateLimitCache.probeInFlight) {
       rateLimitCache.probeInFlight = true;
       console.log("Rate limit soft expiry: allowing probe request");
-      return false;
+      return { limited: false, isProbe: true };
     }
     // Another probe already in flight, still block
-    return true;
+    return { limited: true, isProbe: false };
   }
 
   // Hard block period
-  return true;
+  return { limited: true, isProbe: false };
 }
+
+/**
+ * Release the probe slot after a probe request completes.
+ *
+ * - `"cleared"`     → probe succeeded, the upstream server is happy;
+ *                     tear the whole cache down so the next request is
+ *                     unblocked immediately.
+ * - `"retry"`       → probe failed for a non-rate-limit reason (network,
+ *                     5xx, etc.); just release the flag so another probe
+ *                     can try on the next request.
+ * - `"rateLimited"` → probe got a fresh 429; `cacheRateLimit()` will
+ *                     replace the whole entry so we don't need to touch
+ *                     `probeInFlight` here.
+ */
+function finalizeRateLimitProbe(outcome: "cleared" | "retry" | "rateLimited"): void {
+  if (!rateLimitCache) return;
+  if (outcome === "cleared") {
+    rateLimitCache = null;
+    return;
+  }
+  if (outcome === "retry") {
+    rateLimitCache.probeInFlight = false;
+  }
+  // "rateLimited" is handled upstream by cacheRateLimit() replacing the entry.
+}
+
+/**
+ * Start a periodic background cleanup so the cache never outlives its TTL
+ * even if the server goes idle. Safe to call multiple times — the existing
+ * timer is cleared first.
+ */
+export function startRateLimitCleanup(intervalMs: number = RATE_LIMIT_CLEANUP_INTERVAL_MS): void {
+  stopRateLimitCleanup();
+  rateLimitCleanupTimer = setInterval(cleanupExpiredRateLimit, intervalMs);
+}
+
+/** Stop the periodic cleanup timer (called from the graceful shutdown path). */
+export function stopRateLimitCleanup(): void {
+  if (rateLimitCleanupTimer) {
+    clearInterval(rateLimitCleanupTimer);
+    rateLimitCleanupTimer = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Test-only exports (prefixed `__` to discourage production use)
+// ---------------------------------------------------------------------------
+
+/** @internal for tests */
+export const __testing = {
+  checkRateLimit: () => checkRateLimit(),
+  finalizeRateLimitProbe: (outcome: "cleared" | "retry" | "rateLimited") =>
+    finalizeRateLimitProbe(outcome),
+  cacheRateLimit: (resetAt: number) => cacheRateLimit(resetAt),
+  cleanupExpiredRateLimit: () => cleanupExpiredRateLimit(),
+  getRateLimitCacheState: () => (rateLimitCache ? { ...rateLimitCache } : null),
+  setRateLimitCacheState: (
+    state: {
+      resetAt: number;
+      originalResetAt: number;
+      cachedAt: number;
+      probeInFlight: boolean;
+    } | null,
+  ) => {
+    rateLimitCache = state;
+  },
+};
 
 function cacheRateLimit(apiResetAt: number) {
   const now = Date.now();
@@ -89,6 +177,7 @@ export function getRateLimitStatus(): {
   inSoftExpiry: boolean;
   cachedAt: number | null;
 } {
+  cleanupExpiredRateLimit();
   if (!rateLimitCache) {
     return {
       isLimited: false,
@@ -100,17 +189,6 @@ export function getRateLimitStatus(): {
     };
   }
   const now = Date.now();
-  if (now >= rateLimitCache.resetAt) {
-    rateLimitCache = null;
-    return {
-      isLimited: false,
-      resetAt: null,
-      originalResetAt: null,
-      minutesRemaining: null,
-      inSoftExpiry: false,
-      cachedAt: null,
-    };
-  }
   const softExpired = now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS;
   return {
     isLimited: true,
@@ -189,11 +267,22 @@ function prefixToolNames(prepared: AnthropicRequest): void {
   }
 }
 
+/**
+ * Build the final system prompt sent to Anthropic.
+ *
+ * Anthropic's OAuth-backed Claude Code API requires the FIRST system block
+ * to match the exact string `CLAUDE_CODE_SYSTEM_PROMPT` — without it the
+ * token is rejected with "OAuth not authorized". That's the only content
+ * the proxy adds. Everything else is the upstream client's (Cursor's) own
+ * system prompt, passed through verbatim and kept authoritative: it owns
+ * the agent identity, tool semantics, and task instructions.
+ *
+ * No optional "extra instructions" are appended — that codepath was
+ * removed to avoid polluting Cursor's prompt with proxy-side identity
+ * text that would conflict with Cursor's agent framing.
+ */
 function buildSystemPrompt(existing: AnthropicRequest["system"]): ContentBlock[] {
   const systemPrompts: ContentBlock[] = [{ type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT }];
-  if (CLAUDE_CODE_EXTRA_INSTRUCTION) {
-    systemPrompts.push({ type: "text", text: CLAUDE_CODE_EXTRA_INSTRUCTION });
-  }
   if (existing) {
     if (typeof existing === "string") {
       systemPrompts.push({ type: "text", text: existing });
@@ -335,7 +424,8 @@ async function makeClaudeCodeRequest(
   endpoint: string,
   body: AnthropicRequest,
 ): Promise<RequestResult> {
-  if (isRateLimited()) {
+  const { limited, isProbe } = checkRateLimit();
+  if (limited) {
     const minutes = getRateLimitResetMinutes();
     console.log(`Claude Code rate limited (cached), skipping request (resets in ${minutes}m)`);
     return {
@@ -346,6 +436,10 @@ async function makeClaudeCodeRequest(
 
   const token = await getValidToken();
   if (!token) {
+    // No token means we never made the upstream call — release the probe
+    // slot so the next request can try again, otherwise a missing token
+    // would deadlock future probes in the soft-expiry window.
+    if (isProbe) finalizeRateLimitProbe("retry");
     return {
       success: false,
       error: "No valid OAuth token — visit /login to authenticate",
@@ -418,7 +512,13 @@ async function makeClaudeCodeRequest(
       }
 
       if (resetAt) {
+        // cacheRateLimit() replaces the whole entry; probeInFlight is reset
+        // to false as a side-effect so the next probe can fire at soft expiry.
         cacheRateLimit(resetAt);
+      } else if (isProbe) {
+        // 429 with no resetAt header — nothing to re-cache. Release the probe
+        // slot so future requests can retry.
+        finalizeRateLimitProbe("retry");
       }
 
       console.log(`Claude Code rate limited${resetInfo}`);
@@ -426,6 +526,7 @@ async function makeClaudeCodeRequest(
     }
 
     if (response.status === 401) {
+      if (isProbe) finalizeRateLimitProbe("retry");
       console.log("OAuth token expired or invalid, clearing cache");
       clearCachedToken();
       return {
@@ -435,6 +536,7 @@ async function makeClaudeCodeRequest(
     }
 
     if (response.status === 403) {
+      if (isProbe) finalizeRateLimitProbe("retry");
       const errorBody = await response.clone().text();
       console.log("Claude Code 403 error:", errorBody);
       return {
@@ -445,6 +547,7 @@ async function makeClaudeCodeRequest(
 
     // Check for API errors in the response body (can happen even with 200 status)
     if (response.status === 400) {
+      if (isProbe) finalizeRateLimitProbe("retry");
       const errorBody = (await response
         .clone()
         .json()
@@ -468,6 +571,7 @@ async function makeClaudeCodeRequest(
 
     // Handle other non-OK status codes (500, 529 overloaded, etc.)
     if (!response.ok) {
+      if (isProbe) finalizeRateLimitProbe("retry");
       const errorBody = await response
         .clone()
         .text()
@@ -492,10 +596,11 @@ async function makeClaudeCodeRequest(
       return { success: false, error: errorMessage };
     }
 
-    // If we were probing after soft expiry and succeeded, clear the cache
-    if (rateLimitCache) {
+    // Probe succeeded — tear down the rate-limit cache so the next request
+    // goes through normally.
+    if (isProbe) {
       console.log("Rate limit probe succeeded, clearing cache");
-      rateLimitCache = null;
+      finalizeRateLimitProbe("cleared");
     }
 
     // Update cache keepalive prefix so pings reuse the same tools+system
@@ -505,6 +610,9 @@ async function makeClaudeCodeRequest(
     const strippedResponse = stripMcpPrefixFromResponse(response);
     return { success: true, response: strippedResponse, source: "claude_code" };
   } catch (error) {
+    // Network error, timeout, aborted, etc. — never call cacheRateLimit,
+    // but we still need to release the probe slot so it doesn't deadlock.
+    if (isProbe) finalizeRateLimitProbe("retry");
     console.error("Claude Code OAuth request failed:", error);
     return { success: false, error: String(error) };
   }
