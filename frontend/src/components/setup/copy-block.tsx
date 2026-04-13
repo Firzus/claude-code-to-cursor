@@ -4,10 +4,14 @@ import { Check, Copy } from "lucide-react";
 export function CopyBlock({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
-  function copy() {
-    navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API may fail in non-secure contexts
+    }
   }
 
   return (

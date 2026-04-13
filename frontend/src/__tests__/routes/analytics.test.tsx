@@ -1,16 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { setupRouteComponentCapture, renderWithQuery } from "../test-utils";
 
-let capturedComponent: React.FC | null = null;
-
-vi.mock("@tanstack/react-router", () => ({
-  createFileRoute: () => (opts: { component: React.FC }) => {
-    capturedComponent = opts.component;
-    return { component: opts.component };
-  },
-}));
+const { getCapturedComponent } = setupRouteComponentCapture();
 
 vi.mock("~/hooks/use-analytics", () => ({
   useAnalyticsSummary: vi.fn(),
@@ -47,21 +40,10 @@ const mockSummary = vi.mocked(useAnalyticsSummary);
 const mockRequests = vi.mocked(useAnalyticsRequests);
 const mockTimeline = vi.mocked(useAnalyticsTimeline);
 
-function Wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-}
-
 async function renderAnalyticsPage() {
   await import("~/routes/analytics");
-  const AnalyticsPage = capturedComponent!;
-  return render(
-    <Wrapper>
-      <AnalyticsPage />
-    </Wrapper>,
-  );
+  const AnalyticsPage = getCapturedComponent()!;
+  return renderWithQuery(<AnalyticsPage />);
 }
 
 const summaryData = {

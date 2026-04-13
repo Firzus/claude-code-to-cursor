@@ -16,6 +16,10 @@ mock.module("../db", () => ({
   },
 }));
 
+mock.module("../logger", () => ({
+  logger: { info: () => {}, warn: () => {}, error: () => {}, verbose: () => {} },
+}));
+
 const {
   handleSettingsAPI,
   handleSettingsModelAPI,

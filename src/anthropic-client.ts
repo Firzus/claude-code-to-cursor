@@ -120,39 +120,35 @@ export function getRateLimitStatus(): {
  * 2. Adds optional extra instruction (headless mode)
  * 3. Strips TTL from cache_control objects
  */
-function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
-  let prepared = { ...body };
+const TOOL_PREFIX = "mcp_";
 
-  // Convert reasoning_budget to thinking parameter if not already converted
-  if ("reasoning_budget" in prepared) {
-    if (!prepared.thinking) {
-      const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
-      const val = prepared.reasoning_budget;
-      const budgetTokens = typeof val === "string"
-        ? budgetMap[val] || 8192
-        : Number(val) || 8192;
-      prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
-      prepared.temperature = 1;
-      if (prepared.max_tokens < budgetTokens + THINKING_MAX_TOKENS_PADDING) {
-        prepared.max_tokens = budgetTokens + THINKING_MAX_TOKENS_PADDING;
-      }
-      logger.verbose(`   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
+function convertReasoningBudget(prepared: AnthropicRequest): void {
+  if (!("reasoning_budget" in prepared)) return;
+  if (!prepared.thinking) {
+    const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
+    const val = prepared.reasoning_budget;
+    const budgetTokens = typeof val === "string"
+      ? budgetMap[val] || 8192
+      : Number(val) || 8192;
+    prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
+    prepared.temperature = 1;
+    if (prepared.max_tokens < budgetTokens + THINKING_MAX_TOKENS_PADDING) {
+      prepared.max_tokens = budgetTokens + THINKING_MAX_TOKENS_PADDING;
     }
-    delete prepared.reasoning_budget;
+    logger.verbose(`   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`);
   }
+  delete prepared.reasoning_budget;
+}
 
-  // Sort tools by name for stable cache keys, then prefix with mcp_
-  const TOOL_PREFIX = "mcp_";
+function prefixToolNames(prepared: AnthropicRequest): void {
   if (prepared.tools && Array.isArray(prepared.tools)) {
-    // Stable sort ensures consistent ordering across requests for cache efficiency
-    prepared.tools = [...prepared.tools].sort((a: any, b: any) =>
-      ((a.name as string) || '').localeCompare((b.name as string) || '')
+    prepared.tools = [...prepared.tools].sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "")
     );
-    prepared.tools = prepared.tools.map((tool: any) => ({
+    prepared.tools = prepared.tools.map((tool) => ({
       ...tool,
       name: tool.name ? `${TOOL_PREFIX}${tool.name}` : tool.name,
     }));
-    // Add cache breakpoint on the last tool definition (first level of cache hierarchy)
     if (prepared.tools.length > 0) {
       const lastIdx = prepared.tools.length - 1;
       const lastTool = prepared.tools[lastIdx]!;
@@ -162,26 +158,19 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
       `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with mcp_, last cached)`
     );
   }
-  if (prepared.tool_choice) {
-    // Prefix tool name in tool_choice if it's a specific tool
-    if (prepared.tool_choice.type === "tool" && prepared.tool_choice.name) {
-      prepared.tool_choice = {
-        ...prepared.tool_choice,
-        name: `${TOOL_PREFIX}${prepared.tool_choice.name}`,
-      };
-    }
-    logger.verbose(
-      `   [Debug] Passing tool_choice to Claude Code API: ${JSON.stringify(prepared.tool_choice)}`
-    );
+  if (prepared.tool_choice?.type === "tool" && prepared.tool_choice.name) {
+    prepared.tool_choice = {
+      ...prepared.tool_choice,
+      name: `${TOOL_PREFIX}${prepared.tool_choice.name}`,
+    };
   }
 
-  // Prefix tool names in messages (tool_use and tool_result blocks)
   if (prepared.messages && Array.isArray(prepared.messages)) {
-    prepared.messages = prepared.messages.map((msg: any) => {
+    prepared.messages = prepared.messages.map((msg) => {
       if (msg.content && Array.isArray(msg.content)) {
-        msg = {
+        return {
           ...msg,
-          content: msg.content.map((block: any) => {
+          content: msg.content.map((block) => {
             if ((block.type === "tool_use" || block.type === "tool_result") && block.name) {
               return { ...block, name: `${TOOL_PREFIX}${block.name}` };
             }
@@ -192,97 +181,67 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
       return msg;
     });
   }
+}
 
-  // Build system prompts array - required Claude Code prompt first
+function buildSystemPrompt(existing: AnthropicRequest["system"]): ContentBlock[] {
   const systemPrompts: ContentBlock[] = [
     { type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT },
   ];
-
-  // Add extra instruction if configured
   if (CLAUDE_CODE_EXTRA_INSTRUCTION) {
     systemPrompts.push({ type: "text", text: CLAUDE_CODE_EXTRA_INSTRUCTION });
   }
-
-  // Merge with existing system prompt
-  if (prepared.system) {
-    if (typeof prepared.system === "string") {
-      systemPrompts.push({ type: "text", text: prepared.system });
-    } else if (Array.isArray(prepared.system)) {
-      systemPrompts.push(...prepared.system);
+  if (existing) {
+    if (typeof existing === "string") {
+      systemPrompts.push({ type: "text", text: existing });
+    } else if (Array.isArray(existing)) {
+      systemPrompts.push(...existing);
     }
   }
-
-  // Add cache_control breakpoint on the last system block to enable prompt caching
   if (systemPrompts.length > 0) {
     const lastIdx = systemPrompts.length - 1;
     const lastBlock = systemPrompts[lastIdx]!;
     systemPrompts[lastIdx] = { ...lastBlock, cache_control: { type: "ephemeral" } };
   }
+  return systemPrompts;
+}
 
-  prepared.system = systemPrompts;
+function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
+  if (!Array.isArray(messages)) return;
 
-  // Cache breakpoints on conversation history.
-  // Anthropic allows up to 4 breakpoints total. We use:
-  //   #1 = last tool definition (set above)
-  //   #2 = last system block (set above)
-  //   #3 = intermediate message breakpoint (for long conversations, prevents
-  //         the 20-block lookback window from missing the prefix cache)
-  //   #4 = second-to-last user message (recent conversation cache)
-  if (prepared.messages && Array.isArray(prepared.messages)) {
-    const addCacheBreakpoint = (idx: number) => {
-      const msg = prepared.messages[idx]!;
-      if (typeof msg.content === "string") {
-        prepared.messages[idx] = {
-          role: msg.role,
-          content: [{ type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" } }],
-        };
-      } else if (Array.isArray(msg.content) && msg.content.length > 0) {
-        const blocks = [...msg.content];
-        const lastBlock = blocks[blocks.length - 1]!;
-        blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
-        prepared.messages[idx] = { role: msg.role, content: blocks };
-      }
-    };
-
-    const userMsgIndices: number[] = [];
-    for (let i = 0; i < prepared.messages.length; i++) {
-      if (prepared.messages[i]!.role === "user") userMsgIndices.push(i);
+  const addBreakpoint = (idx: number) => {
+    const msg = messages[idx]!;
+    if (typeof msg.content === "string") {
+      messages[idx] = {
+        role: msg.role,
+        content: [{ type: "text" as const, text: msg.content, cache_control: { type: "ephemeral" } }],
+      };
+    } else if (Array.isArray(msg.content) && msg.content.length > 0) {
+      const blocks = [...msg.content];
+      const lastBlock = blocks[blocks.length - 1]!;
+      blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
+      messages[idx] = { role: msg.role, content: blocks };
     }
+  };
 
-    // Breakpoint #4: second-to-last user message (recent conversation prefix)
-    if (userMsgIndices.length >= 2) {
-      addCacheBreakpoint(userMsgIndices[userMsgIndices.length - 2]!);
-    }
-
-    // Breakpoint #3: intermediate breakpoint for long conversations
-    // Place at ~40% of user messages to create two cache tiers
-    if (userMsgIndices.length >= 6) {
-      const intermediatePos = Math.floor(userMsgIndices.length * 0.4);
-      const intermediateIdx = userMsgIndices[intermediatePos]!;
-      // Only add if it's different from breakpoint #4
-      if (intermediateIdx !== userMsgIndices[userMsgIndices.length - 2]) {
-        addCacheBreakpoint(intermediateIdx);
-      }
-    }
+  const userMsgIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    if (messages[i]!.role === "user") userMsgIndices.push(i);
   }
 
-  // Log the final system prompt that will be sent to Claude Code (verbose to file)
-  const finalSystemContent = systemPrompts
-    .map((block) =>
-      block.type === "text" ? block.text : JSON.stringify(block)
-    )
-    .join("\n\n");
-  logger.verbose(
-    `\n📋 [Final Claude Code System Prompt] (${finalSystemContent.length} chars):`
-  );
-  logger.verbose(
-    finalSystemContent
-      .split("\n")
-      .map((l: string) => `   ${l}`)
-      .join("\n")
-  );
+  if (userMsgIndices.length >= 2) {
+    addBreakpoint(userMsgIndices[userMsgIndices.length - 2]!);
+  }
 
-  // Strip TTL from cache_control objects (Claude Code doesn't support it)
+  if (userMsgIndices.length >= 6) {
+    const intermediatePos = Math.floor(userMsgIndices.length * 0.4);
+    const intermediateIdx = userMsgIndices[intermediatePos]!;
+    if (intermediateIdx !== userMsgIndices[userMsgIndices.length - 2]) {
+      addBreakpoint(intermediateIdx);
+    }
+  }
+}
+
+function stripTtlCacheControl(prepared: AnthropicRequest): void {
   const stripTtl = (content: ContentBlock[] | undefined) => {
     if (!Array.isArray(content)) return;
     for (const item of content) {
@@ -295,12 +254,9 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
     }
   };
 
-  // Strip TTL from system
   if (Array.isArray(prepared.system)) {
     stripTtl(prepared.system as ContentBlock[]);
   }
-
-  // Strip TTL from messages
   if (Array.isArray(prepared.messages)) {
     for (const message of prepared.messages) {
       if (Array.isArray(message.content)) {
@@ -308,7 +264,26 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
       }
     }
   }
+}
 
+function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
+  let prepared = { ...body };
+
+  convertReasoningBudget(prepared);
+  prefixToolNames(prepared);
+
+  const systemPrompts = buildSystemPrompt(prepared.system);
+  prepared.system = systemPrompts;
+
+  applyCacheBreakpoints(prepared.messages);
+
+  const finalSystemContent = systemPrompts
+    .map((block) => block.type === "text" ? block.text : JSON.stringify(block))
+    .join("\n\n");
+  logger.verbose(`\n📋 [Final Claude Code System Prompt] (${finalSystemContent.length} chars):`);
+  logger.verbose(finalSystemContent.split("\n").map((l: string) => `   ${l}`).join("\n"));
+
+  stripTtlCacheControl(prepared);
   prepared = normalizeAnthropicToolIds(prepared);
 
   return prepared;
@@ -367,6 +342,7 @@ async function makeClaudeCodeRequest(
       method: "POST",
       headers: requestHeaders,
       body: JSON.stringify(preparedBody),
+      signal: AbortSignal.timeout(120_000),
     });
 
     console.log(`   [Debug] Anthropic API response status: ${response.status}`);

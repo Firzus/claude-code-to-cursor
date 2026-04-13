@@ -102,9 +102,10 @@ export function checkIPWhitelist(req: Request): {
  */
 export function corsHeaders(): Record<string, string> {
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": config.allowedOrigin,
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta",
+    "Access-Control-Allow-Credentials": "true",
   };
 }

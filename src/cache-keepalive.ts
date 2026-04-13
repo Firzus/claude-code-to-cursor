@@ -78,6 +78,7 @@ async function sendKeepalivePing(): Promise<void> {
         "User-Agent": CLAUDE_CODE_USER_AGENT,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (response.ok) {

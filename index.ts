@@ -21,7 +21,7 @@ import {
   handleSettingsModelAPI,
 } from "./src/routes/settings";
 import { clearRateLimitCache, getRateLimitStatus } from "./src/anthropic-client";
-import { startCacheKeepalive } from "./src/cache-keepalive";
+import { startCacheKeepalive, stopCacheKeepalive } from "./src/cache-keepalive";
 import type { AnthropicError } from "./src/types";
 import { logger } from "./src/logger";
 
@@ -71,12 +71,27 @@ function printPortInUseHelp(port: number) {
   console.error("\nOr use a different port: set PORT=8083 (or in .env)\n");
 }
 
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
+
 async function handleRequest(req: Request, url: URL): Promise<Response> {
-  // IP whitelist for API endpoints
+  // Reject oversized request bodies
+  const contentLength = parseInt(req.headers.get("content-length") || "0");
+  if (contentLength > MAX_BODY_SIZE) {
+    return Response.json(
+      { type: "error", error: { type: "invalid_request_error", message: "Request body too large" } },
+      { status: 413 }
+    );
+  }
+
+  // IP whitelist for API endpoints and admin routes
   if (
     url.pathname.startsWith("/v1/") ||
     url.pathname.startsWith("/analytics") ||
-    url.pathname.startsWith("/api/analytics")
+    url.pathname.startsWith("/api/analytics") ||
+    url.pathname.startsWith("/api/settings") ||
+    url.pathname.startsWith("/api/rate-limit") ||
+    url.pathname.startsWith("/rate-limit") ||
+    url.pathname.startsWith("/api/auth")
   ) {
     const ipCheck = checkIPWhitelist(req);
     if (!ipCheck.allowed) {
@@ -94,6 +109,14 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
 
   // --- Health check ---
   if (url.pathname === "/health" || url.pathname === "/" || url.pathname === "/api/health") {
+    try {
+      getDb().query("SELECT 1").get();
+    } catch {
+      return Response.json(
+        { status: "error", message: "Database unreachable" },
+        { status: 503 }
+      );
+    }
     const token = await getValidToken();
     const rateLimit = getRateLimitStatus();
     return Response.json({
@@ -249,3 +272,15 @@ await checkCredentials();
 startCacheKeepalive();
 
 console.log(`\n📝 Verbose logging enabled → api.log (gitignored)\n`);
+
+// Graceful shutdown
+function shutdown() {
+  logger.info("Shutting down gracefully...");
+  server.stop();
+  stopCacheKeepalive();
+  try { getDb().close(); } catch {}
+  process.exit(0);
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

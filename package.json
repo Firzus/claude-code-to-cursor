@@ -7,10 +7,13 @@
     "start": "bun run index.ts",
     "dev": "bun --hot run index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@biomejs/biome": "^2.4.11",
+    "@types/bun": "^1.2.12"
   },
   "peerDependencies": {
     "typescript": "^5"

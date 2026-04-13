@@ -24,8 +24,40 @@ export function getDb(): Database {
   return db;
 }
 
+const MIGRATIONS: { version: number; sql: string }[] = [
+  { version: 1, sql: "ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0" },
+  { version: 2, sql: "ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0" },
+  { version: 3, sql: "ALTER TABLE requests ADD COLUMN route TEXT" },
+  { version: 4, sql: "ALTER TABLE requests ADD COLUMN message_count INTEGER" },
+  { version: 5, sql: "ALTER TABLE requests ADD COLUMN last_msg_role TEXT" },
+  { version: 6, sql: "ALTER TABLE requests ADD COLUMN last_msg_has_tool_result INTEGER" },
+  { version: 7, sql: "ALTER TABLE requests ADD COLUMN tool_use_count INTEGER" },
+  { version: 8, sql: "ALTER TABLE requests ADD COLUMN tool_result_count INTEGER" },
+  { version: 9, sql: "ALTER TABLE requests ADD COLUMN tool_defs_count INTEGER" },
+  { version: 10, sql: "ALTER TABLE requests ADD COLUMN tool_defs_hash TEXT" },
+  { version: 11, sql: "ALTER TABLE requests ADD COLUMN client_system_hash TEXT" },
+  { version: 12, sql: "ALTER TABLE requests ADD COLUMN client_reasoning_effort TEXT" },
+];
+
+function runMigrations(database: Database): void {
+  database.run("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)");
+
+  const result = database.query("SELECT MAX(version) as v FROM schema_version").get() as { v: number | null } | null;
+  const current = result?.v ?? 0;
+
+  for (const m of MIGRATIONS) {
+    if (m.version > current) {
+      try {
+        database.run(m.sql);
+      } catch {
+        // Column may already exist from legacy try/catch migrations
+      }
+      database.run("INSERT INTO schema_version (version) VALUES (?)", [m.version]);
+    }
+  }
+}
+
 function initSchema(database: Database) {
-  // Requests table - tracks every request
   database.run(`
     CREATE TABLE IF NOT EXISTS requests (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,23 +72,8 @@ function initSchema(database: Database) {
     )
   `);
 
-  // Migration: add cache token columns
-  try { database.run("ALTER TABLE requests ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0"); } catch { }
+  runMigrations(database);
 
-  // Migration: instrumentation columns for request shape (nullable on existing rows)
-  try { database.run("ALTER TABLE requests ADD COLUMN route TEXT"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN message_count INTEGER"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN last_msg_role TEXT"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN last_msg_has_tool_result INTEGER"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN tool_use_count INTEGER"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN tool_result_count INTEGER"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN tool_defs_count INTEGER"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN tool_defs_hash TEXT"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN client_system_hash TEXT"); } catch { }
-  try { database.run("ALTER TABLE requests ADD COLUMN client_reasoning_effort TEXT"); } catch { }
-
-  // Create indexes for common queries
   database.run(
     `CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)`
   );
@@ -313,12 +330,13 @@ export function getAnalyticsTimeline(
       error_count: number;
     }>;
 
+  const rowMap = new Map<number, (typeof rows)[number]>();
+  for (const r of rows) rowMap.set(r.bucket_ts, r);
+
   const filledBuckets: TimelineBucket[] = [];
   for (let i = 0; i < buckets; i++) {
     const ts = since + i * bucketSize;
-    const match = rows.find(
-      (r) => r.bucket_ts >= ts && r.bucket_ts < ts + bucketSize,
-    );
+    const match = rowMap.get(Math.floor(ts / bucketSize) * bucketSize);
     filledBuckets.push({
       timestamp: ts,
       requests: match?.requests ?? 0,

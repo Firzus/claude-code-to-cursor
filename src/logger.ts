@@ -1,16 +1,17 @@
 /**
  * File-based logger for verbose API request/response logging
+ * Uses buffered async writes to avoid blocking the event loop.
  * Auto-truncates when file exceeds MAX_LOG_SIZE_MB (keeps recent half).
  */
 
 import {
   existsSync,
   unlinkSync,
-  appendFileSync,
   statSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const LOG_DIR = process.env.LOG_DIR || process.cwd();
@@ -20,9 +21,9 @@ const MAX_LOG_SIZE = MAX_LOG_SIZE_MB * 1024 * 1024;
 const CHECK_INTERVAL = 200;
 
 let writeCount = 0;
+const writeQueue: string[] = [];
+let flushing = false;
 
-// Default: preserve api.log across restarts so verbose request bodies survive
-// container reboots. Set LOG_RESET_ON_START=1 to wipe on boot (legacy behavior).
 if (process.env.LOG_RESET_ON_START === "1" && existsSync(LOG_FILE)) {
   unlinkSync(LOG_FILE);
 }
@@ -55,9 +56,21 @@ function trimLogIfNeeded(): void {
   } catch {}
 }
 
+async function flushQueue(): Promise<void> {
+  if (flushing || writeQueue.length === 0) return;
+  flushing = true;
+  try {
+    const batch = writeQueue.splice(0, writeQueue.length).join("");
+    await appendFile(LOG_FILE, batch, "utf-8");
+    trimLogIfNeeded();
+  } catch {}
+  flushing = false;
+  if (writeQueue.length > 0) flushQueue();
+}
+
 function write(formatted: string): void {
-  appendFileSync(LOG_FILE, formatted, "utf-8");
-  trimLogIfNeeded();
+  writeQueue.push(formatted);
+  flushQueue();
 }
 
 export const logger = {
@@ -85,4 +98,3 @@ export const logger = {
     write(formatMessage("VERBOSE", message));
   },
 };
-

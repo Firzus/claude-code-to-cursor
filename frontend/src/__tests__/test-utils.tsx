@@ -1,6 +1,20 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, render } from "@testing-library/react";
+import { vi } from "vitest";
 import type { ReactNode } from "react";
+
+let _capturedComponent: React.FC | null = null;
+
+export function setupRouteComponentCapture() {
+  _capturedComponent = null;
+  vi.mock("@tanstack/react-router", () => ({
+    createFileRoute: () => (opts: { component: React.FC }) => {
+      _capturedComponent = opts.component;
+      return { component: opts.component };
+    },
+  }));
+  return { getCapturedComponent: () => _capturedComponent };
+}
 
 export function createTestQueryClient() {
   return new QueryClient({

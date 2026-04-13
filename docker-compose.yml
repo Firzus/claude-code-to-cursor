@@ -4,7 +4,7 @@ services:
     container_name: cctc-api
     restart: unless-stopped
     ports:
-      - "${PORT:-8082}:8082"
+      - "127.0.0.1:${PORT:-8082}:8082"
     volumes:
       - cctc-data:/data
     env_file: .env
@@ -25,6 +25,13 @@ services:
       retries: 3
     networks:
       - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -36,14 +43,26 @@ services:
     container_name: cctc-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3111}:3111"
+      - "127.0.0.1:${FRONTEND_PORT:-3111}:3111"
     environment:
       - API_URL=http://api:8082
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3111/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     networks:
       - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:
@@ -62,6 +81,13 @@ services:
         condition: service_healthy
     networks:
       - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     deploy:
       resources:
         limits:

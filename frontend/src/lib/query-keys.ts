@@ -5,6 +5,4 @@ export const queryKeys = {
   analyticsRequests: (limit: number, period: string, page: number) =>
     ["analytics", "requests", limit, period, page] as const,
   analyticsTimeline: (period: string) => ["analytics", "timeline", period] as const,
-  login: ["login"] as const,
-  authStatus: ["auth", "status"] as const,
 };

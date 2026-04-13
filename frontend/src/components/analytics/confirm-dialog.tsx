@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useId } from "react";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -17,6 +17,8 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+  const descId = useId();
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -69,8 +71,8 @@ export function ConfirmDialog({
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="confirm-title"
-      aria-describedby="confirm-desc"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
     >
       <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-fade-in"
@@ -82,12 +84,12 @@ export function ConfirmDialog({
         className="relative z-10 w-full max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl animate-slide-up"
       >
         <h2
-          id="confirm-title"
+          id={titleId}
           className="text-sm font-semibold mb-1"
         >
           {title}
         </h2>
-        <p id="confirm-desc" className="text-[13px] text-muted-foreground mb-5">
+        <p id={descId} className="text-[13px] text-muted-foreground mb-5">
           {description}
         </p>
         <div className="flex items-center justify-end gap-2">

@@ -1,14 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { setupRouteComponentCapture } from "../test-utils";
 
-let capturedComponent: React.FC | null = null;
-
-vi.mock("@tanstack/react-router", () => ({
-  createFileRoute: () => (opts: { component: React.FC }) => {
-    capturedComponent = opts.component;
-    return { component: opts.component };
-  },
-}));
+const { getCapturedComponent } = setupRouteComponentCapture();
 
 vi.mock("~/components/oauth-flow", () => ({
   OAuthFlow: () => <div data-testid="oauth-flow">OAuth Flow Mock</div>,
@@ -17,7 +11,7 @@ vi.mock("~/components/oauth-flow", () => ({
 describe("LoginPage", () => {
   it("renders the page with heading and OAuth flow", async () => {
     await import("~/routes/login");
-    const LoginPage = capturedComponent!;
+    const LoginPage = getCapturedComponent()!;
 
     render(<LoginPage />);
 

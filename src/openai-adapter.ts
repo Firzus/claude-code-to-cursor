@@ -236,9 +236,11 @@ function convertContent(
 }
 
 export function openaiToAnthropic(
-  request: OpenAIChatRequest,
+  originalRequest: OpenAIChatRequest,
   modelSettings: ModelSettings,
 ): AnthropicRequest {
+  const request = { ...originalRequest };
+
   // Normalize: Responses API uses `input` instead of `messages`
   if (!request.messages && request.input) {
     console.log(`   [Debug] Detected Responses API format: converting 'input' to 'messages'`);

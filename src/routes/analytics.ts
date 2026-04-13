@@ -1,31 +1,31 @@
 import { getAnalytics, getRecentRequests, resetAnalytics, getAnalyticsTimeline } from "../db";
 
-export function handleAnalytics(url: URL): Response {
-  const period = url.searchParams.get("period") || "day";
+function calculateSince(period: string | null): number {
   const now = Date.now();
-  let since: number;
-
   switch (period) {
     case "hour":
-      since = now - 60 * 60 * 1000;
-      break;
-    case "day":
-      since = now - 24 * 60 * 60 * 1000;
-      break;
+      return now - 3_600_000;
     case "week":
-      since = now - 7 * 24 * 60 * 60 * 1000;
-      break;
+      return now - 7 * 86_400_000;
     case "month":
-      since = now - 30 * 24 * 60 * 60 * 1000;
-      break;
+      return now - 30 * 86_400_000;
     case "all":
-      since = 0;
-      break;
+      return 0;
+    case "day":
     default:
-      since = now - 24 * 60 * 60 * 1000;
+      return now - 86_400_000;
   }
+}
 
-  const analytics = getAnalytics(since, now);
+function calculateTimelineSince(period: string | null): number {
+  if (period === "all") return Date.now() - 90 * 86_400_000;
+  return calculateSince(period);
+}
+
+export function handleAnalytics(url: URL): Response {
+  const period = url.searchParams.get("period") || "day";
+  const since = calculateSince(period);
+  const analytics = getAnalytics(since, Date.now());
 
   return Response.json({
     period,
@@ -37,25 +37,7 @@ export function handleAnalyticsRequests(url: URL): Response {
   const limit = parseInt(url.searchParams.get("limit") || "20");
   const offset = parseInt(url.searchParams.get("offset") || "0");
   const period = url.searchParams.get("period") || "all";
-  const now = Date.now();
-  let since: number;
-
-  switch (period) {
-    case "hour":
-      since = now - 60 * 60 * 1000;
-      break;
-    case "day":
-      since = now - 24 * 60 * 60 * 1000;
-      break;
-    case "week":
-      since = now - 7 * 24 * 60 * 60 * 1000;
-      break;
-    case "month":
-      since = now - 30 * 24 * 60 * 60 * 1000;
-      break;
-    default:
-      since = 0;
-  }
+  const since = calculateSince(period);
 
   const { requests, total } = getRecentRequests(Math.min(limit, 1000), since, offset);
   return Response.json({ requests, total });
@@ -71,31 +53,9 @@ const PERIOD_BUCKETS: Record<string, number> = {
 
 export function handleAnalyticsTimeline(url: URL): Response {
   const period = url.searchParams.get("period") || "day";
-  const now = Date.now();
-  let since: number;
-
-  switch (period) {
-    case "hour":
-      since = now - 60 * 60 * 1000;
-      break;
-    case "day":
-      since = now - 24 * 60 * 60 * 1000;
-      break;
-    case "week":
-      since = now - 7 * 24 * 60 * 60 * 1000;
-      break;
-    case "month":
-      since = now - 30 * 24 * 60 * 60 * 1000;
-      break;
-    case "all":
-      since = now - 90 * 24 * 60 * 60 * 1000;
-      break;
-    default:
-      since = now - 24 * 60 * 60 * 1000;
-  }
-
+  const since = calculateTimelineSince(period);
   const buckets = PERIOD_BUCKETS[period] ?? 24;
-  const timeline = getAnalyticsTimeline(since, now, buckets);
+  const timeline = getAnalyticsTimeline(since, Date.now(), buckets);
 
   return Response.json({ period, buckets: timeline });
 }

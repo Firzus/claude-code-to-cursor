@@ -53,8 +53,14 @@ export function getConfig(): ProxyConfig {
         .map((ip) => ip.trim())
         .filter(Boolean);
 
+  const allowedOrigin =
+    process.env.ALLOWED_ORIGIN ||
+    process.env.CLOUDFLARE_TUNNEL_URL ||
+    `http://localhost:${process.env.FRONTEND_PORT || "3111"}`;
+
   return {
     port: parseInt(process.env.PORT || "8082", 10),
     allowedIPs,
+    allowedOrigin,
   };
 }

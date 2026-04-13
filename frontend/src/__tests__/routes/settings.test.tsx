@@ -1,17 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { setupRouteComponentCapture, renderWithQuery } from "../test-utils";
 
-let capturedComponent: React.FC | null = null;
-
-vi.mock("@tanstack/react-router", () => ({
-  createFileRoute: () => (opts: { component: React.FC }) => {
-    capturedComponent = opts.component;
-    return { component: opts.component };
-  },
-}));
+const { getCapturedComponent } = setupRouteComponentCapture();
 
 vi.mock("~/hooks/use-settings", () => ({
   useSettings: vi.fn(),
@@ -22,21 +14,10 @@ import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
 const mockUseSettings = vi.mocked(useSettings);
 const mockUseUpdateSettings = vi.mocked(useUpdateSettings);
 
-function Wrapper({ children }: { children: ReactNode }) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-}
-
 async function renderSettingsPage() {
   await import("~/routes/settings");
-  const SettingsPage = capturedComponent!;
-  return render(
-    <Wrapper>
-      <SettingsPage />
-    </Wrapper>,
-  );
+  const SettingsPage = getCapturedComponent()!;
+  return renderWithQuery(<SettingsPage />);
 }
 
 const mockSettings = {
