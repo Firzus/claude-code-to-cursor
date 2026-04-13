@@ -18,6 +18,7 @@ import type { AnthropicRequest } from "./types";
 
 export type RoutingPolicyLabel =
   | "disabled"
+  | "disabled-continuation"
   | "client"
   | "fresh"
   | "continuation"
@@ -35,17 +36,26 @@ export interface RoutingDecision {
 }
 
 /**
- * Decision tree (evaluated in order):
+ * Two-step decision (model and effort are orthogonal concerns):
  *
- * 1. thinkingEnabled=false        → { defaultModel, null,              "disabled"     }
- * 2. clientEffort !== null         → { defaultModel, client,            "client"       }
- * 3. adaptiveRouting=false         → { defaultModel, storedEffort,      "adaptive-off" }
- * 4. continuation turn             → { continuationModel, "low",        "continuation" }
- * 5. otherwise                     → { defaultModel, storedEffort,      "fresh"        }
+ * Step 1 — Model:
+ *   adaptiveRouting && isContinuation → continuationModel
+ *   else                              → defaultModel
+ *
+ * Step 2 — Effort + policy label:
+ *   !thinkingEnabled                  → null,         "disabled" | "disabled-continuation"
+ *   clientEffort !== null             → client,       "client"
+ *   !adaptiveRouting                  → storedEffort, "adaptive-off"
+ *   isContinuation                    → "low",        "continuation"
+ *   otherwise                         → storedEffort, "fresh"
  *
  * "Continuation turn" = last message has a tool_result block AND there is at
  * least one tool_use block in the conversation (defensive guard against
  * synthetic first-turn tool_result injection).
+ *
+ * Note: model adaptation is independent of thinking. A continuation turn with
+ * thinking disabled still routes to `continuationModel` — labelled
+ * `disabled-continuation` for telemetry.
  */
 export function pickRoute(args: {
   settings: ModelSettings;
@@ -56,44 +66,51 @@ export function pickRoute(args: {
   const defaultModel = settings.selectedModel;
   const storedEffort = settings.thinkingEffort;
 
-  // 1. Thinking globally disabled
+  const isContinuation = shape.lastMsgHasToolResult && shape.toolUseCount > 0;
+
+  // Step 1: pick the model (orthogonal to thinking and clientEffort)
+  const model =
+    settings.adaptiveRouting && isContinuation ? settings.continuationModel : defaultModel;
+
+  // Step 2: pick the effort and policy label
   if (!settings.thinkingEnabled) {
-    return { model: defaultModel, effort: null, policy: "disabled", budgetTokens: null };
+    return {
+      model,
+      effort: null,
+      policy: isContinuation && settings.adaptiveRouting ? "disabled-continuation" : "disabled",
+      budgetTokens: null,
+    };
   }
 
-  // 2. Client explicitly requested an effort level → honour it
   if (clientEffort !== null) {
     return {
-      model: defaultModel,
+      model,
       effort: clientEffort,
       policy: "client",
       budgetTokens: getThinkingBudget(clientEffort),
     };
   }
 
-  // 3. Adaptive routing disabled → always use default model + stored effort
   if (!settings.adaptiveRouting) {
     return {
-      model: defaultModel,
+      model,
       effort: storedEffort,
       policy: "adaptive-off",
       budgetTokens: getThinkingBudget(storedEffort),
     };
   }
 
-  // 4. Continuation turn: last message is a tool_result and there are prior tool_use blocks
-  if (shape.lastMsgHasToolResult && shape.toolUseCount > 0) {
+  if (isContinuation) {
     return {
-      model: settings.continuationModel,
+      model,
       effort: "low",
       policy: "continuation",
       budgetTokens: getThinkingBudget("low"),
     };
   }
 
-  // 5. Fresh turn
   return {
-    model: defaultModel,
+    model,
     effort: storedEffort,
     policy: "fresh",
     budgetTokens: getThinkingBudget(storedEffort),

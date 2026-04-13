@@ -36,7 +36,7 @@ describe("pickRoute", () => {
     expect(decision.model).toBe("claude-opus-4-6");
   });
 
-  test("2. clientEffort='medium' → client policy, default model, ignores shape", () => {
+  test("2. clientEffort='medium' + continuation → client effort, but model still adapted (decoupled)", () => {
     const decision = pickRoute({
       settings: BASE_SETTINGS,
       shape: CONTINUATION_SHAPE,
@@ -45,7 +45,7 @@ describe("pickRoute", () => {
     expect(decision.policy).toBe("client");
     expect(decision.effort).toBe("medium");
     expect(decision.budgetTokens).toBe(getThinkingBudget("medium"));
-    expect(decision.model).toBe("claude-opus-4-6"); // client wins but keeps defaultModel
+    expect(decision.model).toBe("claude-sonnet-4-6"); // model adapted to continuation
   });
 
   test("3. adaptiveRouting=false, fresh shape → adaptive-off, stored effort, default model", () => {
@@ -116,7 +116,9 @@ describe("pickRoute", () => {
     expect(decision.model).toBe("claude-sonnet-4-6");
   });
 
-  test("9. clientEffort='low' + continuation shape → client policy, default model (client wins)", () => {
+  test("9. clientEffort='low' + continuation shape → client policy, continuation model (decoupled)", () => {
+    // Model routing and effort routing are orthogonal: client effort wins for
+    // the budget, but model adaptation still applies based on the request shape.
     const decision = pickRoute({
       settings: BASE_SETTINGS,
       shape: CONTINUATION_SHAPE,
@@ -124,7 +126,7 @@ describe("pickRoute", () => {
     });
     expect(decision.policy).toBe("client");
     expect(decision.effort).toBe("low");
-    expect(decision.model).toBe("claude-opus-4-6"); // client wins → keep defaultModel
+    expect(decision.model).toBe("claude-sonnet-4-6"); // model still adapted
   });
 
   test("10. continuationModel=haiku + continuation → model is haiku, effort is low", () => {
@@ -136,5 +138,31 @@ describe("pickRoute", () => {
     expect(decision.policy).toBe("continuation");
     expect(decision.model).toBe("claude-haiku-4-5");
     expect(decision.effort).toBe("low");
+  });
+
+  test("11. thinkingEnabled=false + continuation → disabled-continuation, continuation model, no effort", () => {
+    // Regression test for the gap observed post-deploy: when thinking is off,
+    // model routing must STILL apply on continuations.
+    const decision = pickRoute({
+      settings: { ...BASE_SETTINGS, thinkingEnabled: false },
+      shape: CONTINUATION_SHAPE,
+      clientEffort: null,
+    });
+    expect(decision.policy).toBe("disabled-continuation");
+    expect(decision.model).toBe("claude-sonnet-4-6");
+    expect(decision.effort).toBeNull();
+    expect(decision.budgetTokens).toBeNull();
+  });
+
+  test("12. thinkingEnabled=false + adaptiveRouting=false + continuation → disabled, default model", () => {
+    // The adaptive toggle still gates model adaptation when thinking is off.
+    const decision = pickRoute({
+      settings: { ...BASE_SETTINGS, thinkingEnabled: false, adaptiveRouting: false },
+      shape: CONTINUATION_SHAPE,
+      clientEffort: null,
+    });
+    expect(decision.policy).toBe("disabled");
+    expect(decision.model).toBe("claude-opus-4-6");
+    expect(decision.effort).toBeNull();
   });
 });
