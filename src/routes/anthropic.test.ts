@@ -170,7 +170,7 @@ if (!SKIP) {
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
-    test("adaptive routing: continuation turn uses continuationModel and low budget", async () => {
+    test("adaptive routing: continuation turn uses continuationModel and no thinking", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-opus-4-6",
@@ -209,8 +209,7 @@ if (!SKIP) {
       expect(response.status).toBe(200);
       expect(proxiedBody).toBeDefined();
       expect(proxiedBody!.model).toBe("claude-sonnet-4-6");
-      expect(proxiedBody!.thinking).toBeDefined();
-      expect(proxiedBody!.thinking!.budget_tokens).toBe(4096); // "low" budget
+      expect(proxiedBody!.thinking).toBeUndefined(); // no thinking on continuations
     });
 
     test("adaptive routing OFF: continuation turn keeps defaultModel and stored budget", async () => {

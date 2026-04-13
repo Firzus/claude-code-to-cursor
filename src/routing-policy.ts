@@ -46,7 +46,7 @@ export interface RoutingDecision {
  *   !thinkingEnabled                  → null,         "disabled" | "disabled-continuation"
  *   clientEffort !== null             → client,       "client"
  *   !adaptiveRouting                  → storedEffort, "adaptive-off"
- *   isContinuation                    → "low",        "continuation"
+ *   isContinuation                    → null,         "continuation"
  *   otherwise                         → storedEffort, "fresh"
  *
  * "Continuation turn" = last message has a tool_result block AND there is at
@@ -101,11 +101,13 @@ export function pickRoute(args: {
   }
 
   if (isContinuation) {
+    // Continuations get NO thinking budget: telemetry shows Haiku never uses
+    // thinking on mechanical tool-loop turns (0/40+ observations post-deploy).
     return {
       model,
-      effort: "low",
+      effort: null,
       policy: "continuation",
-      budgetTokens: getThinkingBudget("low"),
+      budgetTokens: null,
     };
   }
 

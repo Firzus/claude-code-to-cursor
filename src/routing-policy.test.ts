@@ -71,15 +71,17 @@ describe("pickRoute", () => {
     expect(decision.model).toBe("claude-opus-4-6");
   });
 
-  test("5. adaptiveRouting=true, continuation (toolUseCount=3) → continuation, low, continuationModel", () => {
+  test("5. adaptiveRouting=true, continuation (toolUseCount=3) → continuation, NO thinking, continuationModel", () => {
+    // Floor lowered from "low" to null after telemetry showed 0 thinking usage
+    // on 40+ Haiku continuation requests.
     const decision = pickRoute({
       settings: BASE_SETTINGS,
       shape: CONTINUATION_SHAPE,
       clientEffort: null,
     });
     expect(decision.policy).toBe("continuation");
-    expect(decision.effort).toBe("low");
-    expect(decision.budgetTokens).toBe(getThinkingBudget("low"));
+    expect(decision.effort).toBeNull();
+    expect(decision.budgetTokens).toBeNull();
     expect(decision.model).toBe("claude-sonnet-4-6");
   });
 
@@ -105,14 +107,14 @@ describe("pickRoute", () => {
     expect(decision.model).toBe("claude-opus-4-6");
   });
 
-  test("8. thinkingEffort='low' + continuation → continuation policy (label correct, effort=low)", () => {
+  test("8. thinkingEffort='low' + continuation → continuation (effort still null, stored effort ignored)", () => {
     const decision = pickRoute({
       settings: { ...BASE_SETTINGS, thinkingEffort: "low" },
       shape: CONTINUATION_SHAPE,
       clientEffort: null,
     });
     expect(decision.policy).toBe("continuation");
-    expect(decision.effort).toBe("low");
+    expect(decision.effort).toBeNull();
     expect(decision.model).toBe("claude-sonnet-4-6");
   });
 
@@ -129,7 +131,7 @@ describe("pickRoute", () => {
     expect(decision.model).toBe("claude-sonnet-4-6"); // model still adapted
   });
 
-  test("10. continuationModel=haiku + continuation → model is haiku, effort is low", () => {
+  test("10. continuationModel=haiku + continuation → model is haiku, no thinking", () => {
     const decision = pickRoute({
       settings: { ...BASE_SETTINGS, continuationModel: "claude-haiku-4-5" },
       shape: CONTINUATION_SHAPE,
@@ -137,7 +139,7 @@ describe("pickRoute", () => {
     });
     expect(decision.policy).toBe("continuation");
     expect(decision.model).toBe("claude-haiku-4-5");
-    expect(decision.effort).toBe("low");
+    expect(decision.effort).toBeNull();
   });
 
   test("11. thinkingEnabled=false + continuation → disabled-continuation, continuation model, no effort", () => {
