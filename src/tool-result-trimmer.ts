@@ -7,10 +7,7 @@ const DEFAULT_MAX_CHARS = 80_000;
  * Keeps the first 60% and last 40% of the budget, inserting a truncation marker
  * in between. Returns the original string unchanged if it fits.
  */
-export function trimToolResult(
-  content: string,
-  maxChars: number = DEFAULT_MAX_CHARS,
-): string {
+export function trimToolResult(content: string, maxChars: number = DEFAULT_MAX_CHARS): string {
   if (maxChars <= 0 || content.length <= maxChars) return content;
 
   const headRatio = 0.6;

@@ -5,7 +5,6 @@
 
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
-import { trimToolResult } from "./tool-result-trimmer";
 import {
   getApiModelId,
   getInvalidPublicModelMessage,
@@ -14,6 +13,7 @@ import {
   type ThinkingEffort,
 } from "./model-settings";
 import { applyThinkingToBody, pickRoute } from "./routing-policy";
+import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
 interface OpenAIMessage {

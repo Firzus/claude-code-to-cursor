@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  cacheTTLValues,
-  supportedModels,
-  thinkingEfforts,
-} from "./settings";
+import { cacheTTLValues, supportedModels, thinkingEfforts } from "./settings";
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "rate_limited"]),

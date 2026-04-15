@@ -2,11 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { ModelSettings } from "./model-settings";
 import { DEFAULT_MODEL_SETTINGS, validateModelSettings } from "./model-settings";
 
-type ModelSettingKey =
-  | "selected_model"
-  | "thinking_enabled"
-  | "thinking_effort"
-  | "cache_ttl";
+type ModelSettingKey = "selected_model" | "thinking_enabled" | "thinking_effort" | "cache_ttl";
 
 interface ModelSettingsRow {
   key: ModelSettingKey;
