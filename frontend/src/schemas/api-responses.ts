@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { cacheTTLValues, supportedModels, thinkingEfforts } from "./settings";
+import {
+  cacheTTLValues,
+  keepaliveIntervalValues,
+  supportedModels,
+  thinkingEfforts,
+} from "./settings";
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "rate_limited"]),
@@ -25,11 +30,15 @@ export const analyticsResponseSchema = z.object({
   totalRequests: z.number(),
   claudeCodeRequests: z.number(),
   errorRequests: z.number(),
+  keepaliveRequests: z.number(),
   totalInputTokens: z.number(),
   totalOutputTokens: z.number(),
   totalCacheReadTokens: z.number(),
   totalCacheCreationTokens: z.number(),
+  totalThinkingTokens: z.number(),
   cacheHitRate: z.number(),
+  /** Approximate USD saved vs no-cache-read pricing (dashboard heuristic). */
+  cacheSavingsUsdEstimate: z.number(),
   periodStart: z.number(),
   periodEnd: z.number(),
 });
@@ -40,14 +49,20 @@ export const requestRecordSchema = z.object({
   id: z.number(),
   timestamp: z.number(),
   model: z.string(),
-  source: z.enum(["claude_code", "error"]),
+  source: z.enum(["claude_code", "error", "keepalive"]),
   inputTokens: z.number(),
   outputTokens: z.number(),
   cacheReadTokens: z.number().default(0),
   cacheCreationTokens: z.number().default(0),
+  thinkingTokens: z.number().optional(),
   stream: z.union([z.boolean(), z.number()]),
   latencyMs: z.number().nullable(),
   error: z.string().nullable(),
+  route: z.enum(["anthropic", "openai"]).nullable().optional(),
+  messageCount: z.number().nullable().optional(),
+  toolDefsCount: z.number().nullable().optional(),
+  routingPolicy: z.string().nullable().optional(),
+  appliedThinkingEffort: z.string().nullable().optional(),
 });
 
 export type RequestRecord = z.infer<typeof requestRecordSchema>;
@@ -98,7 +113,21 @@ export const settingsResponseSchema = z.object({
     thinkingEnabled: z.boolean(),
     thinkingEffort: z.enum(thinkingEfforts),
     cacheTTL: z.enum(cacheTTLValues),
+    keepaliveInterval: z.enum(keepaliveIntervalValues),
   }),
 });
+
+export const budgetResponseSchema = z.object({
+  periodStart: z.number(),
+  periodEnd: z.number(),
+  inputTokens: z.number(),
+  outputTokens: z.number(),
+  cacheReadTokens: z.number(),
+  cacheCreationTokens: z.number(),
+  thinkingTokens: z.number(),
+  estimatedUsd: z.number(),
+});
+
+export type BudgetResponse = z.infer<typeof budgetResponseSchema>;
 
 export type SettingsResponse = z.infer<typeof settingsResponseSchema>;

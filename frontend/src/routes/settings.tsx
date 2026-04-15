@@ -11,6 +11,8 @@ import { cn } from "~/lib/utils";
 import {
   cacheTTLLabels,
   cacheTTLValues,
+  keepaliveIntervalLabels,
+  keepaliveIntervalValues,
   modelLabels,
   type SettingsFormValues,
   settingsFormSchema,
@@ -55,6 +57,7 @@ function SettingsPage() {
   const thinkingEnabled = form.watch("thinkingEnabled");
   const selectedModel = form.watch("selectedModel");
   const cacheTTL = form.watch("cacheTTL");
+  const keepaliveInterval = form.watch("keepaliveInterval");
   const isDirty = form.formState.isDirty;
 
   useEffect(() => {
@@ -106,6 +109,7 @@ function SettingsPage() {
             <AlertCircle className="h-5 w-5 text-destructive" />
             <span className="text-[13px] text-destructive">Failed to load settings.</span>
             <button
+              type="button"
               onClick={() => refetch()}
               className="inline-flex h-8 items-center gap-2 rounded-md border border-border px-3 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
             >
@@ -297,6 +301,41 @@ function SettingsPage() {
               {cacheTTL === "1h"
                 ? "1-hour cache: 2× write cost, survives async/batch gaps"
                 : "5-minute cache: free writes, default for interactive sessions"}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Cache keepalive */}
+        <Card>
+          <CardHeader className="p-4 pb-3">
+            <CardTitle className="text-[13px]">Cache keepalive</CardTitle>
+            <CardDescription className="text-[12px]">
+              Ping interval to keep the prompt cache warm. Pings run only after recent proxy
+              activity (5 min).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 space-y-2">
+            <div className="inline-flex rounded-lg border border-border text-[12px] overflow-hidden">
+              {keepaliveIntervalValues.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => form.setValue("keepaliveInterval", v, { shouldDirty: true })}
+                  className={cn(
+                    "px-4 py-1.5 font-mono capitalize transition-all duration-200 cursor-pointer",
+                    keepaliveInterval === v
+                      ? "bg-foreground text-background font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/60",
+                  )}
+                >
+                  {keepaliveIntervalLabels[v]}
+                </button>
+              ))}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {keepaliveInterval === "off"
+                ? "No background pings — cache may go cold between sessions"
+                : "Lightweight pings reuse your last system prompt + tools prefix"}
             </div>
           </CardContent>
         </Card>

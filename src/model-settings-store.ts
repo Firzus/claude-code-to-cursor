@@ -2,7 +2,12 @@ import type { Database } from "bun:sqlite";
 import type { ModelSettings } from "./model-settings";
 import { DEFAULT_MODEL_SETTINGS, validateModelSettings } from "./model-settings";
 
-type ModelSettingKey = "selected_model" | "thinking_enabled" | "thinking_effort" | "cache_ttl";
+type ModelSettingKey =
+  | "selected_model"
+  | "thinking_enabled"
+  | "thinking_effort"
+  | "cache_ttl"
+  | "keepalive_interval";
 
 interface ModelSettingsRow {
   key: ModelSettingKey;
@@ -56,6 +61,7 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
   const thinkingEnabledValue = settings.get("thinking_enabled");
   const thinkingEffortValue = settings.get("thinking_effort");
   const cacheTTLValue = settings.get("cache_ttl");
+  const keepaliveIntervalValue = settings.get("keepalive_interval");
 
   try {
     return validateModelSettings({
@@ -69,6 +75,9 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
         DEFAULT_MODEL_SETTINGS.thinkingEffort,
       cacheTTL:
         (cacheTTLValue as ModelSettings["cacheTTL"] | undefined) ?? DEFAULT_MODEL_SETTINGS.cacheTTL,
+      keepaliveInterval:
+        (keepaliveIntervalValue as ModelSettings["keepaliveInterval"] | undefined) ??
+        DEFAULT_MODEL_SETTINGS.keepaliveInterval,
     });
   } catch {
     console.warn(`Invalid model settings in DB (selectedModel="${selectedModel}"), using defaults`);
@@ -82,6 +91,7 @@ export function saveModelSettingsToDb(database: Database, settings: ModelSetting
     upsertSetting(database, "thinking_enabled", toStoredBoolean(currentSettings.thinkingEnabled));
     upsertSetting(database, "thinking_effort", currentSettings.thinkingEffort);
     upsertSetting(database, "cache_ttl", currentSettings.cacheTTL);
+    upsertSetting(database, "keepalive_interval", currentSettings.keepaliveInterval);
   });
 
   saveSettings(settings);

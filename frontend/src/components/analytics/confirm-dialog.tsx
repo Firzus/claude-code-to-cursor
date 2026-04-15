@@ -89,6 +89,7 @@ export function ConfirmDialog({
         </p>
         <div className="flex items-center justify-end gap-2">
           <button
+            type="button"
             data-autofocus
             onClick={onCancel}
             className="h-8 rounded-md border border-border px-3 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
@@ -96,6 +97,7 @@ export function ConfirmDialog({
             Cancel
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             className="h-8 rounded-md bg-destructive px-3 text-[13px] font-medium text-destructive-foreground transition-opacity hover:opacity-90 cursor-pointer"
           >

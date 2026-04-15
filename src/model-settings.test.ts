@@ -26,6 +26,7 @@ describe("model settings contract", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     });
   });
 
@@ -51,6 +52,7 @@ describe("model settings contract", () => {
       thinkingEnabled: false,
       thinkingEffort: "low",
       cacheTTL: "1h",
+      keepaliveInterval: "4m",
     });
     expect(
       validateModelSettings({
@@ -64,6 +66,7 @@ describe("model settings contract", () => {
       thinkingEnabled: true,
       thinkingEffort: "medium",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     });
   });
 

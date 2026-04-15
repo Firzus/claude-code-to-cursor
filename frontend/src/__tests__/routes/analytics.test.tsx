@@ -1,14 +1,22 @@
 import { screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithQuery, setupRouteComponentCapture } from "../test-utils";
+import {
+  renderWithQuery,
+  requireCapturedRouteComponent,
+  setupRouteComponentCapture,
+} from "../test-utils";
 
-const { getCapturedComponent } = setupRouteComponentCapture();
+setupRouteComponentCapture();
 
 vi.mock("~/hooks/use-analytics", () => ({
   useAnalyticsSummary: vi.fn(),
   useAnalyticsRequests: vi.fn(),
   useAnalyticsTimeline: vi.fn(),
+}));
+
+vi.mock("~/hooks/use-budget", () => ({
+  useBudgetDay: vi.fn(),
 }));
 
 vi.mock("~/lib/api-client", () => ({
@@ -33,14 +41,27 @@ import {
   useAnalyticsSummary,
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
+import { useBudgetDay } from "~/hooks/use-budget";
 
 const mockSummary = vi.mocked(useAnalyticsSummary);
 const mockRequests = vi.mocked(useAnalyticsRequests);
 const mockTimeline = vi.mocked(useAnalyticsTimeline);
+const mockBudget = vi.mocked(useBudgetDay);
+
+const budgetData = {
+  periodStart: Date.UTC(2024, 0, 1, 0, 0, 0, 0),
+  periodEnd: Date.UTC(2024, 0, 1, 12, 0, 0, 0),
+  inputTokens: 100,
+  outputTokens: 50,
+  cacheReadTokens: 20,
+  cacheCreationTokens: 5,
+  thinkingTokens: 10,
+  estimatedUsd: 1.25,
+};
 
 async function renderAnalyticsPage() {
   await import("~/routes/analytics");
-  const AnalyticsPage = getCapturedComponent()!;
+  const AnalyticsPage = requireCapturedRouteComponent();
   return renderWithQuery(<AnalyticsPage />);
 }
 
@@ -49,11 +70,14 @@ const summaryData = {
   totalRequests: 42,
   claudeCodeRequests: 40,
   errorRequests: 2,
+  keepaliveRequests: 2,
   totalInputTokens: 10_000,
   totalOutputTokens: 5_000,
   totalCacheReadTokens: 3_000,
   totalCacheCreationTokens: 1_000,
+  totalThinkingTokens: 400,
   cacheHitRate: 0.75,
+  cacheSavingsUsdEstimate: 0.33,
   periodStart: Date.now() - 86_400_000,
   periodEnd: Date.now(),
 };
@@ -79,10 +103,22 @@ const requestsData = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockBudget.mockReturnValue({
+    data: budgetData,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  } as never);
 });
 
 describe("AnalyticsPage", () => {
   it("shows loading state", async () => {
+    mockBudget.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
     mockSummary.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -132,9 +168,18 @@ describe("AnalyticsPage", () => {
     expect(screen.getByText("Requests")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("Cache Hit Rate")).toBeInTheDocument();
+    expect(screen.getByText("Token budget — today (UTC)")).toBeInTheDocument();
+    expect(screen.getByText("Thinking tokens")).toBeInTheDocument();
+    expect(screen.getByText("Keepalive pings")).toBeInTheDocument();
   });
 
   it("shows error state", async () => {
+    mockBudget.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
     mockSummary.mockReturnValue({
       data: undefined,
       isLoading: false,

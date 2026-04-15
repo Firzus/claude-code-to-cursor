@@ -45,6 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error?.message || "An unexpected error occurred."}
           </p>
           <button
+            type="button"
             onClick={() => window.location.reload()}
             className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 cursor-pointer"
           >

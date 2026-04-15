@@ -24,6 +24,7 @@ import {
   startPkceCleanup,
   stopPkceCleanup,
 } from "./src/routes/auth";
+import { handleBudget } from "./src/routes/budget";
 import { handleModels } from "./src/routes/models";
 import { handleOpenAIChatCompletions } from "./src/routes/openai";
 import { handleSettingsAPI, handleSettingsModelAPI } from "./src/routes/settings";
@@ -170,6 +171,10 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
     req.method === "POST"
   ) {
     return handleAnalyticsReset();
+  }
+
+  if ((url.pathname === "/budget" || url.pathname === "/api/budget") && req.method === "GET") {
+    return handleBudget();
   }
 
   // --- Rate limit management ---

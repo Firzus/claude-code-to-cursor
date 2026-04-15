@@ -125,6 +125,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
 
       <div className="flex justify-center">
         <button
+          type="button"
           onClick={onNext}
           className="group inline-flex h-10 items-center gap-2.5 rounded-lg bg-accent px-6 text-[13px] font-medium text-background transition-all hover:brightness-110 cursor-pointer"
         >
@@ -239,6 +240,7 @@ function ConfigField({
         {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
       </div>
       <button
+        type="button"
         onClick={copy}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-all hover:text-foreground hover:border-foreground/20 cursor-pointer"
         aria-label="Copy to clipboard"
@@ -330,6 +332,7 @@ function VerifyStep({ onFinish, onPrev }: { onFinish: () => void; onPrev: () => 
 
       <div className="flex items-center justify-between">
         <button
+          type="button"
           onClick={onPrev}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-4 text-[13px] text-muted-foreground transition-colors hover:text-foreground hover:border-foreground/20 cursor-pointer"
         >
@@ -337,6 +340,7 @@ function VerifyStep({ onFinish, onPrev }: { onFinish: () => void; onPrev: () => 
           Back
         </button>
         <button
+          type="button"
           onClick={onFinish}
           className="group inline-flex h-10 items-center gap-2.5 rounded-lg bg-accent px-6 text-[13px] font-medium text-background transition-all hover:brightness-110 cursor-pointer"
         >

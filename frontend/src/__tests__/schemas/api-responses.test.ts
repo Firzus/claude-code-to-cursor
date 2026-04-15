@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyticsResponseSchema,
   authStatusResponseSchema,
+  budgetResponseSchema,
   healthResponseSchema,
   loginResponseSchema,
   requestRecordSchema,
@@ -80,11 +81,14 @@ describe("analyticsResponseSchema", () => {
     totalRequests: 10,
     claudeCodeRequests: 8,
     errorRequests: 2,
+    keepaliveRequests: 1,
     totalInputTokens: 1000,
     totalOutputTokens: 500,
     totalCacheReadTokens: 200,
     totalCacheCreationTokens: 100,
+    totalThinkingTokens: 300,
     cacheHitRate: 0.65,
+    cacheSavingsUsdEstimate: 0.45,
     periodStart: 1000,
     periodEnd: 2000,
   };
@@ -147,6 +151,26 @@ describe("requestRecordSchema", () => {
       error: null,
     };
     expect(requestRecordSchema.parse(data).stream).toBe(1);
+  });
+
+  it("accepts keepalive source and thinking tokens", () => {
+    const data = {
+      id: 4,
+      timestamp: Date.now(),
+      model: "claude-opus-4-6",
+      source: "keepalive" as const,
+      inputTokens: 10,
+      outputTokens: 1,
+      thinkingTokens: 0,
+      stream: false,
+      latencyMs: 400,
+      error: null,
+      routingPolicy: "native",
+      appliedThinkingEffort: "low",
+    };
+    const parsed = requestRecordSchema.parse(data);
+    expect(parsed.source).toBe("keepalive");
+    expect(parsed.thinkingTokens).toBe(0);
   });
 });
 
@@ -247,6 +271,7 @@ describe("settingsResponseSchema", () => {
         thinkingEnabled: true,
         thinkingEffort: "high",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       },
     };
     expect(settingsResponseSchema.parse(data)).toEqual(data);
@@ -259,6 +284,7 @@ describe("settingsResponseSchema", () => {
         thinkingEnabled: true,
         thinkingEffort: "high",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -271,8 +297,25 @@ describe("settingsResponseSchema", () => {
         thinkingEnabled: true,
         thinkingEffort: "ultra",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
+  });
+});
+
+describe("budgetResponseSchema", () => {
+  it("accepts valid budget response", () => {
+    const data = {
+      periodStart: 1_700_000_000_000,
+      periodEnd: 1_700_008_640_000,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 20,
+      cacheCreationTokens: 5,
+      thinkingTokens: 12,
+      estimatedUsd: 0.42,
+    };
+    expect(budgetResponseSchema.parse(data)).toEqual(data);
   });
 });

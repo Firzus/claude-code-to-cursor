@@ -8,6 +8,7 @@ describe("settingsFormSchema", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     });
     expect(result.success).toBe(true);
   });
@@ -19,6 +20,7 @@ describe("settingsFormSchema", () => {
         thinkingEnabled: false,
         thinkingEffort: "low",
         cacheTTL: "1h",
+        keepaliveInterval: "off",
       });
       expect(result.success).toBe(true);
     }
@@ -30,6 +32,7 @@ describe("settingsFormSchema", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     });
     expect(result.success).toBe(false);
   });
@@ -40,6 +43,18 @@ describe("settingsFormSchema", () => {
       thinkingEnabled: true,
       thinkingEffort: "ultra",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid keepaliveInterval", () => {
+    const result = settingsFormSchema.safeParse({
+      selectedModel: "claude-opus-4-6",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
+      cacheTTL: "5m",
+      keepaliveInterval: "1h",
     });
     expect(result.success).toBe(false);
   });
@@ -50,6 +65,7 @@ describe("settingsFormSchema", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "1d",
+      keepaliveInterval: "4m",
     });
     expect(result.success).toBe(false);
   });

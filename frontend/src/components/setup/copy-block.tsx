@@ -20,6 +20,7 @@ export function CopyBlock({ value }: { value: string }) {
         {value}
       </pre>
       <button
+        type="button"
         onClick={copy}
         className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded border border-border bg-card text-muted-foreground opacity-0 transition-all group-hover:opacity-100 focus:opacity-100 hover:text-foreground cursor-pointer"
         aria-label="Copy to clipboard"

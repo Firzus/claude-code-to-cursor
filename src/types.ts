@@ -89,6 +89,8 @@ export interface AnthropicResponse {
     output_tokens: number;
     cache_read_input_tokens?: number;
     cache_creation_input_tokens?: number;
+    /** When present (extended thinking), reported thinking token usage. */
+    thinking_tokens?: number;
   };
 }
 
@@ -98,6 +100,20 @@ export interface AnthropicError {
     type: string;
     message: string;
   };
+}
+
+/** Shape metrics for a proxied request (analytics + adaptive thinking). */
+export interface RequestShapeMetrics {
+  route: "anthropic" | "openai";
+  messageCount: number;
+  lastMsgRole: string | null;
+  lastMsgHasToolResult: boolean;
+  toolUseCount: number;
+  toolResultCount: number;
+  toolDefsCount: number;
+  toolDefsHash: string | null;
+  clientSystemHash: string | null;
+  clientReasoningEffort: string | null;
 }
 
 export interface ProxyConfig {

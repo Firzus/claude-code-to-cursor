@@ -98,6 +98,7 @@ export function NavBar() {
         <div className="flex items-center gap-3">
           <HealthIndicator />
           <button
+            type="button"
             onClick={() => setMobileOpen(!mobileOpen)}
             className="sm:hidden rounded-md p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             aria-label={mobileOpen ? "Close menu" : "Open menu"}

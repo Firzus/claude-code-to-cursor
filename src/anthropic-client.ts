@@ -9,6 +9,7 @@ import { getModelSettings, recordRequest } from "./db";
 import { logger } from "./logger";
 import { type CacheTTL, THINKING_MAX_TOKENS_PADDING } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
+import { markSuccessfulProxyActivity } from "./proxy-activity";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import type { AnthropicError, AnthropicRequest, ContentBlock } from "./types";
 
@@ -673,6 +674,7 @@ async function extractUsageFromResponse(
         output_tokens?: number;
         cache_read_input_tokens?: number;
         cache_creation_input_tokens?: number;
+        thinking_tokens?: number;
       };
     };
     const usage = data.usage || {};
@@ -684,6 +686,7 @@ async function extractUsageFromResponse(
       outputTokens: usage.output_tokens || 0,
       cacheReadTokens: usage.cache_read_input_tokens || 0,
       cacheCreationTokens: usage.cache_creation_input_tokens || 0,
+      thinkingTokens: usage.thinking_tokens ?? 0,
       stream: false,
       latencyMs: Date.now() - startTime,
     });
@@ -694,6 +697,7 @@ async function extractUsageFromResponse(
       source: "claude_code",
       inputTokens: 0,
       outputTokens: 0,
+      thinkingTokens: 0,
       stream: false,
       latencyMs: Date.now() - startTime,
     });
@@ -710,6 +714,7 @@ export async function proxyRequest(endpoint: string, body: AnthropicRequest): Pr
   const result = await makeClaudeCodeRequest(endpoint, body);
 
   if (result.success) {
+    markSuccessfulProxyActivity();
     console.log(`✓ Request served via Claude Code`);
     return extractUsageFromResponse(result.response, model, stream, startTime);
   }

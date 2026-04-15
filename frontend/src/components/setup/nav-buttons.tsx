@@ -17,6 +17,7 @@ export function NavButtons({
     <div className="flex items-center justify-between">
       {onPrev ? (
         <button
+          type="button"
           onClick={onPrev}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-4 text-[13px] text-muted-foreground transition-colors hover:text-foreground hover:border-foreground/20 cursor-pointer"
         >
@@ -28,6 +29,7 @@ export function NavButtons({
       )}
       {onNext && (
         <button
+          type="button"
           onClick={onNext}
           disabled={nextDisabled}
           className="group inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"

@@ -18,6 +18,7 @@ export function Pagination({ page, pageSize, total, onPrev, onNext }: Pagination
       </span>
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={onPrev}
           disabled={page <= 1}
           aria-label="Previous page"
@@ -29,6 +30,7 @@ export function Pagination({ page, pageSize, total, onPrev, onNext }: Pagination
           {page} / {totalPages}
         </span>
         <button
+          type="button"
           onClick={onNext}
           disabled={page >= totalPages}
           aria-label="Next page"

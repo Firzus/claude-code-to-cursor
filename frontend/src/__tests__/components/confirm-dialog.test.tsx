@@ -59,7 +59,8 @@ describe("ConfirmDialog", () => {
   it("calls onCancel when backdrop overlay is clicked", async () => {
     const user = userEvent.setup();
     render(<ConfirmDialog {...defaultProps} />);
-    const overlay = screen.getByRole("dialog").querySelector("[aria-hidden='true']")!;
+    const overlay = screen.getByRole("dialog").querySelector("[aria-hidden='true']");
+    if (!overlay) throw new Error("expected dialog overlay");
     await user.click(overlay);
     expect(defaultProps.onCancel).toHaveBeenCalled();
   });

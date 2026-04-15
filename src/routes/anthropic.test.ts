@@ -9,11 +9,13 @@ if (!SKIP) {
     thinkingEnabled: boolean;
     thinkingEffort: string;
     cacheTTL: string;
+    keepaliveInterval: string;
   } = {
     selectedModel: "claude-opus-4-6",
     thinkingEnabled: false,
     thinkingEffort: "high",
     cacheTTL: "5m",
+    keepaliveInterval: "4m",
   };
 
   let proxiedBody: AnthropicRequest | undefined;
@@ -56,6 +58,7 @@ if (!SKIP) {
         thinkingEnabled: false,
         thinkingEffort: "high",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -90,6 +93,7 @@ if (!SKIP) {
         thinkingEnabled: true,
         thinkingEffort: "medium",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       };
       proxyResponse = new Response(
         JSON.stringify({
@@ -132,6 +136,7 @@ if (!SKIP) {
         thinkingEnabled: true,
         thinkingEffort: "low",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       };
       proxyResponse = new Response(
         [
@@ -165,13 +170,14 @@ if (!SKIP) {
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
-    test("continuation turn uses selectedModel with stored thinking budget", async () => {
+    test("continuation turn after tool_result uses adaptive low thinking budget", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "high",
         cacheTTL: "5m",
+        keepaliveInterval: "4m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -203,7 +209,7 @@ if (!SKIP) {
       expect(proxiedBody).toBeDefined();
       expect(proxiedBody!.model).toBe("claude-opus-4-6");
       expect(proxiedBody!.thinking).toBeDefined();
-      expect(proxiedBody!.thinking!.budget_tokens).toBe(16384);
+      expect(proxiedBody!.thinking!.budget_tokens).toBe(4096);
     });
   });
 } else {

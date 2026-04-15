@@ -1,5 +1,6 @@
 import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
+import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
   getApiModelId,
@@ -10,7 +11,12 @@ import {
 } from "../model-settings";
 import { computeRequestShape } from "../request-metrics";
 import { normalizeAnthropicRequestModel } from "../request-normalization";
-import { applyThinkingToBody, pickRoute } from "../routing-policy";
+import {
+  adaptiveThinkingEffort,
+  applyThinkingToBody,
+  minThinkingEffort,
+  pickRoute,
+} from "../routing-policy";
 import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
 
 function rewriteAnthropicJsonResponseModel(bodyText: string): string {
@@ -67,6 +73,7 @@ function rewriteAnthropicSseResponseModel(
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    thinkingTokens: number;
   }) => void,
 ): ReadableStream<Uint8Array> {
   const reader = body.getReader();
@@ -77,6 +84,7 @@ function rewriteAnthropicSseResponseModel(
   let outputTokens = 0;
   let cacheReadTokens = 0;
   let cacheCreationTokens = 0;
+  let thinkingCharsAccum = 0;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -101,6 +109,7 @@ function rewriteAnthropicSseResponseModel(
               try {
                 const data = JSON.parse(line.slice(6)) as {
                   type?: string;
+                  delta?: { type?: string; thinking?: string };
                   message?: {
                     usage?: {
                       input_tokens?: number;
@@ -119,6 +128,12 @@ function rewriteAnthropicSseResponseModel(
                 if (data.type === "message_delta" && data.usage?.output_tokens !== undefined) {
                   outputTokens = data.usage.output_tokens;
                 }
+                if (data.type === "content_block_delta") {
+                  const d = data.delta;
+                  if (d?.type === "thinking_delta" && typeof d.thinking === "string") {
+                    thinkingCharsAccum += d.thinking.length;
+                  }
+                }
               } catch {
                 // ignore parse errors
               }
@@ -135,7 +150,13 @@ function rewriteAnthropicSseResponseModel(
           controller.enqueue(encoder.encode(rewriteAnthropicSseLine(buffer)));
         }
 
-        onComplete?.({ inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens });
+        onComplete?.({
+          inputTokens,
+          outputTokens,
+          cacheReadTokens,
+          cacheCreationTokens,
+          thinkingTokens: Math.ceil(thinkingCharsAccum / 4),
+        });
         controller.close();
       } catch (error) {
         controller.error(error);
@@ -153,6 +174,7 @@ async function rewriteAnthropicResponseModel(
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    thinkingTokens: number;
   }) => void,
 ): Promise<Response> {
   const responseHeaders = new Headers(response.headers);
@@ -223,7 +245,21 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       typeof incomingBody.reasoning_budget === "string" ? incomingBody.reasoning_budget : null,
     );
 
-    const decision = pickRoute({ settings: modelSettings, clientEffort });
+    const decision = pickRoute({ settings: modelSettings, clientEffort, shape });
+
+    if (modelSettings.thinkingEnabled) {
+      const cap = modelSettings.thinkingEffort;
+      const adaptiveBase = adaptiveThinkingEffort(shape, cap);
+      const afterAdaptive = minThinkingEffort(adaptiveBase, cap);
+      const adaptiveLabel = shape.lastMsgHasToolResult
+        ? "tool_result"
+        : shape.messageCount > 10
+          ? "long_thread"
+          : "none";
+      logger.info(
+        `[Thinking] cap=${cap}, adaptive=${afterAdaptive} (${adaptiveLabel}), policy=${decision.policy}, final=${decision.effort}`,
+      );
+    }
 
     const body = applyThinkingToBody(
       bodyWithoutClientThinkingControls,
@@ -250,6 +286,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
               outputTokens: usage.outputTokens,
               cacheReadTokens: usage.cacheReadTokens,
               cacheCreationTokens: usage.cacheCreationTokens,
+              thinkingTokens: usage.thinkingTokens,
               stream: true,
               latencyMs: Date.now() - streamStartTime,
               shape,

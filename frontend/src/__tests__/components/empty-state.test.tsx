@@ -19,7 +19,7 @@ describe("EmptyState", () => {
         icon={Inbox}
         title="Empty"
         description="Nothing here."
-        action={<button>Add item</button>}
+        action={<button type="button">Add item</button>}
       />,
     );
 

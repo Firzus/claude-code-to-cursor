@@ -1,14 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, renderHook } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { FC, ReactNode } from "react";
 import { vi } from "vitest";
 
-let _capturedComponent: React.FC | null = null;
+let _capturedComponent: FC | null = null;
 
 export function setupRouteComponentCapture() {
   _capturedComponent = null;
   vi.mock("@tanstack/react-router", () => ({
-    createFileRoute: () => (opts: { component: React.FC }) => {
+    createFileRoute: () => (opts: { component: FC }) => {
       _capturedComponent = opts.component;
       return { component: opts.component };
     },
@@ -50,4 +50,14 @@ export function renderWithQuery(ui: ReactNode) {
     ...render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>),
     queryClient: qc,
   };
+}
+
+/** Use after dynamic-importing a route file that calls `createFileRoute` (see `setupRouteComponentCapture`). */
+export function requireCapturedRouteComponent(): FC {
+  if (!_capturedComponent) {
+    throw new Error(
+      "No route component captured — import the route module after setupRouteComponentCapture()",
+    );
+  }
+  return _capturedComponent;
 }

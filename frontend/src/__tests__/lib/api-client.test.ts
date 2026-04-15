@@ -39,7 +39,7 @@ describe("apiFetch", () => {
     );
   });
 
-  it("constructs URL with backend port in browser", async () => {
+  it("uses same-origin /api prefix (Vite proxy in dev)", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({}),
@@ -48,7 +48,7 @@ describe("apiFetch", () => {
     const apiFetch = await getApiFetch();
     await apiFetch("/health");
 
-    expect(mockFetch).toHaveBeenCalledWith("http://localhost:8082/api/health", expect.any(Object));
+    expect(mockFetch).toHaveBeenCalledWith("/api/health", expect.any(Object));
   });
 
   it("throws on non-ok response", async () => {

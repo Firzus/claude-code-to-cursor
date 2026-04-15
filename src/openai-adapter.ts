@@ -152,6 +152,7 @@ export function computeOpenAIUsage(
   promptTokens: number,
   completionTokens: number,
   cacheReadTokens: number = 0,
+  reasoningTokens: number = 0,
 ) {
   return {
     prompt_tokens: promptTokens,
@@ -161,7 +162,7 @@ export function computeOpenAIUsage(
       cached_tokens: cacheReadTokens,
     },
     completion_tokens_details: {
-      reasoning_tokens: 0,
+      reasoning_tokens: reasoningTokens,
     },
   };
 }
@@ -543,6 +544,7 @@ export function anthropicToOpenai(
         (anthropicResponse.usage?.cache_creation_input_tokens || 0),
       anthropicResponse.usage?.output_tokens || 0,
       anthropicResponse.usage?.cache_read_input_tokens || 0,
+      anthropicResponse.usage?.thinking_tokens ?? 0,
     ),
   };
 }
@@ -658,6 +660,7 @@ export function createOpenAIStreamUsageChunk(
   completionTokens: number,
   cacheReadTokens: number = 0,
   _cacheCreationTokens: number = 0,
+  reasoningTokens: number = 0,
 ): string {
   const chunk: OpenAIStreamChunk = {
     id: `chatcmpl-${id}`,
@@ -665,7 +668,7 @@ export function createOpenAIStreamUsageChunk(
     created: Math.floor(Date.now() / 1000),
     model,
     choices: [],
-    usage: computeOpenAIUsage(promptTokens, completionTokens, cacheReadTokens),
+    usage: computeOpenAIUsage(promptTokens, completionTokens, cacheReadTokens, reasoningTokens),
   };
 
   return `data: ${JSON.stringify(chunk)}\n\n`;

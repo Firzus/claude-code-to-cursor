@@ -1,20 +1,24 @@
 /**
- * Cache keepalive: sends a lightweight ping every ~4 minutes to keep
+ * Cache keepalive: sends a lightweight ping on an interval to keep
  * Anthropic's prompt cache warm. The ephemeral cache TTL is 5 minutes,
  * so pinging at 4-minute intervals prevents expiry between conversations.
  *
- * Inspired by Aider's --cache-keepalive-pings feature.
+ * Pings are skipped unless there was a successful user proxy request
+ * within the last 5 minutes (activity gating).
  *
- * The ping reuses the last seen tools + system prompt (the cacheable prefix)
- * with a trivial user message and max_tokens=1 so the response is minimal.
+ * Inspired by Aider's --cache-keepalive-pings feature.
  */
 
-import { ANTHROPIC_API_URL, CLAUDE_CODE_BETA_HEADERS, CLAUDE_CODE_USER_AGENT } from "./config";
+import { ANTHROPIC_API_URL, CLAUDE_CODE_USER_AGENT, getClaudeCodeBetaHeaders } from "./config";
+import { getModelSettings, recordRequest } from "./db";
 import { logger } from "./logger";
+import { getKeepaliveIntervalMs } from "./model-settings";
 import { getValidToken } from "./oauth";
+import { hasRecentProxyActivity } from "./proxy-activity";
 import type { AnthropicRequest, ContentBlock, Tool } from "./types";
 
-const KEEPALIVE_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+/** Only ping if a real proxy request completed within this window. */
+const PROXY_ACTIVITY_WINDOW_MS = 5 * 60 * 1000;
 
 interface CachedPrefix {
   model: string;
@@ -45,7 +49,10 @@ export function updateCachePrefix(prepared: AnthropicRequest): void {
  * (tools + system) to keep it warm without generating real output.
  */
 async function sendKeepalivePing(): Promise<void> {
+  const settings = getModelSettings();
+  if (settings.keepaliveInterval === "off") return;
   if (!lastPrefix) return;
+  if (!hasRecentProxyActivity(PROXY_ACTIVITY_WINDOW_MS)) return;
 
   const token = await getValidToken();
   if (!token) return;
@@ -61,12 +68,16 @@ async function sendKeepalivePing(): Promise<void> {
     body.tools = lastPrefix.tools;
   }
 
+  const betaHeaders = getClaudeCodeBetaHeaders({
+    extendedCacheTtl: settings.cacheTTL === "1h",
+  });
+
   try {
     const response = await fetch(`${ANTHROPIC_API_URL}/v1/messages?beta=true`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token.accessToken}`,
-        "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
+        "anthropic-beta": betaHeaders,
         "anthropic-version": "2023-06-01",
         "Content-Type": "application/json",
         "User-Agent": CLAUDE_CODE_USER_AGENT,
@@ -76,11 +87,31 @@ async function sendKeepalivePing(): Promise<void> {
     });
 
     if (response.ok) {
-      // Consume the body to prevent resource leaks
-      await response.text();
+      const text = await response.text();
+      try {
+        const data = JSON.parse(text) as {
+          usage?: {
+            input_tokens?: number;
+            output_tokens?: number;
+            cache_read_input_tokens?: number;
+            cache_creation_input_tokens?: number;
+          };
+        };
+        const u = data.usage;
+        recordRequest({
+          model: lastPrefix.model,
+          source: "keepalive",
+          inputTokens: u?.input_tokens ?? 0,
+          outputTokens: u?.output_tokens ?? 0,
+          cacheReadTokens: u?.cache_read_input_tokens ?? 0,
+          cacheCreationTokens: u?.cache_creation_input_tokens ?? 0,
+          stream: false,
+        });
+      } catch {
+        // Non-JSON or missing usage — still counted as successful ping
+      }
       logger.info("[Cache Keepalive] Ping sent successfully");
     } else {
-      // Don't log 429s as errors — we just skip the ping
       if (response.status !== 429) {
         logger.info(`[Cache Keepalive] Ping returned ${response.status}, skipping`);
       }
@@ -92,16 +123,33 @@ async function sendKeepalivePing(): Promise<void> {
 }
 
 /**
+ * Restart the keepalive timer from current model settings (interval + off).
+ * Safe to call multiple times.
+ */
+export function restartCacheKeepalive(): void {
+  stopCacheKeepalive();
+
+  const settings = getModelSettings();
+  const intervalMs = getKeepaliveIntervalMs(settings.keepaliveInterval);
+  if (intervalMs <= 0) {
+    console.log("✓ Cache keepalive disabled (keepaliveInterval=off)");
+    return;
+  }
+
+  keepaliveTimer = setInterval(() => {
+    void sendKeepalivePing();
+  }, intervalMs);
+
+  console.log(
+    `✓ Cache keepalive enabled (every ${intervalMs / 1000}s, activity gate ${PROXY_ACTIVITY_WINDOW_MS / 60_000}min)`,
+  );
+}
+
+/**
  * Start the keepalive timer. Safe to call multiple times (restarts the timer).
  */
 export function startCacheKeepalive(): void {
-  if (keepaliveTimer) clearInterval(keepaliveTimer);
-
-  keepaliveTimer = setInterval(() => {
-    sendKeepalivePing();
-  }, KEEPALIVE_INTERVAL_MS);
-
-  console.log(`✓ Cache keepalive enabled (every ${KEEPALIVE_INTERVAL_MS / 1000}s)`);
+  restartCacheKeepalive();
 }
 
 /**

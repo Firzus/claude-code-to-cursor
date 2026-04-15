@@ -13,9 +13,46 @@ import {
   THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "./model-settings";
-import type { AnthropicRequest } from "./types";
+import type { AnthropicRequest, RequestShapeMetrics } from "./types";
 
-export type RoutingPolicyLabel = "disabled" | "client" | "stored";
+export type RoutingPolicyLabel = "disabled" | "client" | "stored" | "adaptive";
+
+function thinkingEffortRank(e: ThinkingEffort): number {
+  switch (e) {
+    case "low":
+      return 0;
+    case "medium":
+      return 1;
+    case "high":
+      return 2;
+  }
+}
+
+/** Lexicographic min: low < medium < high */
+export function minThinkingEffort(a: ThinkingEffort, b: ThinkingEffort): ThinkingEffort {
+  return thinkingEffortRank(a) <= thinkingEffortRank(b) ? a : b;
+}
+
+/**
+ * Shape-based thinking suggestion before applying the user's cap
+ * (`settings.thinkingEffort`). Tool-result follow-ups use low; long threads
+ * cap at medium unless the user cap is lower.
+ */
+export function adaptiveThinkingEffort(
+  shape: RequestShapeMetrics | undefined,
+  capEffort: ThinkingEffort,
+): ThinkingEffort {
+  if (!shape) {
+    return capEffort;
+  }
+  if (shape.lastMsgHasToolResult) {
+    return "low";
+  }
+  if (shape.messageCount > 10) {
+    return minThinkingEffort("medium", capEffort);
+  }
+  return capEffort;
+}
 
 export interface RoutingDecision {
   /** null = thinking disabled for this request */
@@ -29,31 +66,38 @@ export interface RoutingDecision {
 /**
  * Decide thinking effort:
  *   !thinkingEnabled         → null,         "disabled"
- *   clientEffort !== null    → clientEffort, "client"
- *   otherwise                → storedEffort, "stored"
+ *   clientEffort !== null    → min(client, cap), "client"
+ *   otherwise                → min(adaptive(shape), cap), "adaptive" or "stored"
  */
 export function pickRoute(args: {
   settings: ModelSettings;
   clientEffort: ThinkingEffort | null;
+  shape?: RequestShapeMetrics;
 }): RoutingDecision {
-  const { settings, clientEffort } = args;
+  const { settings, clientEffort, shape } = args;
+  const cap = settings.thinkingEffort;
 
   if (!settings.thinkingEnabled) {
     return { effort: null, policy: "disabled", budgetTokens: null };
   }
 
   if (clientEffort !== null) {
+    const effort = minThinkingEffort(clientEffort, cap);
     return {
-      effort: clientEffort,
+      effort,
       policy: "client",
-      budgetTokens: getThinkingBudget(clientEffort),
+      budgetTokens: getThinkingBudget(effort),
     };
   }
 
+  const adaptiveBase = adaptiveThinkingEffort(shape, cap);
+  const effort = minThinkingEffort(adaptiveBase, cap);
+  const policy: RoutingPolicyLabel = effort !== settings.thinkingEffort ? "adaptive" : "stored";
+
   return {
-    effort: settings.thinkingEffort,
-    policy: "stored",
-    budgetTokens: getThinkingBudget(settings.thinkingEffort),
+    effort,
+    policy,
+    budgetTokens: getThinkingBudget(effort),
   };
 }
 

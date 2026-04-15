@@ -23,6 +23,7 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: false,
       thinkingEffort: "high",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -39,6 +40,7 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: true,
       thinkingEffort: "low",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -58,6 +60,7 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     };
 
     const request = {
@@ -80,6 +83,7 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -96,6 +100,7 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: false,
       thinkingEffort: "medium",
       cacheTTL: "5m",
+      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);

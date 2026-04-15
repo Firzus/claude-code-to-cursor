@@ -4,12 +4,16 @@ import {
   Activity,
   AlertCircle,
   ArrowUpFromLine,
+  Banknote,
+  Brain,
+  Calendar,
   Database,
   DollarSign,
   Inbox,
   RefreshCw,
   Trash2,
   TrendingDown,
+  Wifi,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -37,9 +41,12 @@ import {
   useAnalyticsSummary,
   useAnalyticsTimeline,
 } from "~/hooks/use-analytics";
+import { useBudgetDay } from "~/hooks/use-budget";
 import { apiFetch } from "~/lib/api-client";
 import { calculateCacheSavings } from "~/lib/pricing";
+import { queryKeys } from "~/lib/query-keys";
 import { cn } from "~/lib/utils";
+import type { RequestRecord } from "~/schemas/api-responses";
 
 export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
@@ -61,6 +68,15 @@ function fmt(n: number): string {
 
 function pct(n: number): string {
   return `${n.toFixed(1)}%`;
+}
+
+function sourceBadgeProps(source: RequestRecord["source"]): {
+  label: string;
+  variant: "secondary" | "destructive" | "outline";
+} {
+  if (source === "keepalive") return { label: "keepalive", variant: "secondary" };
+  if (source === "error") return { label: "error", variant: "destructive" };
+  return { label: "proxy", variant: "outline" };
 }
 
 const tokenBreakdownConfig = {
@@ -97,6 +113,7 @@ function AnalyticsPage() {
   const summary = useAnalyticsSummary(period);
   const requests = useAnalyticsRequests(PAGE_SIZE, period, page);
   const timeline = useAnalyticsTimeline(period);
+  const budget = useBudgetDay();
   const qc = useQueryClient();
   const [resetting, setResetting] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
@@ -113,13 +130,17 @@ function AnalyticsPage() {
 
   function handleRefresh() {
     qc.invalidateQueries({ queryKey: ["analytics"] });
+    qc.invalidateQueries({ queryKey: queryKeys.budget });
   }
 
   function handleReset() {
     setConfirmOpen(false);
     setResetting(true);
     apiFetch("/analytics/reset", { method: "POST" })
-      .then(() => qc.invalidateQueries({ queryKey: ["analytics"] }))
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["analytics"] });
+        qc.invalidateQueries({ queryKey: queryKeys.budget });
+      })
       .catch(() => {})
       .finally(() => setResetting(false));
   }
@@ -157,6 +178,7 @@ function AnalyticsPage() {
             {periods.map(({ value, label }) => (
               <button
                 key={value}
+                type="button"
                 role="radio"
                 aria-checked={period === value}
                 onClick={() => handlePeriodChange(value)}
@@ -172,6 +194,7 @@ function AnalyticsPage() {
             ))}
           </div>
           <button
+            type="button"
             onClick={handleRefresh}
             aria-label="Refresh analytics data"
             className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
@@ -179,6 +202,7 @@ function AnalyticsPage() {
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
           <button
+            type="button"
             onClick={() => setConfirmOpen(true)}
             disabled={resetting}
             aria-label="Reset analytics data"
@@ -197,6 +221,75 @@ function AnalyticsPage() {
         onCancel={() => setConfirmOpen(false)}
       />
 
+      {/* Daily budget (UTC day) */}
+      {budget.isLoading && (
+        <Card>
+          <CardContent className="p-4">
+            <Skeleton className="h-4 w-40 mb-3" />
+            <div className="flex flex-wrap gap-4">
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-8 w-24" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {budget.data && (
+        <Card>
+          <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div>
+                <div className="text-[12px] text-muted-foreground font-medium">
+                  Token budget — today (UTC)
+                </div>
+                <div className="text-[11px] text-muted-foreground font-mono">
+                  {new Date(budget.data.periodStart).toISOString().slice(0, 10)} →{" "}
+                  {new Date(budget.data.periodEnd).toISOString().slice(0, 10)}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-[13px] font-mono tabular-nums">
+              <span>
+                <span className="text-muted-foreground">In </span>
+                {fmt(budget.data.inputTokens)}
+              </span>
+              <span>
+                <span className="text-muted-foreground">Out </span>
+                {fmt(budget.data.outputTokens)}
+              </span>
+              <span>
+                <span className="text-muted-foreground">Cache R/W </span>
+                {fmt(budget.data.cacheReadTokens)} / {fmt(budget.data.cacheCreationTokens)}
+              </span>
+              <span>
+                <span className="text-muted-foreground">Think </span>
+                {fmt(budget.data.thinkingTokens)}
+              </span>
+              <span className="text-foreground font-medium">
+                <span className="text-muted-foreground font-normal">~USD </span>≈
+                {budget.data.estimatedUsd.toFixed(2)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {budget.isError && (
+        <Card className="border-destructive/40">
+          <CardContent className="flex items-center gap-2 py-3 text-[12px] text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            Failed to load daily budget.
+            <button
+              type="button"
+              onClick={() => budget.refetch()}
+              className="underline underline-offset-2 cursor-pointer"
+            >
+              Retry
+            </button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Error state */}
       {summary.isError && (
         <Card className="border-destructive/40">
@@ -204,6 +297,7 @@ function AnalyticsPage() {
             <AlertCircle className="h-4 w-4 text-destructive" />
             <span className="text-[13px] text-destructive">Failed to load analytics.</span>
             <button
+              type="button"
               onClick={() => summary.refetch()}
               className="text-[12px] text-foreground underline underline-offset-2 cursor-pointer"
             >
@@ -215,55 +309,82 @@ function AnalyticsPage() {
 
       {/* Stat cards */}
       {s && savings && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard
-            icon={Activity}
-            label="Requests"
-            value={fmt(s.totalRequests)}
-            sub={`${s.claudeCodeRequests} ok${s.errorRequests ? ` · ${s.errorRequests} err` : ""}`}
-            accent="chart-1"
-          />
-          <StatCard
-            icon={Zap}
-            label="Cache Hit Rate"
-            value={pct(s.cacheHitRate * 100)}
-            sub={`${fmt(s.totalCacheReadTokens)} / ${fmt(savings.allInput)}`}
-            accent="chart-4"
-          />
-          <StatCard
-            icon={TrendingDown}
-            label="Tokens Saved"
-            value={fmt(s.totalCacheReadTokens)}
-            sub={`of ${fmt(savings.allInput)} total input`}
-            accent="success"
-          />
-          <StatCard
-            icon={DollarSign}
-            label="Est. Savings"
-            value={pct(savings.savingsPercent)}
-            sub={
-              savings.allInput > 0 ? `~${fmt(savings.tokensSaved)} tokens equiv.` : "no data yet"
-            }
-            accent="success"
-          />
-          <StatCard
-            icon={Database}
-            label="Cache Written"
-            value={fmt(s.totalCacheCreationTokens)}
-            sub="125% cost multiplier"
-            accent="chart-3"
-          />
-          <StatCard
-            icon={ArrowUpFromLine}
-            label="Output"
-            value={fmt(s.totalOutputTokens)}
-            sub={
-              s.totalRequests > 0
-                ? `avg ${fmt(Math.round(s.totalOutputTokens / s.totalRequests))} / req`
-                : "—"
-            }
-            accent="chart-2"
-          />
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <StatCard
+              icon={Activity}
+              label="Requests"
+              value={fmt(s.totalRequests)}
+              sub={`${s.claudeCodeRequests} ok${s.errorRequests ? ` · ${s.errorRequests} err` : ""}${
+                s.keepaliveRequests ? ` · ${s.keepaliveRequests} kl` : ""
+              }`}
+              accent="chart-1"
+            />
+            <StatCard
+              icon={Zap}
+              label="Cache Hit Rate"
+              value={pct(s.cacheHitRate * 100)}
+              sub={`${fmt(s.totalCacheReadTokens)} / ${fmt(savings.allInput)}`}
+              accent="chart-4"
+            />
+            <StatCard
+              icon={TrendingDown}
+              label="Tokens Saved"
+              value={fmt(s.totalCacheReadTokens)}
+              sub={`of ${fmt(savings.allInput)} total input`}
+              accent="success"
+            />
+            <StatCard
+              icon={DollarSign}
+              label="Est. Savings"
+              value={pct(savings.savingsPercent)}
+              sub={
+                savings.allInput > 0 ? `~${fmt(savings.tokensSaved)} tokens equiv.` : "no data yet"
+              }
+              accent="success"
+            />
+            <StatCard
+              icon={Database}
+              label="Cache Written"
+              value={fmt(s.totalCacheCreationTokens)}
+              sub="125% cost multiplier"
+              accent="chart-3"
+            />
+            <StatCard
+              icon={ArrowUpFromLine}
+              label="Output"
+              value={fmt(s.totalOutputTokens)}
+              sub={
+                s.totalRequests > 0
+                  ? `avg ${fmt(Math.round(s.totalOutputTokens / s.totalRequests))} / req`
+                  : "—"
+              }
+              accent="chart-2"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <StatCard
+              icon={Brain}
+              label="Thinking tokens"
+              value={fmt(s.totalThinkingTokens)}
+              sub="extended thinking (period)"
+              accent="chart-2"
+            />
+            <StatCard
+              icon={Wifi}
+              label="Keepalive pings"
+              value={fmt(s.keepaliveRequests)}
+              sub="cache warm-up requests"
+              accent="chart-3"
+            />
+            <StatCard
+              icon={Banknote}
+              label="Est. cache $ saved"
+              value={`$${s.cacheSavingsUsdEstimate.toFixed(2)}`}
+              sub="vs full-price input (heuristic)"
+              accent="success"
+            />
+          </div>
         </div>
       )}
 
@@ -514,6 +635,7 @@ function AnalyticsPage() {
           <div className="px-4 py-10 text-center">
             <span className="text-[13px] text-destructive">Failed to load requests.</span>
             <button
+              type="button"
               onClick={() => requests.refetch()}
               className="ml-2 text-[12px] text-foreground underline underline-offset-2 cursor-pointer"
             >
@@ -541,6 +663,12 @@ function AnalyticsPage() {
                       Time
                     </th>
                     <th className="px-3 sm:px-4 py-2 font-normal">Model</th>
+                    <th className="px-3 sm:px-4 py-2 font-normal whitespace-nowrap hidden sm:table-cell">
+                      Source
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">
+                      Think
+                    </th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
                       Fresh In
                     </th>
@@ -552,6 +680,12 @@ function AnalyticsPage() {
                     </th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap">
                       Out
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-left whitespace-nowrap hidden lg:table-cell max-w-28">
+                      Route
+                    </th>
+                    <th className="px-3 sm:px-4 py-2 font-normal text-left whitespace-nowrap hidden xl:table-cell">
+                      Effort
                     </th>
                     <th className="px-3 sm:px-4 py-2 font-normal text-right whitespace-nowrap hidden sm:table-cell">
                       Cache %
@@ -570,6 +704,8 @@ function AnalyticsPage() {
                     const cacheWrite = r.cacheCreationTokens ?? 0;
                     const rowAllInput = r.inputTokens + cacheRead + cacheWrite;
                     const rowCacheRate = rowAllInput > 0 ? (cacheRead / rowAllInput) * 100 : 0;
+                    const src = sourceBadgeProps(r.source);
+                    const think = r.thinkingTokens ?? 0;
 
                     return (
                       <tr
@@ -585,6 +721,17 @@ function AnalyticsPage() {
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono truncate">
                           {r.model.replace("claude-", "")}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 hidden sm:table-cell">
+                          <Badge
+                            variant={src.variant}
+                            className="text-[10px] px-1.5 py-0 font-mono"
+                          >
+                            {src.label}
+                          </Badge>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap hidden sm:table-cell text-muted-foreground">
+                          {think > 0 ? fmt(think) : "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
                           {fmt(r.inputTokens)}
@@ -602,6 +749,14 @@ function AnalyticsPage() {
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 font-mono text-right tabular whitespace-nowrap">
                           {fmt(r.outputTokens)}
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-[11px] text-muted-foreground truncate max-w-28 hidden lg:table-cell">
+                          <Tooltip content={r.routingPolicy ?? "—"}>
+                            <span className="cursor-default">{r.routingPolicy ?? "\u2014"}</span>
+                          </Tooltip>
+                        </td>
+                        <td className="px-3 sm:px-4 py-2.5 font-mono text-[11px] text-muted-foreground hidden xl:table-cell">
+                          {r.appliedThinkingEffort ?? "\u2014"}
                         </td>
                         <td className="px-3 sm:px-4 py-2.5 text-right whitespace-nowrap hidden sm:table-cell">
                           {rowCacheRate > 0 ? (

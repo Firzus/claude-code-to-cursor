@@ -5,8 +5,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { RequestShapeMetrics } from "./db";
-import type { AnthropicRequest, ContentBlock } from "./types";
+import type { AnthropicRequest, ContentBlock, RequestShapeMetrics } from "./types";
 
 function shortHash(input: string): string {
   return createHash("sha1").update(input).digest("hex").slice(0, 12);

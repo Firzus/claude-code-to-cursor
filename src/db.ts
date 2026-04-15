@@ -11,6 +11,7 @@ import {
   saveModelSettingsToDb,
 } from "./model-settings-store";
 import type { RoutingDecision } from "./routing-policy";
+import type { RequestShapeMetrics } from "./types";
 
 const DB_PATH = process.env.CCTC_DB_PATH || join(process.cwd(), "cctc.db");
 
@@ -46,6 +47,46 @@ const MIGRATIONS: { version: number; sql: string }[] = [
   { version: 13, sql: "ALTER TABLE requests ADD COLUMN applied_model TEXT" },
   { version: 14, sql: "ALTER TABLE requests ADD COLUMN applied_thinking_effort TEXT" },
   { version: 15, sql: "ALTER TABLE requests ADD COLUMN routing_policy TEXT" },
+  {
+    version: 17,
+    sql: "ALTER TABLE requests ADD COLUMN thinking_tokens INTEGER NOT NULL DEFAULT 0",
+  },
+  {
+    version: 16,
+    sql: `BEGIN;
+CREATE TABLE requests_rebuilt (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp INTEGER NOT NULL,
+  model TEXT NOT NULL,
+  source TEXT NOT NULL,
+  input_tokens INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  stream INTEGER NOT NULL DEFAULT 0,
+  latency_ms INTEGER,
+  error TEXT,
+  cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+  route TEXT,
+  message_count INTEGER,
+  last_msg_role TEXT,
+  last_msg_has_tool_result INTEGER,
+  tool_use_count INTEGER,
+  tool_result_count INTEGER,
+  tool_defs_count INTEGER,
+  tool_defs_hash TEXT,
+  client_system_hash TEXT,
+  client_reasoning_effort TEXT,
+  applied_model TEXT,
+  applied_thinking_effort TEXT,
+  routing_policy TEXT
+);
+INSERT INTO requests_rebuilt SELECT * FROM requests;
+DROP TABLE requests;
+ALTER TABLE requests_rebuilt RENAME TO requests;
+CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp);
+CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source);
+COMMIT;`,
+  },
 ];
 
 function runMigrations(database: Database): void {
@@ -59,7 +100,8 @@ function runMigrations(database: Database): void {
   for (const m of MIGRATIONS) {
     if (m.version > current) {
       try {
-        database.run(m.sql);
+        // exec supports multi-statement migrations (e.g. table rebuild)
+        database.exec(m.sql);
       } catch {
         // Column may already exist from legacy try/catch migrations
       }
@@ -74,7 +116,7 @@ function initSchema(database: Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp INTEGER NOT NULL,
       model TEXT NOT NULL,
-      source TEXT NOT NULL CHECK (source IN ('claude_code', 'error')),
+      source TEXT NOT NULL,
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
       stream INTEGER NOT NULL DEFAULT 0,
@@ -93,20 +135,9 @@ function initSchema(database: Database) {
   console.log(`✓ Database initialized at ${DB_PATH}`);
 }
 
-type RequestSource = "claude_code" | "error";
+type RequestSource = "claude_code" | "error" | "keepalive";
 
-export interface RequestShapeMetrics {
-  route: "anthropic" | "openai";
-  messageCount: number;
-  lastMsgRole: string | null;
-  lastMsgHasToolResult: boolean;
-  toolUseCount: number;
-  toolResultCount: number;
-  toolDefsCount: number;
-  toolDefsHash: string | null;
-  clientSystemHash: string | null;
-  clientReasoningEffort: string | null;
-}
+export type { RequestShapeMetrics };
 
 interface RequestRecord {
   model: string;
@@ -115,6 +146,8 @@ interface RequestRecord {
   outputTokens: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Extended thinking tokens (stream estimate or API-reported when available). */
+  thinkingTokens?: number;
   stream: boolean;
   latencyMs?: number;
   error?: string;
@@ -138,9 +171,10 @@ export function recordRequest(record: RequestRecord): void {
        route, message_count, last_msg_role, last_msg_has_tool_result,
        tool_use_count, tool_result_count, tool_defs_count, tool_defs_hash,
        client_system_hash, client_reasoning_effort,
-       applied_model, applied_thinking_effort, routing_policy
+       applied_model, applied_thinking_effort, routing_policy,
+       thinking_tokens
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       Date.now(),
       record.model,
@@ -165,6 +199,7 @@ export function recordRequest(record: RequestRecord): void {
       record.appliedModel ?? null,
       decision?.effort ?? null,
       decision?.policy ?? null,
+      record.thinkingTokens ?? 0,
     ],
   );
 }
@@ -173,11 +208,15 @@ interface AnalyticsSummary {
   totalRequests: number;
   claudeCodeRequests: number;
   errorRequests: number;
+  keepaliveRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheCreationTokens: number;
+  totalThinkingTokens: number;
   cacheHitRate: number;
+  /** Heuristic: USD not billed thanks to cache reads vs full input price (see CACHE_READ_COST_RATIO). */
+  cacheSavingsUsdEstimate: number;
   periodStart: number;
   periodEnd: number;
 }
@@ -194,10 +233,12 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
         COUNT(*) as total_requests,
         SUM(CASE WHEN source = 'claude_code' THEN 1 ELSE 0 END) as claude_code_requests,
         SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_requests,
+        SUM(CASE WHEN source = 'keepalive' THEN 1 ELSE 0 END) as keepalive_requests,
         SUM(input_tokens) as total_input_tokens,
         SUM(output_tokens) as total_output_tokens,
         SUM(cache_read_tokens) as total_cache_read_tokens,
-        SUM(cache_creation_tokens) as total_cache_creation_tokens
+        SUM(cache_creation_tokens) as total_cache_creation_tokens,
+        SUM(thinking_tokens) as total_thinking_tokens
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?`,
     )
@@ -205,26 +246,38 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
     total_requests: number;
     claude_code_requests: number;
     error_requests: number;
+    keepalive_requests: number;
     total_input_tokens: number;
     total_output_tokens: number;
     total_cache_read_tokens: number;
     total_cache_creation_tokens: number;
+    total_thinking_tokens: number;
   };
 
   const cacheRead = totals.total_cache_read_tokens || 0;
   const cacheCreation = totals.total_cache_creation_tokens || 0;
   const totalInput = totals.total_input_tokens || 0;
   const allInput = totalInput + cacheRead + cacheCreation;
+  const totalThinking = totals.total_thinking_tokens || 0;
+
+  // Blended heuristic (USD per 1M tokens) for dashboard only — not billing truth.
+  const INPUT_USD_PER_M = 15;
+  const CACHE_READ_COST_RATIO = 0.1;
+  const cacheSavingsUsdEstimate =
+    (cacheRead * (1 - CACHE_READ_COST_RATIO) * INPUT_USD_PER_M) / 1_000_000;
 
   return {
     totalRequests: totals.total_requests || 0,
     claudeCodeRequests: totals.claude_code_requests || 0,
     errorRequests: totals.error_requests || 0,
+    keepaliveRequests: totals.keepalive_requests || 0,
     totalInputTokens: totalInput,
     totalOutputTokens: totals.total_output_tokens || 0,
     totalCacheReadTokens: cacheRead,
     totalCacheCreationTokens: cacheCreation,
+    totalThinkingTokens: totalThinking,
     cacheHitRate: allInput > 0 ? cacheRead / allInput : 0,
+    cacheSavingsUsdEstimate,
     periodStart: since,
     periodEnd: until,
   };
@@ -247,9 +300,15 @@ export function getRecentRequests(
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    thinkingTokens: number;
     stream: boolean;
     latencyMs: number | null;
     error: string | null;
+    route: string | null;
+    messageCount: number | null;
+    toolDefsCount: number | null;
+    routingPolicy: string | null;
+    appliedThinkingEffort: string | null;
   }>;
   total: number;
 } {
@@ -262,7 +321,8 @@ export function getRecentRequests(
   const rows = database
     .query(
       `SELECT id, timestamp, model, source, input_tokens, output_tokens,
-              cache_read_tokens, cache_creation_tokens, stream, latency_ms, error
+              cache_read_tokens, cache_creation_tokens, thinking_tokens, stream, latency_ms, error,
+              route, message_count, tool_defs_count, routing_policy, applied_thinking_effort
        FROM requests WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
     )
     .all(since, limit, offset) as Array<{
@@ -274,9 +334,15 @@ export function getRecentRequests(
     output_tokens: number;
     cache_read_tokens: number;
     cache_creation_tokens: number;
+    thinking_tokens: number;
     stream: number;
     latency_ms: number | null;
     error: string | null;
+    route: string | null;
+    message_count: number | null;
+    tool_defs_count: number | null;
+    routing_policy: string | null;
+    applied_thinking_effort: string | null;
   }>;
 
   return {
@@ -290,9 +356,15 @@ export function getRecentRequests(
       outputTokens: row.output_tokens,
       cacheReadTokens: row.cache_read_tokens,
       cacheCreationTokens: row.cache_creation_tokens,
+      thinkingTokens: row.thinking_tokens,
       stream: row.stream === 1,
       latencyMs: row.latency_ms,
       error: row.error,
+      route: row.route,
+      messageCount: row.message_count,
+      toolDefsCount: row.tool_defs_count,
+      routingPolicy: row.routing_policy,
+      appliedThinkingEffort: row.applied_thinking_effort,
     })),
   };
 }
@@ -383,6 +455,71 @@ export function resetAnalytics(): { deletedCount: number } {
 
 export function getModelSettings(): ModelSettings {
   return getModelSettingsFromDb(getDb());
+}
+
+/** Token totals since UTC midnight (for budget visibility). */
+export function getBudgetDaySummary(): {
+  periodStart: number;
+  periodEnd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  thinkingTokens: number;
+  estimatedUsd: number;
+} {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  const periodStart = start.getTime();
+  const periodEnd = Date.now();
+  const database = getDb();
+
+  const row = database
+    .query(
+      `SELECT
+        COALESCE(SUM(input_tokens), 0) as input_tokens,
+        COALESCE(SUM(output_tokens), 0) as output_tokens,
+        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+        COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+        COALESCE(SUM(thinking_tokens), 0) as thinking_tokens
+       FROM requests
+       WHERE timestamp >= ? AND timestamp <= ?`,
+    )
+    .get(periodStart, periodEnd) as {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    thinking_tokens: number;
+  };
+
+  const inputTokens = row.input_tokens;
+  const outputTokens = row.output_tokens;
+  const cacheReadTokens = row.cache_read_tokens;
+  const cacheCreationTokens = row.cache_creation_tokens;
+  const thinkingTokens = row.thinking_tokens;
+
+  const INPUT_USD_PER_M = 15;
+  const OUTPUT_USD_PER_M = 75;
+  const CACHE_READ_USD_PER_M = INPUT_USD_PER_M * 0.1;
+  const CACHE_CREATION_USD_PER_M = INPUT_USD_PER_M * 1.25;
+
+  const estimatedUsd =
+    (inputTokens * INPUT_USD_PER_M) / 1_000_000 +
+    (outputTokens * OUTPUT_USD_PER_M) / 1_000_000 +
+    (cacheReadTokens * CACHE_READ_USD_PER_M) / 1_000_000 +
+    (cacheCreationTokens * CACHE_CREATION_USD_PER_M) / 1_000_000;
+
+  return {
+    periodStart,
+    periodEnd,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    thinkingTokens,
+    estimatedUsd,
+  };
 }
 
 export function saveModelSettings(settings: ModelSettings): void {

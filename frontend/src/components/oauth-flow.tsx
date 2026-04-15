@@ -97,6 +97,7 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
           <div className="pl-7">
             {!loginData ? (
               <button
+                type="button"
                 onClick={initLogin}
                 disabled={loadingAuth}
                 className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
