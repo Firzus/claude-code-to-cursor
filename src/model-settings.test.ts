@@ -26,14 +26,13 @@ describe("model settings contract", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     });
   });
 
   test.each([
-    ["low", 4096],
-    ["medium", 8192],
-    ["high", 16384],
+    ["low", 2048],
+    ["medium", 4096],
+    ["high", 8192],
   ])("maps %s thinking effort to %i tokens", (effort, budget) => {
     expect(getThinkingBudget(effort as "low" | "medium" | "high")).toBe(budget);
   });
@@ -52,7 +51,6 @@ describe("model settings contract", () => {
       thinkingEnabled: false,
       thinkingEffort: "low",
       cacheTTL: "1h",
-      keepaliveInterval: "4m",
     });
     expect(
       validateModelSettings({
@@ -66,7 +64,6 @@ describe("model settings contract", () => {
       thinkingEnabled: true,
       thinkingEffort: "medium",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     });
   });
 

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   cacheTTLValues,
-  keepaliveIntervalValues,
   supportedModels,
   thinkingEfforts,
 } from "./settings";
@@ -30,7 +29,6 @@ export const analyticsResponseSchema = z.object({
   totalRequests: z.number(),
   claudeCodeRequests: z.number(),
   errorRequests: z.number(),
-  keepaliveRequests: z.number(),
   totalInputTokens: z.number(),
   totalOutputTokens: z.number(),
   totalCacheReadTokens: z.number(),
@@ -49,7 +47,7 @@ export const requestRecordSchema = z.object({
   id: z.number(),
   timestamp: z.number(),
   model: z.string(),
-  source: z.enum(["claude_code", "error", "keepalive"]),
+  source: z.enum(["claude_code", "error"]),
   inputTokens: z.number(),
   outputTokens: z.number(),
   cacheReadTokens: z.number().default(0),
@@ -114,7 +112,6 @@ export const settingsResponseSchema = z.object({
     thinkingEnabled: z.boolean(),
     thinkingEffort: z.enum(thinkingEfforts),
     cacheTTL: z.enum(cacheTTLValues),
-    keepaliveInterval: z.enum(keepaliveIntervalValues),
   }),
 });
 

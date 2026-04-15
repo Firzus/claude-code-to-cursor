@@ -135,7 +135,7 @@ function initSchema(database: Database) {
   console.log(`✓ Database initialized at ${DB_PATH}`);
 }
 
-type RequestSource = "claude_code" | "error" | "keepalive";
+type RequestSource = "claude_code" | "error";
 
 export type { RequestShapeMetrics };
 
@@ -208,7 +208,6 @@ interface AnalyticsSummary {
   totalRequests: number;
   claudeCodeRequests: number;
   errorRequests: number;
-  keepaliveRequests: number;
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCacheReadTokens: number;
@@ -233,7 +232,6 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
         COUNT(*) as total_requests,
         SUM(CASE WHEN source = 'claude_code' THEN 1 ELSE 0 END) as claude_code_requests,
         SUM(CASE WHEN source = 'error' THEN 1 ELSE 0 END) as error_requests,
-        SUM(CASE WHEN source = 'keepalive' THEN 1 ELSE 0 END) as keepalive_requests,
         SUM(input_tokens) as total_input_tokens,
         SUM(output_tokens) as total_output_tokens,
         SUM(cache_read_tokens) as total_cache_read_tokens,
@@ -246,7 +244,6 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
     total_requests: number;
     claude_code_requests: number;
     error_requests: number;
-    keepalive_requests: number;
     total_input_tokens: number;
     total_output_tokens: number;
     total_cache_read_tokens: number;
@@ -270,7 +267,6 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
     totalRequests: totals.total_requests || 0,
     claudeCodeRequests: totals.claude_code_requests || 0,
     errorRequests: totals.error_requests || 0,
-    keepaliveRequests: totals.keepalive_requests || 0,
     totalInputTokens: totalInput,
     totalOutputTokens: totals.total_output_tokens || 0,
     totalCacheReadTokens: cacheRead,

@@ -31,7 +31,6 @@ describe("model settings store", () => {
         thinkingEnabled: false,
         thinkingEffort: "medium",
         cacheTTL: "1h",
-        keepaliveInterval: "4m",
       } as const;
 
       saveModelSettingsToDb(database, settings);
@@ -53,7 +52,6 @@ describe("model settings store", () => {
         thinkingEnabled: true,
         thinkingEffort: "high",
         cacheTTL: "5m",
-        keepaliveInterval: "2m",
       });
 
       const updatedSettings = {
@@ -61,7 +59,6 @@ describe("model settings store", () => {
         thinkingEnabled: false,
         thinkingEffort: "low",
         cacheTTL: "1h",
-        keepaliveInterval: "off",
       } as const;
 
       saveModelSettingsToDb(database, updatedSettings);

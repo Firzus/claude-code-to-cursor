@@ -4,7 +4,6 @@ import {
   startRateLimitCleanup,
   stopRateLimitCleanup,
 } from "./src/anthropic-client";
-import { startCacheKeepalive, stopCacheKeepalive } from "./src/cache-keepalive";
 import { getConfig, TUNNEL_URL } from "./src/config";
 import { getDb } from "./src/db";
 import { logger } from "./src/logger";
@@ -293,7 +292,6 @@ console.log(`   Settings:   /api/settings\n`);
 
 await checkCredentials();
 
-startCacheKeepalive();
 startRateLimitCleanup();
 startPkceCleanup();
 
@@ -303,7 +301,6 @@ console.log(`\n📝 Verbose logging enabled → api.log (gitignored)\n`);
 function shutdown() {
   logger.info("Shutting down gracefully...");
   server.stop();
-  stopCacheKeepalive();
   stopRateLimitCleanup();
   stopPkceCleanup();
   try {

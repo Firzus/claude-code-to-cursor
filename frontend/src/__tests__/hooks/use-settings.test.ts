@@ -21,7 +21,6 @@ const mockSettings = {
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
     cacheTTL: "5m" as const,
-    keepaliveInterval: "4m" as const,
   },
 };
 
@@ -61,7 +60,6 @@ describe("useUpdateSettings", () => {
       thinkingEnabled: false,
       thinkingEffort: "low",
       cacheTTL: "1h",
-      keepaliveInterval: "2m",
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

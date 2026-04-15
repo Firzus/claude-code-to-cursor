@@ -58,7 +58,6 @@ function pct(n: number): string {
 }
 
 function formatCost(r: RequestRecord): string {
-  if (r.source === "keepalive") return "incl.";
   if (r.source === "error" && !r.estimatedUsd) return "\u2014";
   const usd = r.estimatedUsd ?? 0;
   if (usd < 0.005) return "$0.00";
@@ -346,9 +345,7 @@ function AnalyticsPage() {
             icon={Activity}
             label="Requests"
             value={fmt(s.totalRequests)}
-            sub={`${s.claudeCodeRequests} ok${s.errorRequests ? ` \u00b7 ${s.errorRequests} err` : ""}${
-              s.keepaliveRequests ? ` \u00b7 ${s.keepaliveRequests} kl` : ""
-            }`}
+            sub={`${s.claudeCodeRequests} ok${s.errorRequests ? ` \u00b7 ${s.errorRequests} err` : ""}`}
             accent="chart-1"
           />
           <StatCard

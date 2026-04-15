@@ -9,7 +9,6 @@ const BASE_SETTINGS: ModelSettings = {
   thinkingEnabled: true,
   thinkingEffort: "high",
   cacheTTL: "5m",
-  keepaliveInterval: "4m",
 };
 
 describe("pickRoute", () => {
@@ -106,6 +105,50 @@ describe("pickRoute", () => {
     });
     expect(decision.policy).toBe("adaptive");
     expect(decision.effort).toBe("medium");
+  });
+
+  test("many tool results (>3) reduces to low (adaptive)", () => {
+    const shape: RequestShapeMetrics = {
+      route: "openai",
+      messageCount: 8,
+      lastMsgRole: "user",
+      lastMsgHasToolResult: false,
+      toolUseCount: 4,
+      toolResultCount: 4,
+      toolDefsCount: 5,
+      toolDefsHash: "abc",
+      clientSystemHash: null,
+      clientReasoningEffort: null,
+    };
+    const decision = pickRoute({
+      settings: BASE_SETTINGS,
+      clientEffort: null,
+      shape,
+    });
+    expect(decision.policy).toBe("adaptive");
+    expect(decision.effort).toBe("low");
+  });
+
+  test("very long thread (>20) forces low (adaptive)", () => {
+    const shape: RequestShapeMetrics = {
+      route: "openai",
+      messageCount: 22,
+      lastMsgRole: "user",
+      lastMsgHasToolResult: false,
+      toolUseCount: 0,
+      toolResultCount: 0,
+      toolDefsCount: 0,
+      toolDefsHash: null,
+      clientSystemHash: null,
+      clientReasoningEffort: null,
+    };
+    const decision = pickRoute({
+      settings: BASE_SETTINGS,
+      clientEffort: null,
+      shape,
+    });
+    expect(decision.policy).toBe("adaptive");
+    expect(decision.effort).toBe("low");
   });
 
   test("client high is capped to stored medium", () => {

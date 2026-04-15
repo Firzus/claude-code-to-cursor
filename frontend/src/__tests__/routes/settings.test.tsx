@@ -31,7 +31,6 @@ const mockSettings = {
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
     cacheTTL: "5m" as const,
-    keepaliveInterval: "4m" as const,
   },
 };
 
@@ -87,22 +86,6 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
     expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
     expect(screen.getByText("Claude Haiku 4.5")).toBeInTheDocument();
-  });
-
-  it("renders cache keepalive controls", async () => {
-    mockUseSettings.mockReturnValue({
-      data: mockSettings,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
-    await renderSettingsPage();
-
-    expect(screen.getByText("Cache keepalive")).toBeInTheDocument();
-    expect(screen.getByText("Off")).toBeInTheDocument();
-    expect(screen.getByText("2 min")).toBeInTheDocument();
-    expect(screen.getByText("4 min")).toBeInTheDocument();
   });
 
   it("renders thinking toggle and effort buttons", async () => {

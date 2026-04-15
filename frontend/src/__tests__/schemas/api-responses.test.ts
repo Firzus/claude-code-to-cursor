@@ -81,7 +81,6 @@ describe("analyticsResponseSchema", () => {
     totalRequests: 10,
     claudeCodeRequests: 8,
     errorRequests: 2,
-    keepaliveRequests: 1,
     totalInputTokens: 1000,
     totalOutputTokens: 500,
     totalCacheReadTokens: 200,
@@ -153,15 +152,15 @@ describe("requestRecordSchema", () => {
     expect(requestRecordSchema.parse(data).stream).toBe(1);
   });
 
-  it("accepts keepalive source and thinking tokens", () => {
+  it("accepts thinking tokens field", () => {
     const data = {
       id: 4,
       timestamp: Date.now(),
       model: "claude-opus-4-6",
-      source: "keepalive" as const,
+      source: "claude_code" as const,
       inputTokens: 10,
       outputTokens: 1,
-      thinkingTokens: 0,
+      thinkingTokens: 42,
       stream: false,
       latencyMs: 400,
       error: null,
@@ -169,8 +168,7 @@ describe("requestRecordSchema", () => {
       appliedThinkingEffort: "low",
     };
     const parsed = requestRecordSchema.parse(data);
-    expect(parsed.source).toBe("keepalive");
-    expect(parsed.thinkingTokens).toBe(0);
+    expect(parsed.thinkingTokens).toBe(42);
   });
 });
 
@@ -271,7 +269,6 @@ describe("settingsResponseSchema", () => {
         thinkingEnabled: true,
         thinkingEffort: "high",
         cacheTTL: "5m",
-        keepaliveInterval: "4m",
       },
     };
     expect(settingsResponseSchema.parse(data)).toEqual(data);
@@ -284,7 +281,6 @@ describe("settingsResponseSchema", () => {
         thinkingEnabled: true,
         thinkingEffort: "high",
         cacheTTL: "5m",
-        keepaliveInterval: "4m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -297,7 +293,6 @@ describe("settingsResponseSchema", () => {
         thinkingEnabled: true,
         thinkingEffort: "ultra",
         cacheTTL: "5m",
-        keepaliveInterval: "4m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();

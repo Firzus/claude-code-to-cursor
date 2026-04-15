@@ -70,7 +70,6 @@ const summaryData = {
   totalRequests: 42,
   claudeCodeRequests: 40,
   errorRequests: 2,
-  keepaliveRequests: 2,
   totalInputTokens: 10_000,
   totalOutputTokens: 5_000,
   totalCacheReadTokens: 3_000,

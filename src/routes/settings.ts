@@ -1,5 +1,4 @@
 import { timingSafeEqual } from "node:crypto";
-import { restartCacheKeepalive } from "../cache-keepalive";
 import { getModelSettings, saveModelSettings } from "../db";
 import { logger } from "../logger";
 import { validateModelSettings } from "../model-settings";
@@ -45,11 +44,9 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
           : body.thinkingEnabled === "true",
       thinkingEffort: (body.thinkingEffort as string) ?? "",
       cacheTTL: (body.cacheTTL as string) ?? "",
-      keepaliveInterval: (body.keepaliveInterval as string | undefined) ?? "",
     });
 
     saveModelSettings(settings);
-    restartCacheKeepalive();
     return Response.json({ success: true, settings });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid model settings payload";

@@ -11,17 +11,11 @@ export type CacheTTL = "5m" | "1h";
 
 export const CACHE_TTL_VALUES: readonly CacheTTL[] = ["5m", "1h"];
 
-/** Cache keepalive ping interval (user proxy activity gating still applies). */
-export type KeepaliveInterval = "off" | "2m" | "4m";
-
-export const KEEPALIVE_INTERVAL_VALUES: readonly KeepaliveInterval[] = ["off", "2m", "4m"];
-
 export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
   thinkingEnabled: boolean;
   thinkingEffort: ThinkingEffort;
   cacheTTL: CacheTTL;
-  keepaliveInterval: KeepaliveInterval;
 }
 
 export const PUBLIC_MODEL_ID = "Claude Code" as const;
@@ -31,29 +25,17 @@ export const DEFAULT_MODEL_SETTINGS = {
   thinkingEnabled: true,
   thinkingEffort: "high",
   cacheTTL: "5m",
-  keepaliveInterval: "4m",
 } as const satisfies ModelSettings;
 
-export function getKeepaliveIntervalMs(interval: KeepaliveInterval): number {
-  switch (interval) {
-    case "off":
-      return 0;
-    case "2m":
-      return 2 * 60 * 1000;
-    case "4m":
-      return 4 * 60 * 1000;
-  }
-}
-
 /** Padding added to thinking budget to compute max_tokens */
-export const THINKING_MAX_TOKENS_PADDING = 8192;
+export const THINKING_MAX_TOKENS_PADDING = 2048;
 
 const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
 
 const THINKING_BUDGETS: Record<ThinkingEffort, number> = {
-  low: 4096,
-  medium: 8192,
-  high: 16384,
+  low: 2048,
+  medium: 4096,
+  high: 8192,
 };
 
 export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
@@ -119,23 +101,10 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error(`Invalid cacheTTL value: ${String(candidate.cacheTTL)}`);
   }
 
-  const keepaliveIntervalRaw = (candidate as { keepaliveInterval?: string | undefined })
-    .keepaliveInterval;
-  const keepaliveInterval: KeepaliveInterval =
-    keepaliveIntervalRaw === undefined ||
-    keepaliveIntervalRaw === "" ||
-    (typeof keepaliveIntervalRaw === "string" && keepaliveIntervalRaw.trim() === "")
-      ? DEFAULT_MODEL_SETTINGS.keepaliveInterval
-      : (keepaliveIntervalRaw as KeepaliveInterval);
-  if (!KEEPALIVE_INTERVAL_VALUES.includes(keepaliveInterval)) {
-    throw new Error(`Invalid keepaliveInterval value: ${String(keepaliveIntervalRaw)}`);
-  }
-
   return {
     selectedModel: candidate.selectedModel,
     thinkingEnabled: candidate.thinkingEnabled,
     thinkingEffort: candidate.thinkingEffort,
     cacheTTL: candidate.cacheTTL,
-    keepaliveInterval,
   };
 }

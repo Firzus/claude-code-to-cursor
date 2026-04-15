@@ -17,7 +17,6 @@ const currentSettings: ModelSettings = {
   thinkingEnabled: true,
   thinkingEffort: "medium",
   cacheTTL: "5m",
-  keepaliveInterval: "4m",
 };
 
 const savedSettingsCalls: ModelSettings[] = [];
@@ -31,10 +30,6 @@ mock.module("../db", () => ({
 
 mock.module("../logger", () => ({
   logger: { info: () => {}, warn: () => {}, error: () => {}, verbose: () => {} },
-}));
-
-mock.module("../cache-keepalive", () => ({
-  restartCacheKeepalive: () => {},
 }));
 
 const { handleSettingsAPI, handleSettingsModelAPI } = await import("./settings");
@@ -61,7 +56,6 @@ describe("settings JSON API", () => {
         thinkingEnabled: true,
         thinkingEffort: "medium",
         cacheTTL: "5m",
-        keepaliveInterval: "4m",
       }),
     });
 
@@ -85,7 +79,6 @@ describe("settings JSON API", () => {
         thinkingEnabled: false,
         thinkingEffort: "low",
         cacheTTL: "1h",
-        keepaliveInterval: "2m",
       }),
     });
 
@@ -101,7 +94,6 @@ describe("settings JSON API", () => {
         thinkingEnabled: false,
         thinkingEffort: "low",
         cacheTTL: "1h",
-        keepaliveInterval: "2m",
       },
     ]);
   });

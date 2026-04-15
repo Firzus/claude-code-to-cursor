@@ -5,6 +5,7 @@
 
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
+import { trimToolResult } from "./tool-result-trimmer";
 import {
   getApiModelId,
   getInvalidPublicModelMessage,
@@ -193,7 +194,11 @@ function convertContent(
       logger.verbose(
         `    [convertContent] Passing through tool_result block: tool_use_id=${toolResult.tool_use_id}`,
       );
-      blocks.push(toolResult);
+      if (typeof toolResult.content === "string") {
+        blocks.push({ ...toolResult, content: trimToolResult(toolResult.content) });
+      } else {
+        blocks.push(toolResult);
+      }
       continue;
     }
 
@@ -346,8 +351,9 @@ export function openaiToAnthropicBase(
     } else if (msg.role === "tool") {
       // Convert tool results to Anthropic tool_result blocks
       logger.verbose(`  Converting tool result: tool_call_id=${msg.tool_call_id}`);
-      const resultContent =
+      const rawResultContent =
         typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+      const resultContent = trimToolResult(rawResultContent);
       logger.verbose(
         `    -> tool_result content (first 500 chars): ${resultContent.slice(0, 500)}`,
       );

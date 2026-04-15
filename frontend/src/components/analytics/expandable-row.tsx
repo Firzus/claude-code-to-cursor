@@ -13,9 +13,8 @@ interface ExpandableRowProps {
 
 function sourceBadgeProps(source: RequestRecord["source"]): {
   label: string;
-  variant: "secondary" | "destructive" | "outline";
+  variant: "destructive" | "outline";
 } {
-  if (source === "keepalive") return { label: "keepalive", variant: "secondary" };
   if (source === "error") return { label: "error", variant: "destructive" };
   return { label: "proxy", variant: "outline" };
 }

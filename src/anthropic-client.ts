@@ -1,4 +1,3 @@
-import { updateCachePrefix } from "./cache-keepalive";
 import {
   ANTHROPIC_API_URL,
   CLAUDE_CODE_SYSTEM_PROMPT,
@@ -9,8 +8,8 @@ import { getModelSettings, recordRequest } from "./db";
 import { logger } from "./logger";
 import { type CacheTTL, THINKING_MAX_TOKENS_PADDING } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
-import { markSuccessfulProxyActivity } from "./proxy-activity";
 import { normalizeAnthropicToolIds } from "./request-normalization";
+import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicError, AnthropicRequest, ContentBlock } from "./types";
 
 type RequestResult =
@@ -324,15 +323,17 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
     if (messages[i]?.role === "user") userMsgIndices.push(i);
   }
 
+  // Anthropic allows max 4 cache_control blocks per request.
+  // System (1) + tools (1) consume 2, leaving 2 for messages.
+  // Priority: second-to-last user msg (recent stable), then first user msg (conversation start).
   if (userMsgIndices.length >= 2) {
     addBreakpoint(userMsgIndices[userMsgIndices.length - 2]!);
   }
 
-  if (userMsgIndices.length >= 6) {
-    const intermediatePos = Math.floor(userMsgIndices.length * 0.4);
-    const intermediateIdx = userMsgIndices[intermediatePos]!;
-    if (intermediateIdx !== userMsgIndices[userMsgIndices.length - 2]) {
-      addBreakpoint(intermediateIdx);
+  if (userMsgIndices.length >= 3) {
+    const firstIdx = userMsgIndices[0]!;
+    if (firstIdx !== userMsgIndices[userMsgIndices.length - 2]) {
+      addBreakpoint(firstIdx);
     }
   }
 }
@@ -393,6 +394,19 @@ export function applyCacheTtl(prepared: AnthropicRequest, cacheTTL: CacheTTL): v
   }
 }
 
+function trimMessageToolResults(messages: AnthropicRequest["messages"]): void {
+  if (!Array.isArray(messages)) return;
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue;
+    for (let i = 0; i < msg.content.length; i++) {
+      const block = msg.content[i]!;
+      if (block.type === "tool_result" && typeof block.content === "string") {
+        msg.content[i] = { ...block, content: trimToolResult(block.content) };
+      }
+    }
+  }
+}
+
 function prepareClaudeCodeBody(body: AnthropicRequest, cacheTTL: CacheTTL): AnthropicRequest {
   let prepared = { ...body };
 
@@ -402,6 +416,7 @@ function prepareClaudeCodeBody(body: AnthropicRequest, cacheTTL: CacheTTL): Anth
   const systemPrompts = buildSystemPrompt(prepared.system);
   prepared.system = systemPrompts;
 
+  trimMessageToolResults(prepared.messages);
   applyCacheBreakpoints(prepared.messages);
 
   const finalSystemContent = systemPrompts
@@ -583,8 +598,7 @@ async function makeClaudeCodeRequest(
       // can process SSE error events (Anthropic may return 200 for streaming errors,
       // but non-200 streaming responses should still be passed through)
       if (body.stream) {
-        const strippedResponse = stripMcpPrefixFromResponse(response);
-        return { success: true, response: strippedResponse, source: "claude_code" };
+        return { success: true, response, source: "claude_code" };
       }
 
       let errorMessage = "API error";
@@ -604,12 +618,7 @@ async function makeClaudeCodeRequest(
       finalizeRateLimitProbe("cleared");
     }
 
-    // Update cache keepalive prefix so pings reuse the same tools+system
-    updateCachePrefix(preparedBody);
-
-    // Strip mcp_ prefix from tool names in streaming/non-streaming responses
-    const strippedResponse = stripMcpPrefixFromResponse(response);
-    return { success: true, response: strippedResponse, source: "claude_code" };
+    return { success: true, response, source: "claude_code" };
   } catch (error) {
     // Network error, timeout, aborted, etc. — never call cacheRateLimit,
     // but we still need to release the probe slot so it doesn't deadlock.
@@ -617,38 +626,6 @@ async function makeClaudeCodeRequest(
     console.error("Claude Code OAuth request failed:", error);
     return { success: false, error: String(error) };
   }
-}
-
-/**
- * Wraps a response to strip the "mcp_" prefix from tool names.
- * This reverses the prefixing done in prepareClaudeCodeBody.
- */
-function stripMcpPrefixFromResponse(response: Response): Response {
-  if (!response.body) return response;
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        controller.close();
-        return;
-      }
-      let text = decoder.decode(value, { stream: true });
-      // Strip mcp_ prefix from tool names in JSON responses
-      text = text.replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
-      controller.enqueue(encoder.encode(text));
-    },
-  });
-
-  return new Response(stream, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
 }
 
 /**
@@ -714,7 +691,6 @@ export async function proxyRequest(endpoint: string, body: AnthropicRequest): Pr
   const result = await makeClaudeCodeRequest(endpoint, body);
 
   if (result.success) {
-    markSuccessfulProxyActivity();
     console.log(`✓ Request served via Claude Code`);
     return extractUsageFromResponse(result.response, model, stream, startTime);
   }

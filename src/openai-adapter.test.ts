@@ -23,7 +23,6 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: false,
       thinkingEffort: "high",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -40,7 +39,6 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: true,
       thinkingEffort: "low",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -48,10 +46,10 @@ describe("openaiToAnthropic", () => {
     expect(result.model).toBe("claude-sonnet-4-6");
     expect(result.thinking).toEqual({
       type: "enabled",
-      budget_tokens: 4096,
+      budget_tokens: 2048,
     });
     expect(result.temperature).toBe(1);
-    expect(result.max_tokens).toBe(12288);
+    expect(result.max_tokens).toBe(4096);
   });
 
   test("respects reasoning_effort from client over stored settings", () => {
@@ -60,7 +58,6 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     };
 
     const request = {
@@ -70,10 +67,10 @@ describe("openaiToAnthropic", () => {
 
     const result = openaiToAnthropic(request, settings);
 
-    // Should use client's "low" (4096) instead of stored "high" (16384)
+    // Should use client's "low" (2048) instead of stored "high" (8192)
     expect(result.thinking).toEqual({
       type: "enabled",
-      budget_tokens: 4096,
+      budget_tokens: 2048,
     });
   });
 
@@ -83,14 +80,13 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: true,
       thinkingEffort: "high",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
 
     expect(result.thinking).toEqual({
       type: "enabled",
-      budget_tokens: 16384,
+      budget_tokens: 8192,
     });
   });
 
@@ -100,7 +96,6 @@ describe("openaiToAnthropic", () => {
       thinkingEnabled: false,
       thinkingEffort: "medium",
       cacheTTL: "5m",
-      keepaliveInterval: "4m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);

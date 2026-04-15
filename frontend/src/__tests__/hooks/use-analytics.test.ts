@@ -24,7 +24,6 @@ const mockSummary = {
   totalRequests: 42,
   claudeCodeRequests: 40,
   errorRequests: 2,
-  keepaliveRequests: 3,
   totalInputTokens: 10_000,
   totalOutputTokens: 5_000,
   totalCacheReadTokens: 3_000,

@@ -29,7 +29,7 @@ function rewriteAnthropicJsonResponseModel(bodyText: string): string {
     return JSON.stringify({
       ...body,
       model: PUBLIC_MODEL_ID,
-    } satisfies AnthropicResponse);
+    } satisfies AnthropicResponse).replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
   } catch {
     return bodyText;
   }
@@ -139,7 +139,11 @@ function rewriteAnthropicSseResponseModel(
               }
             }
 
-            controller.enqueue(encoder.encode(`${rewriteAnthropicSseLine(line)}\n`));
+            const rewritten = rewriteAnthropicSseLine(line).replace(
+              /"name"\s*:\s*"mcp_([^"]+)"/g,
+              '"name": "$1"',
+            );
+            controller.enqueue(encoder.encode(`${rewritten}\n`));
             buffer = buffer.slice(newlineIndex + 1);
             newlineIndex = buffer.indexOf("\n");
           }

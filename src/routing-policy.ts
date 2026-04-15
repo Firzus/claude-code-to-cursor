@@ -48,6 +48,12 @@ export function adaptiveThinkingEffort(
   if (shape.lastMsgHasToolResult) {
     return "low";
   }
+  if (shape.toolResultCount > 3) {
+    return "low";
+  }
+  if (shape.messageCount > 20) {
+    return "low";
+  }
   if (shape.messageCount > 10) {
     return minThinkingEffort("medium", capEffort);
   }
