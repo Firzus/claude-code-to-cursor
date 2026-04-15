@@ -13,14 +13,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, AreaChart, CartesianGrid, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { AgoText } from "~/components/analytics/ago-text";
 import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import { ExpandableRow } from "~/components/analytics/expandable-row";
@@ -282,8 +275,7 @@ function AnalyticsPage() {
             <div className="flex items-center gap-2 mb-4">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-[12px] text-muted-foreground font-medium">
-                Today (UTC) &mdash;{" "}
-                {new Date(budget.data.periodStart).toISOString().slice(0, 10)}
+                Today (UTC) &mdash; {new Date(budget.data.periodStart).toISOString().slice(0, 10)}
               </span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -306,8 +298,7 @@ function AnalyticsPage() {
               <BudgetMetric
                 label="Cache saved"
                 value={`$${(
-                  (budget.data.cacheReadTokens * (1 - CACHE_READ_COST_RATIO) * 15) /
-                  1_000_000
+                  (budget.data.cacheReadTokens * (1 - CACHE_READ_COST_RATIO) * 15) / 1_000_000
                 ).toFixed(2)}`}
                 accent="success"
               />
@@ -364,7 +355,11 @@ function AnalyticsPage() {
             icon={DollarSign}
             label="Est. cost saved"
             value={`$${s.cacheSavingsUsdEstimate.toFixed(2)}`}
-            sub={savings.savingsPercent > 0 ? `${pct(savings.savingsPercent)} less vs no cache` : "no data yet"}
+            sub={
+              savings.savingsPercent > 0
+                ? `${pct(savings.savingsPercent)} less vs no cache`
+                : "no data yet"
+            }
             accent="success"
           />
           <StatCard
@@ -377,7 +372,11 @@ function AnalyticsPage() {
           <StatCard
             icon={TrendingDown}
             label="Avg output"
-            value={s.totalRequests > 0 ? fmt(Math.round(s.totalOutputTokens / s.totalRequests)) : "\u2014"}
+            value={
+              s.totalRequests > 0
+                ? fmt(Math.round(s.totalOutputTokens / s.totalRequests))
+                : "\u2014"
+            }
             sub={`${fmt(s.totalOutputTokens)} total`}
             accent="chart-2"
           />
@@ -405,10 +404,7 @@ function AnalyticsPage() {
             <div className="text-[12px] text-muted-foreground mb-3 font-medium">
               Token usage over time
             </div>
-            <ChartContainer
-              config={tokenBreakdownConfig}
-              className="aspect-auto h-[200px] w-full"
-            >
+            <ChartContainer config={tokenBreakdownConfig} className="aspect-auto h-[200px] w-full">
               <AreaChart
                 accessibilityLayer
                 data={timelineData}
@@ -558,9 +554,7 @@ function AnalyticsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]" aria-label="Request history">
-                <caption className="sr-only">
-                  API request history with expandable details
-                </caption>
+                <caption className="sr-only">API request history with expandable details</caption>
                 <thead>
                   <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
                     <th className="px-4 py-2 font-normal whitespace-nowrap">Date</th>
@@ -620,10 +614,7 @@ function BudgetMetric({
     <div className="flex flex-col gap-0.5">
       <span className="text-[11px] text-muted-foreground font-medium">{label}</span>
       <span
-        className={cn(
-          "font-mono tabular font-semibold",
-          primary ? "text-2xl" : "text-lg",
-        )}
+        className={cn("font-mono tabular font-semibold", primary ? "text-2xl" : "text-lg")}
         style={accent ? { color: `var(--color-${accent})` } : undefined}
       >
         {value}

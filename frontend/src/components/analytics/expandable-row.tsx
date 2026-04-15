@@ -85,7 +85,10 @@ export function ExpandableRow({
         <td className="px-4 py-2.5 text-right">
           {r.source === "error" ? (
             <>
-              <span className="inline-block h-2 w-2 rounded-full bg-destructive" aria-hidden="true" />
+              <span
+                className="inline-block h-2 w-2 rounded-full bg-destructive"
+                aria-hidden="true"
+              />
               <span className="sr-only">Error</span>
             </>
           ) : (
@@ -125,18 +128,13 @@ export function ExpandableRow({
                 value={cacheRate > 0 ? `${cacheRate.toFixed(1)}%` : "\u2014"}
                 accent={cacheRate >= 80 ? "success" : cacheRate >= 40 ? "warning" : undefined}
               />
-              <DetailItem
-                label="Thinking"
-                value={think > 0 ? formatTokens(think) : "\u2014"}
-              />
+              <DetailItem label="Thinking" value={think > 0 ? formatTokens(think) : "\u2014"} />
               <DetailItem
                 label="Latency"
                 value={r.latencyMs ? `${(r.latencyMs / 1000).toFixed(1)}s` : "\u2014"}
               />
               <DetailItem label="Route" value={r.route ?? "\u2014"} />
-              {r.routingPolicy && (
-                <DetailItem label="Policy" value={r.routingPolicy} />
-              )}
+              {r.routingPolicy && <DetailItem label="Policy" value={r.routingPolicy} />}
               {r.error && (
                 <div className="col-span-full">
                   <DetailItem label="Error" value={r.error} accent="destructive" />
@@ -150,22 +148,11 @@ export function ExpandableRow({
   );
 }
 
-function DetailItem({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-}) {
+function DetailItem({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="flex items-baseline gap-2 font-mono">
       <span className="text-muted-foreground shrink-0">{label}</span>
-      <span
-        className="tabular"
-        style={{ color: accent ? `var(--color-${accent})` : undefined }}
-      >
+      <span className="tabular" style={{ color: accent ? `var(--color-${accent})` : undefined }}>
         {value}
       </span>
     </div>
