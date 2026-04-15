@@ -96,6 +96,7 @@ const requestsData = {
       stream: true,
       latencyMs: 1200,
       error: null,
+      estimatedUsd: 0.03,
     },
   ],
   total: 1,
@@ -167,10 +168,37 @@ describe("AnalyticsPage", () => {
 
     expect(screen.getByText("Requests")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
-    expect(screen.getByText("Cache Hit Rate")).toBeInTheDocument();
-    expect(screen.getByText("Token budget — today (UTC)")).toBeInTheDocument();
-    expect(screen.getByText("Thinking tokens")).toBeInTheDocument();
-    expect(screen.getByText("Keepalive pings")).toBeInTheDocument();
+    expect(screen.getByText("Cache hit rate")).toBeInTheDocument();
+    expect(screen.getByText("Est. cost saved")).toBeInTheDocument();
+    expect(screen.getByText("Avg output")).toBeInTheDocument();
+  });
+
+  it("shows budget section", async () => {
+    mockSummary.mockReturnValue({
+      data: summaryData,
+      isLoading: false,
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      refetch: vi.fn(),
+    } as never);
+    mockRequests.mockReturnValue({
+      data: requestsData,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+    mockTimeline.mockReturnValue({
+      data: { period: "day", buckets: [] },
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    await renderAnalyticsPage();
+
+    expect(screen.getByText("Estimated cost")).toBeInTheDocument();
+    expect(screen.getByText("$1.25")).toBeInTheDocument();
+    expect(screen.getByText("Tokens in")).toBeInTheDocument();
+    expect(screen.getByText("Tokens out")).toBeInTheDocument();
   });
 
   it("shows error state", async () => {
@@ -258,7 +286,7 @@ describe("AnalyticsPage", () => {
     expect(screen.getByText("All")).toBeInTheDocument();
   });
 
-  it("has refresh and reset buttons", async () => {
+  it("has refresh, reset, and export buttons", async () => {
     mockSummary.mockReturnValue({
       data: summaryData,
       isLoading: false,
@@ -282,5 +310,33 @@ describe("AnalyticsPage", () => {
 
     expect(screen.getByLabelText("Refresh analytics data")).toBeInTheDocument();
     expect(screen.getByLabelText("Reset analytics data")).toBeInTheDocument();
+    expect(screen.getByLabelText("Export CSV")).toBeInTheDocument();
+  });
+
+  it("renders request table with expandable rows", async () => {
+    mockSummary.mockReturnValue({
+      data: summaryData,
+      isLoading: false,
+      isError: false,
+      dataUpdatedAt: Date.now(),
+      refetch: vi.fn(),
+    } as never);
+    mockRequests.mockReturnValue({
+      data: requestsData,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as never);
+    mockTimeline.mockReturnValue({
+      data: { period: "day", buckets: [] },
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    await renderAnalyticsPage();
+
+    expect(screen.getByText("Request History")).toBeInTheDocument();
+    expect(screen.getByText("opus-4-6")).toBeInTheDocument();
+    expect(screen.getByText("$0.03")).toBeInTheDocument();
   });
 });

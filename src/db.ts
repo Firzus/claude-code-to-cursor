@@ -309,6 +309,7 @@ export function getRecentRequests(
     toolDefsCount: number | null;
     routingPolicy: string | null;
     appliedThinkingEffort: string | null;
+    estimatedUsd: number;
   }>;
   total: number;
 } {
@@ -345,6 +346,11 @@ export function getRecentRequests(
     applied_thinking_effort: string | null;
   }>;
 
+  const INPUT_USD_PER_M = 15;
+  const OUTPUT_USD_PER_M = 75;
+  const CACHE_READ_USD_PER_M = INPUT_USD_PER_M * 0.1;
+  const CACHE_CREATION_USD_PER_M = INPUT_USD_PER_M * 1.25;
+
   return {
     total: countResult.count,
     requests: rows.map((row) => ({
@@ -365,6 +371,12 @@ export function getRecentRequests(
       toolDefsCount: row.tool_defs_count,
       routingPolicy: row.routing_policy,
       appliedThinkingEffort: row.applied_thinking_effort,
+      estimatedUsd:
+        (row.input_tokens * INPUT_USD_PER_M +
+          row.output_tokens * OUTPUT_USD_PER_M +
+          row.cache_read_tokens * CACHE_READ_USD_PER_M +
+          row.cache_creation_tokens * CACHE_CREATION_USD_PER_M) /
+        1_000_000,
     })),
   };
 }

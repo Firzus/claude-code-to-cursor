@@ -63,6 +63,7 @@ export const requestRecordSchema = z.object({
   toolDefsCount: z.number().nullable().optional(),
   routingPolicy: z.string().nullable().optional(),
   appliedThinkingEffort: z.string().nullable().optional(),
+  estimatedUsd: z.number().optional(),
 });
 
 export type RequestRecord = z.infer<typeof requestRecordSchema>;
