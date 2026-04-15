@@ -6,12 +6,12 @@
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
+  getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
   type ModelSettings,
   type ThinkingEffort,
 } from "./model-settings";
-import { computeRequestShape } from "./request-metrics";
 import { applyThinkingToBody, pickRoute } from "./routing-policy";
 import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
@@ -477,19 +477,20 @@ export function openaiToAnthropic(
   originalRequest: OpenAIChatRequest,
   modelSettings: ModelSettings,
 ): AnthropicRequest {
-  const base = openaiToAnthropicBase(originalRequest, modelSettings.selectedModel);
+  const apiModelId = getApiModelId(modelSettings.selectedModel);
+  const base = openaiToAnthropicBase(originalRequest, apiModelId);
   const clientEffort =
     typeof originalRequest.reasoning_effort === "string" &&
     ["low", "medium", "high"].includes(originalRequest.reasoning_effort)
       ? (originalRequest.reasoning_effort as ThinkingEffort)
       : null;
-  const shape = computeRequestShape(base, "openai", clientEffort);
-  const decision = pickRoute({ settings: modelSettings, shape, clientEffort });
+  const decision = pickRoute({ settings: modelSettings, clientEffort });
   return applyThinkingToBody(
     base,
     decision,
     originalRequest.max_tokens ?? originalRequest.max_completion_tokens,
     originalRequest.temperature,
+    apiModelId,
   );
 }
 

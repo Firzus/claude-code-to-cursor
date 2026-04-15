@@ -104,17 +104,19 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         ? (openaiBody.reasoning_effort as "low" | "medium" | "high")
         : null;
 
-    const converted = openaiToAnthropicBase(openaiBody, getApiModelId(modelSettings.selectedModel));
+    const apiModelId = getApiModelId(modelSettings.selectedModel);
+    const converted = openaiToAnthropicBase(openaiBody, apiModelId);
 
     const shape = computeRequestShape(converted, "openai", clientEffort);
 
-    const decision = pickRoute({ settings: modelSettings, shape, clientEffort });
+    const decision = pickRoute({ settings: modelSettings, clientEffort });
 
     const anthropicBody = applyThinkingToBody(
       converted,
       decision,
       openaiBody.max_tokens ?? openaiBody.max_completion_tokens,
       openaiBody.temperature,
+      apiModelId,
     );
 
     logAnthropicConversion(openaiBody, anthropicBody);
@@ -182,6 +184,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
             latencyMs: Date.now() - streamStartTime,
             shape,
             decision,
+            appliedModel: anthropicBody.model,
           });
         },
       );
@@ -215,6 +218,9 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     console.error("OpenAI request handling error:", error);
     const fullError = error instanceof Error ? error.message : String(error);
     logger.error(`OpenAI request handling error: ${fullError}`);
-    return Response.json({ error: { message: "Request processing failed", type: "invalid_request_error" } }, { status: 400 });
+    return Response.json(
+      { error: { message: "Request processing failed", type: "invalid_request_error" } },
+      { status: 400 },
+    );
   }
 }

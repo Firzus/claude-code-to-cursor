@@ -120,6 +120,7 @@ interface RequestRecord {
   error?: string;
   shape?: RequestShapeMetrics;
   decision?: RoutingDecision;
+  appliedModel?: string;
 }
 
 /**
@@ -161,7 +162,7 @@ export function recordRequest(record: RequestRecord): void {
       shape?.toolDefsHash ?? null,
       shape?.clientSystemHash ?? null,
       shape?.clientReasoningEffort ?? null,
-      decision?.model ?? null,
+      record.appliedModel ?? null,
       decision?.effort ?? null,
       decision?.policy ?? null,
     ],

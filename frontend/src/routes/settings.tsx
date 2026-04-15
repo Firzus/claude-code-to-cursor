@@ -54,8 +54,6 @@ function SettingsPage() {
 
   const thinkingEnabled = form.watch("thinkingEnabled");
   const selectedModel = form.watch("selectedModel");
-  const adaptiveRouting = form.watch("adaptiveRouting");
-  const continuationModel = form.watch("continuationModel");
   const cacheTTL = form.watch("cacheTTL");
   const isDirty = form.formState.isDirty;
 
@@ -144,7 +142,7 @@ function SettingsPage() {
           <CardHeader className="p-4 pb-3">
             <CardTitle className="text-[13px]">Model</CardTitle>
             <CardDescription className="text-[12px]">
-              Select the Claude model for fresh turns
+              Select the Claude model used for all requests
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 pt-0 space-y-2">
@@ -207,111 +205,6 @@ function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Adaptive Routing */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-[13px]">Adaptive Routing</CardTitle>
-            <CardDescription className="text-[12px]">
-              Automatically use a lighter model on tool-result continuation turns
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-4">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={adaptiveRouting}
-                aria-label="Toggle adaptive routing"
-                onClick={() =>
-                  form.setValue("adaptiveRouting", !adaptiveRouting, { shouldDirty: true })
-                }
-                className={cn(
-                  "relative h-5 w-9 rounded-full transition-colors cursor-pointer",
-                  adaptiveRouting ? "bg-foreground" : "bg-muted",
-                )}
-              >
-                <span
-                  className={cn(
-                    "absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform bg-background",
-                    adaptiveRouting && "translate-x-4",
-                  )}
-                />
-              </button>
-              <span className="text-[13px]">{adaptiveRouting ? "On" : "Off"}</span>
-            </div>
-
-            {/* Continuation model selector */}
-            <div
-              className={cn(
-                "space-y-2 transition-opacity",
-                !adaptiveRouting && "opacity-30 pointer-events-none",
-              )}
-            >
-              <div className="text-[12px] text-muted-foreground">Continuation model</div>
-              <div className="space-y-1.5">
-                {supportedModels.map((model) => {
-                  const meta = modelMeta[model] as ModelMeta;
-                  const Icon = meta.icon;
-                  const isSelected = continuationModel === model;
-                  return (
-                    <button
-                      key={model}
-                      type="button"
-                      onClick={() =>
-                        form.setValue("continuationModel", model, { shouldDirty: true })
-                      }
-                      className={cn(
-                        "model-card group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all duration-200 cursor-pointer",
-                        "border",
-                        isSelected
-                          ? "bg-card border-accent/50 shadow-[0_0_8px_-3px_var(--color-accent)] ring-1 ring-accent/20"
-                          : "border-border/60 hover:border-border hover:bg-card/60",
-                        meta.accentClass,
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
-                          isSelected
-                            ? "bg-accent/15 text-accent"
-                            : "bg-muted/60 text-muted-foreground group-hover:bg-muted group-hover:text-foreground/70",
-                        )}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div
-                          className={cn(
-                            "text-[12px] font-medium transition-colors",
-                            isSelected
-                              ? "text-foreground"
-                              : "text-foreground/80 group-hover:text-foreground",
-                          )}
-                        >
-                          {modelLabels[model]}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                          {meta.context}
-                        </div>
-                      </div>
-                      <div
-                        className={cn(
-                          "flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200",
-                          isSelected
-                            ? "border-accent bg-accent"
-                            : "border-muted-foreground/40 group-hover:border-muted-foreground/70",
-                        )}
-                      >
-                        {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-background" />}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Thinking */}
         <Card>
           <CardHeader className="p-4 pb-3">
@@ -352,9 +245,7 @@ function SettingsPage() {
                 !thinkingEnabled && "opacity-30 pointer-events-none",
               )}
             >
-              <div className="text-[12px] text-muted-foreground">
-                {adaptiveRouting ? "Fresh-turn effort" : "Effort"}
-              </div>
+              <div className="text-[12px] text-muted-foreground">Effort</div>
               <div className="inline-flex rounded-lg border border-border text-[12px] overflow-hidden">
                 {thinkingEfforts.map((e) => (
                   <button

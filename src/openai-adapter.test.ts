@@ -22,8 +22,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-haiku-4-5",
       thinkingEnabled: false,
       thinkingEffort: "high",
-      adaptiveRouting: false,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     };
 
@@ -40,8 +38,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: true,
       thinkingEffort: "low",
-      adaptiveRouting: false,
-      continuationModel: "claude-haiku-4-5",
       cacheTTL: "5m",
     };
 
@@ -61,8 +57,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      adaptiveRouting: false,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     };
 
@@ -85,8 +79,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      adaptiveRouting: false,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     };
 
@@ -103,8 +95,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: false,
       thinkingEffort: "medium",
-      adaptiveRouting: false,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     };
 

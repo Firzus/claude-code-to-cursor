@@ -15,8 +15,6 @@ export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
   thinkingEnabled: boolean;
   thinkingEffort: ThinkingEffort;
-  adaptiveRouting: boolean;
-  continuationModel: SupportedSelectedModel;
   cacheTTL: CacheTTL;
 }
 
@@ -26,8 +24,6 @@ export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-6",
   thinkingEnabled: true,
   thinkingEffort: "high",
-  adaptiveRouting: true,
-  continuationModel: "claude-sonnet-4-6",
   cacheTTL: "5m",
 } as const satisfies ModelSettings;
 
@@ -101,17 +97,6 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error("Invalid thinkingEffort value");
   }
 
-  if (typeof candidate.adaptiveRouting !== "boolean") {
-    throw new Error("Invalid adaptiveRouting value");
-  }
-
-  if (
-    candidate.continuationModel === undefined ||
-    !SUPPORTED_SELECTED_MODELS.includes(candidate.continuationModel)
-  ) {
-    throw new Error(`Unsupported continuationModel: ${String(candidate.continuationModel)}`);
-  }
-
   if (candidate.cacheTTL === undefined || !CACHE_TTL_VALUES.includes(candidate.cacheTTL)) {
     throw new Error(`Invalid cacheTTL value: ${String(candidate.cacheTTL)}`);
   }
@@ -120,8 +105,6 @@ export function validateModelSettings(input: unknown): ModelSettings {
     selectedModel: candidate.selectedModel,
     thinkingEnabled: candidate.thinkingEnabled,
     thinkingEffort: candidate.thinkingEffort,
-    adaptiveRouting: candidate.adaptiveRouting,
-    continuationModel: candidate.continuationModel,
     cacheTTL: candidate.cacheTTL,
   };
 }

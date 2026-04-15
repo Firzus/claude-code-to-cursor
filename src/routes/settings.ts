@@ -43,11 +43,6 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
           ? body.thinkingEnabled
           : body.thinkingEnabled === "true",
       thinkingEffort: (body.thinkingEffort as string) ?? "",
-      adaptiveRouting:
-        typeof body.adaptiveRouting === "boolean"
-          ? body.adaptiveRouting
-          : body.adaptiveRouting === "true",
-      continuationModel: (body.continuationModel as string) ?? "",
       cacheTTL: (body.cacheTTL as string) ?? "",
     });
 

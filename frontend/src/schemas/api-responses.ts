@@ -97,8 +97,6 @@ export const settingsResponseSchema = z.object({
     selectedModel: z.enum(supportedModels),
     thinkingEnabled: z.boolean(),
     thinkingEffort: z.enum(thinkingEfforts),
-    adaptiveRouting: z.boolean(),
-    continuationModel: z.enum(supportedModels),
     cacheTTL: z.enum(cacheTTLValues),
   }),
 });

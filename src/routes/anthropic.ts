@@ -2,6 +2,7 @@ import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
+  getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
   PUBLIC_MODEL_ID,
@@ -222,13 +223,14 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       typeof incomingBody.reasoning_budget === "string" ? incomingBody.reasoning_budget : null,
     );
 
-    const decision = pickRoute({ settings: modelSettings, shape, clientEffort });
+    const decision = pickRoute({ settings: modelSettings, clientEffort });
 
     const body = applyThinkingToBody(
       bodyWithoutClientThinkingControls,
       decision,
       normalizedBody.max_tokens,
       incomingBody.temperature,
+      getApiModelId(modelSettings.selectedModel),
     );
 
     console.log(
@@ -252,6 +254,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
               latencyMs: Date.now() - streamStartTime,
               shape,
               decision,
+              appliedModel: body.model,
             });
           }
         : undefined,

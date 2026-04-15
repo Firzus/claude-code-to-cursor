@@ -246,8 +246,6 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        adaptiveRouting: true,
-        continuationModel: "claude-sonnet-4-6",
         cacheTTL: "5m",
       },
     };
@@ -260,8 +258,6 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-invalid",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        adaptiveRouting: true,
-        continuationModel: "claude-sonnet-4-6",
         cacheTTL: "5m",
       },
     };
@@ -274,8 +270,6 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "ultra",
-        adaptiveRouting: true,
-        continuationModel: "claude-sonnet-4-6",
         cacheTTL: "5m",
       },
     };

@@ -26,8 +26,6 @@ const mockSettings = {
     selectedModel: "claude-opus-4-6" as const,
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
-    adaptiveRouting: true,
-    continuationModel: "claude-sonnet-4-6" as const,
     cacheTTL: "5m" as const,
   },
 };
@@ -81,11 +79,9 @@ describe("SettingsPage", () => {
     await renderSettingsPage();
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
-    // Each model label appears twice: once in the main Model card,
-    // once in the Adaptive Routing continuation model selector.
-    expect(screen.getAllByText("Claude Opus 4.6")).toHaveLength(2);
-    expect(screen.getAllByText("Claude Sonnet 4.6")).toHaveLength(2);
-    expect(screen.getAllByText("Claude Haiku 4.5")).toHaveLength(2);
+    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Haiku 4.5")).toBeInTheDocument();
   });
 
   it("renders thinking toggle and effort buttons", async () => {
@@ -99,26 +95,10 @@ describe("SettingsPage", () => {
     await renderSettingsPage();
 
     expect(screen.getByText("Extended Thinking")).toBeInTheDocument();
-    // Two switches: Extended Thinking toggle + Adaptive Routing toggle
-    expect(screen.getAllByRole("switch")).toHaveLength(2);
+    expect(screen.getAllByRole("switch")).toHaveLength(1);
     expect(screen.getByText("low")).toBeInTheDocument();
     expect(screen.getByText("medium")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
-  });
-
-  it("renders the adaptive routing card", async () => {
-    mockUseSettings.mockReturnValue({
-      data: mockSettings,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as never);
-
-    await renderSettingsPage();
-
-    expect(screen.getByText("Adaptive Routing")).toBeInTheDocument();
-    expect(screen.getByLabelText("Toggle adaptive routing")).toBeInTheDocument();
-    expect(screen.getByText("Continuation model")).toBeInTheDocument();
   });
 
   it("shows save and discard buttons", async () => {

@@ -7,8 +7,6 @@ describe("settingsFormSchema", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      adaptiveRouting: true,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     });
     expect(result.success).toBe(true);
@@ -20,8 +18,6 @@ describe("settingsFormSchema", () => {
         selectedModel: model,
         thinkingEnabled: false,
         thinkingEffort: "low",
-        adaptiveRouting: false,
-        continuationModel: "claude-haiku-4-5",
         cacheTTL: "1h",
       });
       expect(result.success).toBe(true);
@@ -33,8 +29,6 @@ describe("settingsFormSchema", () => {
       selectedModel: "gpt-4",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      adaptiveRouting: true,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     });
     expect(result.success).toBe(false);
@@ -45,8 +39,6 @@ describe("settingsFormSchema", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: true,
       thinkingEffort: "ultra",
-      adaptiveRouting: true,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     });
     expect(result.success).toBe(false);
@@ -57,8 +49,6 @@ describe("settingsFormSchema", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      adaptiveRouting: true,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "1d",
     });
     expect(result.success).toBe(false);

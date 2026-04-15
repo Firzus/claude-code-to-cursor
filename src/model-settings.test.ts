@@ -25,8 +25,6 @@ describe("model settings contract", () => {
       selectedModel: "claude-opus-4-6",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      adaptiveRouting: true,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     });
   });
@@ -46,16 +44,12 @@ describe("model settings contract", () => {
         selectedModel: "claude-sonnet-4-6",
         thinkingEnabled: false,
         thinkingEffort: "low",
-        adaptiveRouting: true,
-        continuationModel: "claude-haiku-4-5",
         cacheTTL: "1h",
       }),
     ).toEqual({
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: false,
       thinkingEffort: "low",
-      adaptiveRouting: true,
-      continuationModel: "claude-haiku-4-5",
       cacheTTL: "1h",
     });
     expect(
@@ -63,16 +57,12 @@ describe("model settings contract", () => {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: true,
         thinkingEffort: "medium",
-        adaptiveRouting: false,
-        continuationModel: "claude-sonnet-4-6",
         cacheTTL: "5m",
       }),
     ).toEqual({
       selectedModel: "claude-haiku-4-5",
       thinkingEnabled: true,
       thinkingEffort: "medium",
-      adaptiveRouting: false,
-      continuationModel: "claude-sonnet-4-6",
       cacheTTL: "5m",
     });
   });

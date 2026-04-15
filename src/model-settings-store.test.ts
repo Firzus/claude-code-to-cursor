@@ -30,8 +30,6 @@ describe("model settings store", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: false,
         thinkingEffort: "medium",
-        adaptiveRouting: false,
-        continuationModel: "claude-haiku-4-5",
         cacheTTL: "1h",
       } as const;
 
@@ -53,8 +51,6 @@ describe("model settings store", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        adaptiveRouting: true,
-        continuationModel: "claude-sonnet-4-6",
         cacheTTL: "5m",
       });
 
@@ -62,8 +58,6 @@ describe("model settings store", () => {
         selectedModel: "claude-opus-4-6",
         thinkingEnabled: false,
         thinkingEffort: "low",
-        adaptiveRouting: false,
-        continuationModel: "claude-haiku-4-5",
         cacheTTL: "1h",
       } as const;
 

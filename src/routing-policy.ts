@@ -1,32 +1,23 @@
 /**
- * Adaptive routing policy — decides both the API model and thinking effort
- * for each proxied request based on its shape.
+ * Routing policy — decides the thinking effort for each proxied request.
+ *
+ * The model itself is always `settings.selectedModel`; routing only picks the
+ * thinking budget based on user settings and any client-provided override.
  *
  * Pure module: no I/O, no logger dependency → easy to unit-test.
  */
 
-import type { RequestShapeMetrics } from "./db";
 import {
-  getApiModelId,
   getThinkingBudget,
   type ModelSettings,
-  type SupportedSelectedModel,
   THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
 } from "./model-settings";
 import type { AnthropicRequest } from "./types";
 
-export type RoutingPolicyLabel =
-  | "disabled"
-  | "disabled-continuation"
-  | "client"
-  | "fresh"
-  | "continuation"
-  | "adaptive-off";
+export type RoutingPolicyLabel = "disabled" | "client" | "stored";
 
 export interface RoutingDecision {
-  /** The actual model to use for this request */
-  model: SupportedSelectedModel;
   /** null = thinking disabled for this request */
   effort: ThinkingEffort | null;
   /** How the decision was reached */
@@ -36,86 +27,33 @@ export interface RoutingDecision {
 }
 
 /**
- * Two-step decision (model and effort are orthogonal concerns):
- *
- * Step 1 — Model:
- *   adaptiveRouting && isContinuation → continuationModel
- *   else                              → defaultModel
- *
- * Step 2 — Effort + policy label:
- *   !thinkingEnabled                  → null,         "disabled" | "disabled-continuation"
- *   clientEffort !== null             → client,       "client"
- *   !adaptiveRouting                  → storedEffort, "adaptive-off"
- *   isContinuation                    → null,         "continuation"
- *   otherwise                         → storedEffort, "fresh"
- *
- * "Continuation turn" = last message has a tool_result block AND there is at
- * least one tool_use block in the conversation (defensive guard against
- * synthetic first-turn tool_result injection).
- *
- * Note: model adaptation is independent of thinking. A continuation turn with
- * thinking disabled still routes to `continuationModel` — labelled
- * `disabled-continuation` for telemetry.
+ * Decide thinking effort:
+ *   !thinkingEnabled         → null,         "disabled"
+ *   clientEffort !== null    → clientEffort, "client"
+ *   otherwise                → storedEffort, "stored"
  */
 export function pickRoute(args: {
   settings: ModelSettings;
-  shape: Pick<RequestShapeMetrics, "lastMsgHasToolResult" | "toolUseCount" | "toolResultCount">;
   clientEffort: ThinkingEffort | null;
 }): RoutingDecision {
-  const { settings, shape, clientEffort } = args;
-  const defaultModel = settings.selectedModel;
-  const storedEffort = settings.thinkingEffort;
+  const { settings, clientEffort } = args;
 
-  const isContinuation = shape.lastMsgHasToolResult && shape.toolUseCount > 0;
-
-  // Step 1: pick the model (orthogonal to thinking and clientEffort)
-  const model =
-    settings.adaptiveRouting && isContinuation ? settings.continuationModel : defaultModel;
-
-  // Step 2: pick the effort and policy label
   if (!settings.thinkingEnabled) {
-    return {
-      model,
-      effort: null,
-      policy: isContinuation && settings.adaptiveRouting ? "disabled-continuation" : "disabled",
-      budgetTokens: null,
-    };
+    return { effort: null, policy: "disabled", budgetTokens: null };
   }
 
   if (clientEffort !== null) {
     return {
-      model,
       effort: clientEffort,
       policy: "client",
       budgetTokens: getThinkingBudget(clientEffort),
     };
   }
 
-  if (!settings.adaptiveRouting) {
-    return {
-      model,
-      effort: storedEffort,
-      policy: "adaptive-off",
-      budgetTokens: getThinkingBudget(storedEffort),
-    };
-  }
-
-  if (isContinuation) {
-    // Continuations get NO thinking budget: telemetry shows Haiku never uses
-    // thinking on mechanical tool-loop turns (0/40+ observations post-deploy).
-    return {
-      model,
-      effort: null,
-      policy: "continuation",
-      budgetTokens: null,
-    };
-  }
-
   return {
-    model,
-    effort: storedEffort,
-    policy: "fresh",
-    budgetTokens: getThinkingBudget(storedEffort),
+    effort: settings.thinkingEffort,
+    policy: "stored",
+    budgetTokens: getThinkingBudget(settings.thinkingEffort),
   };
 }
 
@@ -133,10 +71,11 @@ export function applyThinkingToBody(
   decision: RoutingDecision,
   baseMaxTokens: number | undefined,
   clientTemperature: number | undefined,
+  apiModelId: string,
 ): AnthropicRequest {
   const result: AnthropicRequest = {
     ...body,
-    model: getApiModelId(decision.model),
+    model: apiModelId,
   };
 
   if (decision.effort === null || decision.budgetTokens === null) {
