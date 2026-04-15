@@ -40,10 +40,10 @@ export const Route = createFileRoute("/analytics")({
 });
 
 const periods = [
-  { value: "hour", label: "1H" },
+  { value: "5hour", label: "5H" },
   { value: "day", label: "24H" },
-  { value: "week", label: "7D" },
-  { value: "month", label: "30D" },
+  { value: "week", label: "7J" },
+  { value: "month", label: "30J" },
   { value: "all", label: "All" },
 ] as const;
 
@@ -437,7 +437,7 @@ function AnalyticsPage() {
                   stroke="var(--color-muted-foreground)"
                   tickFormatter={(v) => {
                     const d = new Date(v);
-                    if (period === "hour" || period === "day")
+                    if (period === "5hour" || period === "day")
                       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
                     return d.toLocaleDateString([], { month: "short", day: "numeric" });
                   }}

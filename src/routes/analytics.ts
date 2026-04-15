@@ -13,8 +13,8 @@ function validatePaginationParams(
 function calculateSince(period: string | null): number {
   const now = Date.now();
   switch (period) {
-    case "hour":
-      return now - 3_600_000;
+    case "5hour":
+      return now - 5 * 3_600_000;
     case "week":
       return now - 7 * 86_400_000;
     case "month":
@@ -54,7 +54,7 @@ export function handleAnalyticsRequests(url: URL): Response {
 }
 
 const PERIOD_BUCKETS: Record<string, number> = {
-  hour: 12,
+  "5hour": 20,
   day: 24,
   week: 7,
   month: 30,

@@ -278,10 +278,10 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("1H")).toBeInTheDocument();
+    expect(screen.getByText("5H")).toBeInTheDocument();
     expect(screen.getByText("24H")).toBeInTheDocument();
-    expect(screen.getByText("7D")).toBeInTheDocument();
-    expect(screen.getByText("30D")).toBeInTheDocument();
+    expect(screen.getByText("7J")).toBeInTheDocument();
+    expect(screen.getByText("30J")).toBeInTheDocument();
     expect(screen.getByText("All")).toBeInTheDocument();
   });
 
