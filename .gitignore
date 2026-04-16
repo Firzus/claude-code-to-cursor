@@ -10,6 +10,9 @@ dist
 coverage
 *.lcov
 **/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.db-shm
 # logs
 logs
 _.log
