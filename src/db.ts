@@ -11,6 +11,7 @@ import {
   saveModelSettingsToDb,
 } from "./model-settings-store";
 import type { RoutingDecision } from "./routing-policy";
+import { checkForStuckLoop } from "./stuck-loop-detector";
 import type { RequestShapeMetrics } from "./types";
 
 const DB_PATH = process.env.CCTC_DB_PATH || join(process.cwd(), "cctc.db");
@@ -156,52 +157,65 @@ interface RequestRecord {
   appliedModel?: string;
 }
 
+type SQLParam = string | number | null;
+
+function shapeToParams(shape: RequestShapeMetrics | undefined): SQLParam[] {
+  if (!shape) return [null, null, null, null, null, null, null, null, null, null];
+  return [
+    shape.route,
+    shape.messageCount,
+    shape.lastMsgRole,
+    shape.lastMsgHasToolResult ? 1 : 0,
+    shape.toolUseCount,
+    shape.toolResultCount,
+    shape.toolDefsCount,
+    shape.toolDefsHash ?? null,
+    shape.clientSystemHash ?? null,
+    shape.clientReasoningEffort ?? null,
+  ];
+}
+
+const INSERT_SQL = `INSERT INTO requests (
+  timestamp, model, source, input_tokens, output_tokens,
+  cache_read_tokens, cache_creation_tokens, stream, latency_ms, error,
+  route, message_count, last_msg_role, last_msg_has_tool_result,
+  tool_use_count, tool_result_count, tool_defs_count, tool_defs_hash,
+  client_system_hash, client_reasoning_effort,
+  applied_model, applied_thinking_effort, routing_policy,
+  thinking_tokens
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
 /**
  * Record a request in the database
  */
 export function recordRequest(record: RequestRecord): void {
-  const database = getDb();
-  const shape = record.shape;
-  const decision = record.decision;
+  const params: SQLParam[] = [
+    Date.now(),
+    record.model,
+    record.source,
+    record.inputTokens,
+    record.outputTokens,
+    record.cacheReadTokens ?? 0,
+    record.cacheCreationTokens ?? 0,
+    record.stream ? 1 : 0,
+    record.latencyMs ?? null,
+    record.error ?? null,
+    ...shapeToParams(record.shape),
+    record.appliedModel ?? null,
+    record.decision?.effort ?? null,
+    record.decision?.policy ?? null,
+    record.thinkingTokens ?? 0,
+  ];
 
-  database.run(
-    `INSERT INTO requests (
-       timestamp, model, source, input_tokens, output_tokens,
-       cache_read_tokens, cache_creation_tokens, stream, latency_ms, error,
-       route, message_count, last_msg_role, last_msg_has_tool_result,
-       tool_use_count, tool_result_count, tool_defs_count, tool_defs_hash,
-       client_system_hash, client_reasoning_effort,
-       applied_model, applied_thinking_effort, routing_policy,
-       thinking_tokens
-     )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      Date.now(),
-      record.model,
-      record.source,
-      record.inputTokens,
-      record.outputTokens,
-      record.cacheReadTokens ?? 0,
-      record.cacheCreationTokens ?? 0,
-      record.stream ? 1 : 0,
-      record.latencyMs ?? null,
-      record.error ?? null,
-      shape?.route ?? null,
-      shape?.messageCount ?? null,
-      shape?.lastMsgRole ?? null,
-      shape ? (shape.lastMsgHasToolResult ? 1 : 0) : null,
-      shape?.toolUseCount ?? null,
-      shape?.toolResultCount ?? null,
-      shape?.toolDefsCount ?? null,
-      shape?.toolDefsHash ?? null,
-      shape?.clientSystemHash ?? null,
-      shape?.clientReasoningEffort ?? null,
-      record.appliedModel ?? null,
-      decision?.effort ?? null,
-      decision?.policy ?? null,
-      record.thinkingTokens ?? 0,
-    ],
-  );
+  getDb().run(INSERT_SQL, params);
+
+  if (record.source === "claude_code") {
+    checkForStuckLoop({
+      toolDefsHash: record.shape?.toolDefsHash ?? null,
+      outputTokens: record.outputTokens,
+      messageCount: record.shape?.messageCount ?? null,
+    });
+  }
 }
 
 interface AnalyticsSummary {
