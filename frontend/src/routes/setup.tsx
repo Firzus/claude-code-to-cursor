@@ -1,17 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  ArrowLeft,
-  ArrowRight,
-  BarChart3,
-  Check,
-  CheckCircle2,
-  Copy,
-  Shield,
-  Terminal,
-  Zap,
-} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { BarChart3, CheckCircle2, Shield, Terminal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { OAuthFlow } from "~/components/oauth-flow";
+import { Panel } from "~/components/settings/panel";
 import { CopyBlock } from "~/components/setup/copy-block";
 import { NavButtons } from "~/components/setup/nav-buttons";
 import { StatusRow } from "~/components/setup/status-row";
@@ -22,10 +15,6 @@ import { apiFetch } from "~/lib/api-client";
 import { cn } from "~/lib/utils";
 import type { AnalyticsResponse } from "~/schemas/api-responses";
 
-export const Route = createFileRoute("/setup")({
-  component: SetupPage,
-});
-
 const STEPS = [
   { id: "welcome", label: "Welcome" },
   { id: "auth", label: "Authenticate" },
@@ -35,6 +24,17 @@ const STEPS = [
 
 type StepId = (typeof STEPS)[number]["id"];
 
+const setupSearchSchema = z.object({
+  step: z.enum(["welcome", "auth", "configure", "verify"]).optional(),
+});
+
+type SetupSearch = z.infer<typeof setupSearchSchema>;
+
+export const Route = createFileRoute("/setup")({
+  validateSearch: (search): SetupSearch => setupSearchSchema.parse(search),
+  component: SetupPage,
+});
+
 const STEP_STORAGE_KEY = "cctc:setup-step";
 
 function getProxyBase() {
@@ -42,7 +42,8 @@ function getProxyBase() {
   return `${window.location.protocol}//${window.location.hostname}:${window.__CCTC_API_PORT__ || 8082}`;
 }
 
-function getInitialStep(): StepId {
+function getInitialStep(searchStep?: StepId): StepId {
+  if (searchStep && STEPS.some((s) => s.id === searchStep)) return searchStep;
   if (typeof window === "undefined") return "welcome";
   const stored = sessionStorage.getItem(STEP_STORAGE_KEY);
   if (stored && STEPS.some((s) => s.id === stored)) return stored as StepId;
@@ -50,11 +51,18 @@ function getInitialStep(): StepId {
 }
 
 function SetupPage() {
-  const [currentStep, setCurrentStep] = useState<StepId>(getInitialStep);
+  const search = Route.useSearch();
+  const [currentStep, setCurrentStep] = useState<StepId>(() => getInitialStep(search.step));
   const { markComplete } = useOnboardingComplete();
   const navigate = useNavigate();
 
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
+
+  useEffect(() => {
+    if (search.step && STEPS.some((s) => s.id === search.step)) {
+      setCurrentStep(search.step);
+    }
+  }, [search.step]);
 
   useEffect(() => {
     sessionStorage.setItem(STEP_STORAGE_KEY, currentStep);
@@ -77,10 +85,22 @@ function SetupPage() {
   }, [markComplete, navigate]);
 
   return (
-    <div className="mx-auto max-w-2xl pt-4 animate-fade-in">
-      <StepIndicator steps={STEPS} currentIndex={stepIndex} />
+    <div className="mx-auto max-w-3xl space-y-8 pt-2 animate-fade-in">
+      <header className="flex flex-col gap-3 border-b border-border/60 pb-5">
+        <div className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+          <span aria-hidden="true" className="inline-block h-px w-6 bg-border" />
+          <span>setup.wizard</span>
+          <span aria-hidden="true" className="text-muted-foreground/50">
+            ·
+          </span>
+          <span className="text-muted-foreground/70 tabular">
+            {String(stepIndex + 1).padStart(2, "0")} / {String(STEPS.length).padStart(2, "0")}
+          </span>
+        </div>
+        <StepIndicator steps={STEPS} currentIndex={stepIndex} />
+      </header>
 
-      <div className="mt-8">
+      <div className="mt-2">
         {currentStep === "welcome" && <WelcomeStep onNext={next} />}
         {currentStep === "auth" && <AuthStep onNext={next} onPrev={prev} />}
         {currentStep === "configure" && <ConfigureStep onNext={next} onPrev={prev} />}
@@ -92,68 +112,108 @@ function SetupPage() {
 
 function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
-    <div className="space-y-8 animate-slide-up">
-      <div className="text-center space-y-3">
-        <div className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/5 px-4 py-1.5 text-[12px] font-medium text-accent">
-          <Zap className="h-3 w-3" />
-          First-time setup
+    <div className="space-y-10 animate-slide-up">
+      <div className="space-y-5">
+        <div
+          className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground"
+          style={{ animationDelay: "40ms" }}
+        >
+          <span aria-hidden="true" className="text-accent">
+            ↳
+          </span>
+          first-time setup · v1
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome to claude-code-to-cursor</h1>
-        <p className="text-[14px] text-muted-foreground leading-relaxed max-w-md mx-auto">
-          Route API requests through Claude Code OAuth. Use Claude in Cursor and other tools — no
-          API key needed.
+        <h1
+          className="font-mono font-semibold leading-[0.95] tracking-[-0.04em] text-[clamp(2rem,5vw,3.25rem)]"
+          style={{ animationDelay: "80ms" }}
+        >
+          <span className="block text-foreground">welcome</span>
+          <span className="block text-muted-foreground">
+            <span aria-hidden="true" className="text-foreground">
+              to_the_proxy
+            </span>
+            <span
+              aria-hidden="true"
+              className="ml-1 inline-block h-[0.62em] w-[0.32em] translate-y-[0.05em] bg-accent animate-[caret_1.1s_steps(2)_infinite]"
+            />
+          </span>
+        </h1>
+        <p className="max-w-xl text-[14px] leading-relaxed text-muted-foreground">
+          Route any OpenAI- or Anthropic-compatible client through Claude Code via OAuth. Token
+          refresh, cache-optimised prompts, and request analytics — without exposing a single API
+          key.
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <FeatureCard
+      <div className="grid gap-3 md:grid-cols-3">
+        <FeatureBlock
+          index="01 · Auth"
+          title="OAuth proxy"
+          description="Authenticate once via Anthropic. Tokens auto-refresh, never leave your machine."
           icon={Shield}
-          title="OAuth auth"
-          description="Authenticate once via Anthropic, tokens auto-refresh"
+          delay={120}
         />
-        <FeatureCard
-          icon={Terminal}
+        <FeatureBlock
+          index="02 · Translate"
           title="Any client"
-          description="OpenAI and Anthropic format endpoints, works everywhere"
+          description="OpenAI and Anthropic format endpoints — drop-in for Cursor, VS Code, custom tools."
+          icon={Terminal}
+          delay={180}
         />
-        <FeatureCard
+        <FeatureBlock
+          index="03 · Observe"
+          title="Analytics built-in"
+          description="Track requests, tokens, cache hits and budget — local SQLite, no leakage."
           icon={BarChart3}
-          title="Analytics"
-          description="Track requests, tokens, and cache performance"
+          delay={240}
         />
       </div>
 
-      <div className="flex justify-center">
-        <button
-          type="button"
-          onClick={onNext}
-          className="group inline-flex h-10 items-center gap-2.5 rounded-lg bg-accent px-6 text-[13px] font-medium text-background transition-all hover:brightness-110 cursor-pointer"
-        >
-          Get started
-          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </button>
+      <div className="flex items-center justify-between border-t border-border/60 pt-5">
+        <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+          $ wizard --start
+        </span>
+        <NavButtons onNext={onNext} nextLabel="get_started" />
       </div>
     </div>
   );
 }
 
-function FeatureCard({
-  icon: Icon,
+function FeatureBlock({
+  index,
   title,
   description,
+  icon: Icon,
+  delay = 0,
 }: {
-  icon: typeof Shield;
+  index: string;
   title: string;
   description: string;
+  icon: LucideIcon;
+  delay?: number;
 }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-card/40 p-4 space-y-2.5 transition-colors hover:border-border hover:bg-card/70">
-      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent/10 text-accent">
-        <Icon className="h-4 w-4" />
+    <article
+      className={cn(
+        "group relative flex flex-col gap-4 rounded-lg border border-border bg-card/30 p-5",
+        "transition-all duration-300 hover:-translate-y-0.5 hover:border-border/70 hover:bg-card/60",
+        "animate-fade-in",
+      )}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="flex items-start justify-between">
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+          {index}
+        </span>
+        <span className="rounded-md border border-border/80 bg-background/60 p-1.5 text-muted-foreground transition-colors group-hover:border-accent/50 group-hover:text-accent">
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
       </div>
-      <div className="text-[13px] font-medium">{title}</div>
-      <div className="text-[12px] text-muted-foreground leading-relaxed">{description}</div>
-    </div>
+      <div>
+        <h3 className="text-[14px] font-semibold tracking-tight text-foreground">{title}</h3>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+    </article>
   );
 }
 
@@ -163,23 +223,41 @@ function AuthStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => void }
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">Authenticate with Anthropic</h2>
-        <p className="text-[13px] text-muted-foreground">
-          Connect to Claude Code via OAuth. This is a one-time setup.
+      <Panel
+        index="auth.pkce"
+        title="Authenticate with Anthropic"
+        hint="oauth · interactive"
+        footer={
+          <>
+            <span>$ oauth --init</span>
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1 w-1 rounded-full",
+                  isAuthenticated ? "bg-success animate-pulse" : "bg-muted-foreground/40",
+                )}
+              />
+              {isAuthenticated ? "session active" : "awaiting code"}
+            </span>
+          </>
+        }
+      >
+        <p className="mb-4 text-[12.5px] text-muted-foreground leading-relaxed font-sans">
+          Connect to Claude Code via OAuth. This is a one-time setup — credentials are stored
+          locally and refreshed automatically.
         </p>
-      </div>
+        {isAuthenticated ? (
+          <div className="flex items-center gap-2.5 rounded-md border border-success/30 bg-success/5 px-3 py-2.5 text-[12.5px] text-success font-mono animate-slide-up">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            already authenticated · session live
+          </div>
+        ) : (
+          <OAuthFlow compact />
+        )}
+      </Panel>
 
-      {isAuthenticated ? (
-        <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2.5 text-[13px] text-success animate-slide-up">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          Already authenticated!
-        </div>
-      ) : (
-        <OAuthFlow compact />
-      )}
-
-      <NavButtons onPrev={onPrev} onNext={onNext} />
+      <NavButtons onPrev={onPrev} onNext={onNext} nextLabel="continue" />
     </div>
   );
 }
@@ -191,35 +269,34 @@ function ConfigureStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => v
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">Configure your client</h2>
-        <p className="text-[13px] text-muted-foreground">
-          Point Cursor (or any compatible client) to claude-code-to-cursor.
+      <Panel
+        index="client.config"
+        title="Configure your client"
+        hint="cursor · vscode · openai-compat"
+        footer={
+          <>
+            <span>$ cat ~/.cursor/config</span>
+            <span className="text-muted-foreground/70">3 fields</span>
+          </>
+        }
+      >
+        <p className="mb-4 text-[12.5px] text-muted-foreground leading-relaxed font-sans">
+          Point Cursor (or any compatible client) to claude-code-to-cursor. Override the OpenAI base
+          URL and use any non-empty API key.
         </p>
-      </div>
+        <div className="divide-y divide-border/50 rounded-md border border-border/60 bg-background/40">
+          <ConfigField label="base_url" value={baseUrl} sub="override the OpenAI Base URL" />
+          <ConfigField label="api_key" value="sk-cctc" sub="any non-empty string" />
+          <ConfigField label="model" value="Claude Code" sub="add as a custom model" />
+        </div>
+      </Panel>
 
-      <div className="space-y-3">
-        <ConfigField label="Base URL" value={baseUrl} sub="Override the OpenAI Base URL" mono />
-        <ConfigField label="API Key" value="sk-cctc" sub="Any non-empty string" mono />
-        <ConfigField label="Model" value="Claude Code" sub="Add as a custom model in Cursor" mono />
-      </div>
-
-      <NavButtons onPrev={onPrev} onNext={onNext} />
+      <NavButtons onPrev={onPrev} onNext={onNext} nextLabel="continue" />
     </div>
   );
 }
 
-function ConfigField({
-  label,
-  value,
-  sub,
-  mono,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  mono?: boolean;
-}) {
+function ConfigField({ label, value, sub }: { label: string; value: string; sub?: string }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -233,19 +310,28 @@ function ConfigField({
   }
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-border/80">
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <div className="text-[12px] text-muted-foreground">{label}</div>
-        <div className={cn("text-[13px] truncate", mono && "font-mono")}>{value}</div>
-        {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
+    <div className="flex items-center gap-3 px-3 py-2.5 font-mono">
+      <span className="w-[68px] shrink-0 text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12.5px] text-foreground truncate" title={value}>
+          {value}
+        </div>
+        {sub && <div className="text-[10.5px] text-muted-foreground/70 mt-0.5">{sub}</div>}
       </div>
       <button
         type="button"
         onClick={copy}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-all hover:text-foreground hover:border-foreground/20 cursor-pointer"
-        aria-label="Copy to clipboard"
+        className={cn(
+          "inline-flex h-6 items-center gap-1.5 shrink-0 rounded border border-border/70 bg-card/40 px-2 text-[10px] uppercase tracking-[0.18em] transition-all cursor-pointer",
+          copied
+            ? "border-success/40 text-success"
+            : "text-muted-foreground hover:text-foreground hover:border-foreground/30",
+        )}
+        aria-label={`Copy ${label}`}
       >
-        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+        {copied ? "copied" : "copy"}
       </button>
     </div>
   );
@@ -283,71 +369,95 @@ function VerifyStep({ onFinish, onPrev }: { onFinish: () => void; onPrev: () => 
 
   return (
     <div className="space-y-6 animate-slide-up">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight">Verify your setup</h2>
-        <p className="text-[13px] text-muted-foreground">
+      <Panel
+        index="verify.live"
+        title="Verify your setup"
+        hint="polling · 3s interval"
+        footer={
+          <>
+            <span>$ tail -f proxy</span>
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1 w-1 rounded-full",
+                  detected
+                    ? "bg-success"
+                    : polling
+                      ? "bg-warning animate-pulse"
+                      : "bg-muted-foreground/40",
+                )}
+              />
+              {detected ? "detected" : polling ? "watching" : "idle"}
+            </span>
+          </>
+        }
+      >
+        <p className="mb-4 text-[12.5px] text-muted-foreground leading-relaxed font-sans">
           Send a request from your client to confirm everything works.
         </p>
-      </div>
-
-      <div className="space-y-3">
-        <StatusRow
-          ok={isAuthenticated}
-          label="OAuth authentication"
-          sub={isAuthenticated ? "Connected to Claude Code" : "Not yet authenticated"}
-        />
-        <StatusRow
-          ok={detected}
-          loading={!detected && polling}
-          label="First request"
-          sub={
-            detected
-              ? "Request received — you're all set!"
-              : "Waiting for a request from your client..."
-          }
-        />
-      </div>
+        <div className="divide-y divide-border/50 rounded-md border border-border/60 bg-background/40">
+          <StatusRow
+            ok={isAuthenticated}
+            label="oauth_session"
+            sub={isAuthenticated ? "connected to Claude Code" : "not yet authenticated"}
+          />
+          <StatusRow
+            ok={detected}
+            loading={!detected && polling}
+            label="first_request"
+            sub={
+              detected
+                ? "request received — you're all set"
+                : "waiting for a request from your client..."
+            }
+          />
+        </div>
+      </Panel>
 
       {!detected && (
-        <div className="rounded-lg border border-border bg-card/30 p-4 space-y-2">
-          <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Send a test message
-          </div>
-          <p className="text-[13px] text-muted-foreground">
-            Type the following in your Cursor chat:
-          </p>
-          <CopyBlock value="Analyse mon projet puis présente le moi succintement." />
-        </div>
+        <Panel
+          index="hint.test"
+          title="Send a test message"
+          hint="paste in your Cursor chat"
+          delay={120}
+        >
+          <CopyBlock
+            value="Analyse mon projet puis présente le moi succintement."
+            label="prompt · sample"
+          />
+        </Panel>
       )}
 
       {detected && (
-        <div className="rounded-lg border border-success/30 bg-success/5 p-5 text-center space-y-3 animate-slide-up">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
-          <div className="text-[15px] font-semibold">Setup complete</div>
-          <p className="text-[13px] text-muted-foreground">
-            claude-code-to-cursor is working. Your requests will appear in the Analytics dashboard.
-          </p>
-        </div>
+        <Panel
+          index="status.complete"
+          title="Setup complete"
+          hint="all green"
+          delay={120}
+          status="active"
+          footer={
+            <>
+              <span>$ exit 0</span>
+              <span className="text-success">success</span>
+            </>
+          }
+        >
+          <div className="flex items-start gap-3 py-2">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-success mt-0.5" />
+            <p className="text-[12.5px] text-foreground leading-relaxed font-sans">
+              claude-code-to-cursor is working. Your requests will appear in the Analytics
+              dashboard.
+            </p>
+          </div>
+        </Panel>
       )}
 
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onPrev}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-4 text-[13px] text-muted-foreground transition-colors hover:text-foreground hover:border-foreground/20 cursor-pointer"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={onFinish}
-          className="group inline-flex h-10 items-center gap-2.5 rounded-lg bg-accent px-6 text-[13px] font-medium text-background transition-all hover:brightness-110 cursor-pointer"
-        >
-          {detected ? "Go to dashboard" : "Skip and finish"}
-          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </button>
-      </div>
+      <NavButtons
+        onPrev={onPrev}
+        onNext={onFinish}
+        nextLabel={detected ? "go_to_dashboard" : "skip_and_finish"}
+      />
     </div>
   );
 }

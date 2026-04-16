@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { cn } from "~/lib/utils";
 
 interface NavButtonsProps {
   onPrev?: () => void;
@@ -10,19 +10,21 @@ interface NavButtonsProps {
 export function NavButtons({
   onPrev,
   onNext,
-  nextLabel = "Continue",
+  nextLabel = "continue",
   nextDisabled = false,
 }: NavButtonsProps) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between font-mono text-[12px]">
       {onPrev ? (
         <button
           type="button"
           onClick={onPrev}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-4 text-[13px] text-muted-foreground transition-colors hover:text-foreground hover:border-foreground/20 cursor-pointer"
+          className="group inline-flex h-9 items-center gap-2 rounded-md border border-border/60 bg-card/30 px-4 text-muted-foreground transition-colors hover:border-border hover:bg-card/60 hover:text-foreground cursor-pointer"
         >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Back
+          <span aria-hidden="true" className="transition-transform group-hover:-translate-x-0.5">
+            ←
+          </span>
+          back
         </button>
       ) : (
         <div />
@@ -32,10 +34,17 @@ export function NavButtons({
           type="button"
           onClick={onNext}
           disabled={nextDisabled}
-          className="group inline-flex h-9 items-center gap-2 rounded-md bg-foreground px-5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+          className={cn(
+            "group inline-flex h-9 items-center gap-2 rounded-md border border-foreground/80 bg-foreground px-5 font-medium text-background transition-all",
+            "hover:bg-foreground/95 hover:shadow-[0_0_0_4px_oklch(from_var(--color-foreground)_l_c_h/0.12)]",
+            "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none",
+            !nextDisabled && "cursor-pointer",
+          )}
         >
           {nextLabel}
-          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+          <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+            →
+          </span>
         </button>
       )}
     </div>

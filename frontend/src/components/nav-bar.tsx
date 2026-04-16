@@ -5,19 +5,27 @@ import { cn } from "~/lib/utils";
 import { HealthIndicator } from "./health-indicator";
 
 const navItems = [
-  { to: "/", label: "Home" },
-  { to: "/analytics", label: "Analytics" },
-  { to: "/settings", label: "Settings" },
-  { to: "/login", label: "Auth" },
+  { to: "/", label: "Home", search: undefined },
+  { to: "/analytics", label: "Analytics", search: undefined },
+  { to: "/settings", label: "Settings", search: undefined },
+  { to: "/setup", label: "Auth", search: { step: "auth" as const } },
 ] as const;
 
 export function NavBar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
+  const currentSearch = routerState.location.search as { step?: string };
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const closeMobile = useCallback(() => setMobileOpen(false), []);
+
+  function isActive(item: (typeof navItems)[number]) {
+    if (item.to !== "/setup") return currentPath === item.to;
+    return currentPath === "/setup" && currentSearch.step === "auth";
+  }
+
+  const isSetupWelcome = currentPath === "/setup" && currentSearch.step !== "auth";
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -66,18 +74,19 @@ export function NavBar() {
             /
           </span>
           <nav className="hidden sm:flex items-center gap-1" aria-label="Main navigation">
-            {navItems.map(({ to, label }) => (
+            {navItems.map((item) => (
               <Link
-                key={to}
-                to={to}
+                key={`${item.to}-${item.label}`}
+                to={item.to}
+                search={item.search}
                 className={cn(
                   "rounded-md px-3 py-1.5 text-[13px] transition-colors",
-                  currentPath === to
+                  isActive(item)
                     ? "bg-card text-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground hover:bg-card/50",
                 )}
               >
-                {label}
+                {item.label}
               </Link>
             ))}
           </nav>
@@ -85,11 +94,11 @@ export function NavBar() {
             to="/setup"
             className={cn(
               "hidden sm:flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] transition-colors",
-              currentPath === "/setup"
+              isSetupWelcome
                 ? "text-accent bg-accent/10"
                 : "text-muted-foreground hover:text-accent",
             )}
-            title="Setup guide"
+            title="Setup wizard"
           >
             <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
             <span>Setup</span>
@@ -116,19 +125,20 @@ export function NavBar() {
           className="sm:hidden border-t border-border bg-background/95 backdrop-blur-xl animate-slide-up"
         >
           <nav className="flex flex-col p-3 gap-1" aria-label="Mobile navigation">
-            {navItems.map(({ to, label }) => (
+            {navItems.map((item) => (
               <Link
-                key={to}
-                to={to}
+                key={`${item.to}-${item.label}-m`}
+                to={item.to}
+                search={item.search}
                 onClick={closeMobile}
                 className={cn(
                   "rounded-md px-3 py-2 text-[13px] transition-colors",
-                  currentPath === to
+                  isActive(item)
                     ? "bg-card text-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground hover:bg-card/50",
                 )}
               >
-                {label}
+                {item.label}
               </Link>
             ))}
             <Link
@@ -136,7 +146,7 @@ export function NavBar() {
               onClick={closeMobile}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-3 py-2 text-[12px] transition-colors",
-                currentPath === "/setup"
+                isSetupWelcome
                   ? "text-accent bg-accent/10"
                   : "text-muted-foreground hover:text-accent",
               )}
