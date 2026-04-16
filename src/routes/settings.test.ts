@@ -16,6 +16,7 @@ const currentSettings: ModelSettings = {
   selectedModel: "claude-sonnet-4-6",
   thinkingEnabled: true,
   thinkingEffort: "medium",
+  subscriptionPlan: "max20x",
 };
 
 const savedSettingsCalls: ModelSettings[] = [];
@@ -76,6 +77,7 @@ describe("settings JSON API", () => {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: false,
         thinkingEffort: "low",
+        subscriptionPlan: "pro",
       }),
     });
 
@@ -85,13 +87,38 @@ describe("settings JSON API", () => {
     expect(response.status).toBe(200);
     expect(body.success).toBe(true);
     expect(body.settings?.selectedModel).toBe("claude-haiku-4-5");
+    expect(body.settings?.subscriptionPlan).toBe("pro");
     expect(savedSettingsCalls).toEqual([
       {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: false,
         thinkingEffort: "low",
+        subscriptionPlan: "pro",
       },
     ]);
+  });
+
+  test("rejects invalid subscriptionPlan in JSON body", async () => {
+    savedSettingsCalls.length = 0;
+
+    const request = new Request("http://localhost/api/settings/model", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selectedModel: "claude-haiku-4-5",
+        thinkingEnabled: false,
+        thinkingEffort: "low",
+        subscriptionPlan: "enterprise",
+      }),
+    });
+
+    const response = await handleSettingsModelAPI(request);
+    const body = (await response.json()) as SettingsUpdateResponse;
+
+    expect(response.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain("subscriptionPlan");
+    expect(savedSettingsCalls).toHaveLength(0);
   });
 
   test("rejects request with wrong API key", async () => {

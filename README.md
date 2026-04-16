@@ -70,11 +70,13 @@ Point your client to your Cloudflare Tunnel URL. The API key can be any non-empt
 
 Open Cursor settings and configure a custom model:
 
+
 | Setting      | Value                                            |
 | ------------ | ------------------------------------------------ |
 | **Base URL** | `https://<your-tunnel>.cfargotunnel.com/v1`      |
 | **API Key**  | `sk-cctc` (any non-empty string)                 |
 | **Model**    | `claude-sonnet-4-20250514` (or any Claude model) |
+
 
 claude-code-to-cursor exposes two compatible endpoints:
 
@@ -107,18 +109,20 @@ Or simply start using Claude in your client. The **Analytics** tab in the dashbo
 
 ## Configuration Reference
 
-All settings are in `.env`. See [`.env.example`](.env.example) for the full list.
+All settings are in `.env`. See `[.env.example](.env.example)` for the full list.
+
 
 | Variable                        | Default                       | Description                                 |
 | ------------------------------- | ----------------------------- | ------------------------------------------- |
-| `CLOUDFLARE_TUNNEL_TOKEN`       | _(required)_                  | Cloudflare Tunnel token                     |
+| `CLOUDFLARE_TUNNEL_TOKEN`       | *(required)*                  | Cloudflare Tunnel token                     |
 | `PORT`                          | `8082`                        | Proxy server port (internal)                |
 | `ALLOWED_IPS`                   | Cursor backend IPs            | IP whitelist (`disabled` to allow all)      |
-| `CLAUDE_CODE_EXTRA_INSTRUCTION` | _(empty)_                     | Extra instruction appended to system prompt |
+| `CLAUDE_CODE_EXTRA_INSTRUCTION` | *(empty)*                     | Extra instruction appended to system prompt |
 | `CCTC_AUTH_DIR`                 | `~/.cctc` / `/data/auth`      | OAuth credentials storage                   |
 | `CCTC_DB_PATH`                  | `./cctc.db` / `/data/cctc.db` | SQLite database path                        |
-| `SETTINGS_API_KEY`              | _(empty)_                     | Shared secret for settings API              |
+| `SETTINGS_API_KEY`              | *(empty)*                     | Shared secret for settings API              |
 | `FRONTEND_PORT`                 | `3111`                        | Dashboard frontend port                     |
+
 
 ---
 
@@ -139,6 +143,8 @@ flowchart LR
     CF --> Client
     API --- Dashboard
 ```
+
+
 
 The proxy intercepts API requests, authenticates them via Claude Code OAuth, and forwards them to Anthropic. The Cloudflare Tunnel ensures the proxy is only reachable through Cloudflare's network. The dashboard provides real-time analytics, model settings, and authentication management.
 

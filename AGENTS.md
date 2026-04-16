@@ -230,6 +230,7 @@ claude-code-to-cursor/
 │   ├── routing-policy.ts          # Picks thinking effort + applies adaptive thinking/output_config
 │   ├── model-settings.ts          # Model configuration types, effort levels, validation
 │   ├── model-settings-store.ts    # SQLite persistence for model settings
+│   ├── plan-usage-snapshot.ts     # Captures Anthropic unified rate-limit headers (source of truth)
 │   ├── request-metrics.ts         # Request shape metrics (messageCount, tool counts, hashes)
 │   ├── request-normalization.ts   # Request preprocessing (model aliasing, tool id sanitization)
 │   ├── tool-result-trimmer.ts     # Truncates oversized tool_result blocks
@@ -245,6 +246,7 @@ claude-code-to-cursor/
 │       ├── auth.ts                # OAuth login/callback/status API
 │       ├── analytics.ts           # Analytics queries API
 │       ├── budget.ts              # GET /api/budget (daily token/cost summary)
+│       ├── plan-usage.ts          # GET /api/plan-usage (subscription plan consumption)
 │       └── settings.ts            # Model settings API
 ├── frontend/
 │   ├── src/
@@ -271,6 +273,7 @@ claude-code-to-cursor/
 │   │   │   │   ├── confirm-dialog.tsx    # Confirmation dialog
 │   │   │   │   ├── expandable-row.tsx    # Analytics row with collapsible details + effort badge
 │   │   │   │   ├── pagination.tsx        # Table pagination
+│   │   │   │   ├── plan-usage-card.tsx   # Subscription plan consumption (session + weekly bars)
 │   │   │   │   └── stat-card.tsx         # Statistics card
 │   │   │   ├── setup/
 │   │   │   │   ├── copy-block.tsx        # Copy-to-clipboard code block
@@ -289,6 +292,7 @@ claude-code-to-cursor/
 │   │   │   ├── use-budget.ts             # Daily token budget hook
 │   │   │   ├── use-health.ts             # Health check hook
 │   │   │   ├── use-onboarding.ts         # Onboarding state (localStorage)
+│   │   │   ├── use-plan-usage.ts         # Subscription plan usage hook (5h + weekly)
 │   │   │   └── use-settings.ts           # Settings query + mutation
 │   │   ├── lib/
 │   │   │   ├── api-client.ts             # Typed fetch wrapper with Zod validation
@@ -298,7 +302,7 @@ claude-code-to-cursor/
 │   │   ├── schemas/
 │   │   │   ├── api-responses.ts          # Zod schemas for all API responses
 │   │   │   ├── login.ts                  # Login form schema
-│   │   │   └── settings.ts               # Settings form schema (5 effort levels)
+│   │   │   └── settings.ts               # Settings form schema (5 efforts + 3 plans)
 │   │   └── __tests__/
 │   │       ├── test-utils.tsx            # Shared test utilities
 │   │       ├── schemas/                  # Schema validation tests
@@ -338,6 +342,7 @@ claude-code-to-cursor/
 | `GET`  | `/api/analytics/timeline` (alias `/analytics/timeline`) | Timeline data (bucketed)           |
 | `POST` | `/api/analytics/reset` (alias `/analytics/reset`)       | Reset analytics                    |
 | `GET`  | `/api/budget` (alias `/budget`)                         | UTC-day token totals + est. USD    |
+| `GET`  | `/api/plan-usage` (alias `/plan-usage`)                 | Subscription plan window usage     |
 
 ### Auth Endpoints
 
@@ -401,8 +406,9 @@ Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache k
 - Supported effort levels (ranked low → max): `low`, `medium`, `high`, `xhigh`, `max`
   - `xhigh` is only officially supported by Opus 4.7 (see Anthropic docs)
   - `max` is available on Opus 4.6/4.7 and Sonnet 4.6
-- Default: Opus 4.7, thinking enabled, effort `high`
-- Settings persisted in SQLite (`model_settings` table)
+- Supported subscription plans: `pro`, `max5x`, `max20x` (used only for plan-usage approximations on Analytics; does not affect request routing)
+- Default: Opus 4.7, thinking enabled, effort `high`, plan `max20x`
+- Settings persisted in SQLite (`model_settings` table, key-value rows)
 - Context window: 1M tokens for Opus 4.7, 200K for Sonnet 4.6 and Haiku 4.5
 
 **Effort → request format** (see `src/routing-policy.ts`):
@@ -443,6 +449,37 @@ Clients can override thinking per-request using either `reasoning_effort` (OpenA
 - 5-minute hard block after 429, then soft expiry with probing (max 15 minutes)
 - Status exposed via `/api/rate-limit`
 - Manual reset via `/api/rate-limit/reset`
+
+### Subscription Plan Tracking
+
+The proxy surfaces two independent data sources for plan usage, with an automatic fallback:
+
+1. **Anthropic headers (authoritative)** — Every OAuth response carries the unified rate-limit headers used internally by Claude.ai and the Claude Code CLI. `src/anthropic-client.ts` captures them on every `fetch`, `src/plan-usage-snapshot.ts` persists the most recent snapshot to SQLite (`plan_usage_snapshot` table, 1 row max), and `/api/plan-usage` returns them with `source: "anthropic"` when the snapshot is < 5h old.
+
+   Headers captured (see `parseRateLimitHeaders`):
+
+   | Header | Meaning |
+   | ------ | ------- |
+   | `anthropic-ratelimit-unified-5h-utilization` | Fraction 0.0–1.0+ of the 5h session |
+   | `anthropic-ratelimit-unified-5h-reset` | Unix epoch (seconds) when the session rolls over |
+   | `anthropic-ratelimit-unified-5h-status` | `allowed` / `warning` / `rate_limited` |
+   | `anthropic-ratelimit-unified-7d-utilization` / `-reset` / `-status` | Weekly counterpart |
+   | `anthropic-ratelimit-unified-representative-claim` | `five_hour` or `seven_day` — the binding window |
+   | `anthropic-ratelimit-unified-status` | Overall status |
+   | `anthropic-ratelimit-unified-fallback-percentage` | Effective vs theoretical budget |
+   | `anthropic-ratelimit-unified-overage-status` | Extra-usage flag |
+
+2. **Local estimate (fallback)** — When no recent snapshot exists (cold start, no OAuth traffic yet, or snapshot > 5h old), `/api/plan-usage` returns `source: "estimated"` and computes usage from the `requests` table against the hardcoded `PLAN_QUOTAS`. The local formula (`getPlanWindowUsage` in `src/db.ts`) weights `input + output + cache_creation` at full weight and `cache_read * 0.1`. Quotas are public approximations (see the table below) and are known to be off by 1–2 orders of magnitude vs Anthropic's actual metric — use them only as a fallback for UI display.
+
+   | Plan     | Price      | ~Tokens per 5-hr window | ~Weekly tokens (all models) |
+   | -------- | ---------- | ----------------------- | --------------------------- |
+   | `pro`    | $20 / mo   | 44 000                  | 1 500 000                   |
+   | `max5x`  | $100 / mo  | 88 000                  | 7 500 000                   |
+   | `max20x` | $200 / mo  | 220 000                 | 30 000 000                  |
+
+3. **No data** — No snapshot AND no local request rows → `source: "none"`. UI shows a "No data yet" badge and 0% bars.
+
+The `subscriptionPlan` stored in `model_settings` is still used by the fallback path to pick the right quota row; it has no effect when the `anthropic` source is active. The `PlanUsageCard` on Analytics displays a colored badge (green `Live · Xmin ago` / amber `Estimated` / grey `No data yet`) and a `Binding` marker on the window that `representative-claim` points to.
 
 ### Onboarding Flow
 
@@ -529,6 +566,13 @@ docker compose -f docker-compose.dev.yml up
 3. Extend `thinkingEfforts` in `frontend/src/schemas/settings.ts`
 4. Add a description in `effortDescriptions` in `frontend/src/routes/settings.tsx`
 5. Update `effortBadge` variant in `frontend/src/components/analytics/expandable-row.tsx` if needed
+
+### Adding a New Subscription Plan
+
+1. Extend `SUPPORTED_PLANS` and `PLAN_QUOTAS` in `src/model-settings.ts`
+2. Mirror the quota values in `planQuotas` / `planLabels` / `planPrices` inside `frontend/src/schemas/settings.ts`
+3. The plan card in `frontend/src/routes/settings.tsx` iterates `supportedPlans`, so the new option surfaces automatically
+4. The `/api/plan-usage` handler uses `getPlanQuotas` directly — no changes required there
 
 ### Adding a Frontend Test
 

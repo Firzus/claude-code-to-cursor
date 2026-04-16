@@ -5,6 +5,7 @@ import { cn } from "~/lib/utils";
 import { HealthIndicator } from "./health-indicator";
 
 const navItems = [
+  { to: "/", label: "Home" },
   { to: "/analytics", label: "Analytics" },
   { to: "/settings", label: "Settings" },
   { to: "/login", label: "Auth" },
@@ -43,7 +44,7 @@ export function NavBar() {
     <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-6">
         <div className="flex items-center gap-6">
-          <Link to="/analytics" className="flex items-center gap-2 rounded-md">
+          <Link to="/" className="flex items-center gap-2 rounded-md">
             <svg
               width="20"
               height="20"

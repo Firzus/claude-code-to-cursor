@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { supportedModels, thinkingEfforts } from "./settings";
+import { supportedModels, supportedPlans, thinkingEfforts } from "./settings";
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "rate_limited"]),
@@ -107,8 +107,40 @@ export const settingsResponseSchema = z.object({
     selectedModel: z.enum(supportedModels),
     thinkingEnabled: z.boolean(),
     thinkingEffort: z.enum(thinkingEfforts),
+    subscriptionPlan: z.enum(supportedPlans),
   }),
 });
+
+export const planUsageSourceSchema = z.enum(["anthropic", "estimated", "none"]);
+export type PlanUsageSource = z.infer<typeof planUsageSourceSchema>;
+
+export const planUsageWindowSchema = z.object({
+  percent: z.number(),
+  resetAt: z.number(),
+  /** Only populated in `estimated` mode — the `anthropic` snapshot path only
+   *  gives us the utilization fraction, not absolute token counts. */
+  tokens: z.number().optional(),
+  limit: z.number().optional(),
+  status: z.string().optional(),
+});
+
+export const planUsageResponseSchema = z.object({
+  plan: z.enum(supportedPlans),
+  source: planUsageSourceSchema,
+  capturedAt: z.number().nullable(),
+  representativeClaim: z.enum(["five_hour", "seven_day"]).nullable(),
+  quotas: z.object({
+    fiveHourTokens: z.number(),
+    weeklyTokens: z.number(),
+  }),
+  usage: z.object({
+    fiveHour: planUsageWindowSchema,
+    weekly: planUsageWindowSchema,
+  }),
+});
+
+export type PlanUsageResponse = z.infer<typeof planUsageResponseSchema>;
+export type PlanUsageWindow = z.infer<typeof planUsageWindowSchema>;
 
 export const budgetResponseSchema = z.object({
   periodStart: z.number(),

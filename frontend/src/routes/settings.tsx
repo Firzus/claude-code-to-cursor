@@ -1,6 +1,15 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertCircle, Check, Cpu, Loader2, RotateCcw, Sparkles, Zap } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  Cpu,
+  CreditCard,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Badge } from "~/components/ui/badge";
@@ -10,9 +19,13 @@ import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
 import { cn } from "~/lib/utils";
 import {
   modelLabels,
+  planLabels,
+  planPrices,
+  planQuotas,
   type SettingsFormValues,
   settingsFormSchema,
   supportedModels,
+  supportedPlans,
   thinkingEfforts,
 } from "~/schemas/settings";
 
@@ -60,6 +73,7 @@ function SettingsPage() {
 
   const thinkingEnabled = form.watch("thinkingEnabled");
   const selectedModel = form.watch("selectedModel");
+  const selectedPlan = form.watch("subscriptionPlan");
   const isDirty = form.formState.isDirty;
 
   useEffect(() => {
@@ -193,6 +207,77 @@ function SettingsPage() {
                     </div>
                     <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
                       {meta.context}
+                    </div>
+                  </div>
+                  <div
+                    className={cn(
+                      "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200",
+                      isSelected
+                        ? "border-accent bg-accent"
+                        : "border-muted-foreground/40 group-hover:border-muted-foreground/70",
+                    )}
+                  >
+                    {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-background" />}
+                  </div>
+                </button>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        {/* Subscription plan */}
+        <Card>
+          <CardHeader className="p-4 pb-3">
+            <CardTitle className="text-[13px]">Subscription plan</CardTitle>
+            <CardDescription className="text-[12px]">
+              Used to estimate plan consumption on Analytics. Anthropic does not expose this via
+              OAuth, set it manually.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 pt-0 space-y-2">
+            {supportedPlans.map((plan) => {
+              const isSelected = selectedPlan === plan;
+              const q = planQuotas[plan];
+              return (
+                <button
+                  key={plan}
+                  type="button"
+                  onClick={() => form.setValue("subscriptionPlan", plan, { shouldDirty: true })}
+                  className={cn(
+                    "group relative flex w-full items-center gap-3.5 rounded-lg px-4 py-3 text-left transition-all duration-200 cursor-pointer border",
+                    isSelected
+                      ? "bg-card border-accent/50 shadow-[0_0_12px_-3px_var(--color-accent)] ring-1 ring-accent/20"
+                      : "border-border/60 hover:border-border hover:bg-card/60",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
+                      isSelected
+                        ? "bg-accent/15 text-accent"
+                        : "bg-muted/60 text-muted-foreground group-hover:bg-muted group-hover:text-foreground/70",
+                    )}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "text-[13px] font-medium transition-colors",
+                          isSelected
+                            ? "text-foreground"
+                            : "text-foreground/80 group-hover:text-foreground",
+                        )}
+                      >
+                        {planLabels[plan]}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {planPrices[plan]}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                      ~{(q.fiveHourTokens / 1000).toFixed(0)}K tokens / 5h window
                     </div>
                   </div>
                   <div

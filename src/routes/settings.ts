@@ -43,6 +43,7 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
           ? body.thinkingEnabled
           : body.thinkingEnabled === "true",
       thinkingEffort: (body.thinkingEffort as string) ?? "",
+      subscriptionPlan: body.subscriptionPlan,
     });
 
     saveModelSettings(settings);

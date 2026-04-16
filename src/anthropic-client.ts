@@ -8,6 +8,7 @@ import { recordRequest } from "./db";
 import { logger } from "./logger";
 import { getSuggestedMaxTokens, isValidThinkingEffort } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
+import { parseRateLimitHeaders, saveSnapshot } from "./plan-usage-snapshot";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicError, AnthropicRequest, ContentBlock } from "./types";
@@ -533,6 +534,16 @@ async function makeClaudeCodeRequest(
       body: JSON.stringify(preparedBody),
       signal: AbortSignal.timeout(120_000),
     });
+
+    // Capture the unified rate-limit headers on every response (200 + 4xx).
+    // This is the source of truth for /api/plan-usage — Anthropic exposes
+    // the same metrics it uses for Claude.ai and the Claude Code CLI.
+    try {
+      const snapshot = parseRateLimitHeaders(response.headers);
+      if (snapshot) saveSnapshot(snapshot);
+    } catch (err) {
+      logger.verbose(`[plan-usage] header capture failed: ${String(err)}`);
+    }
 
     console.log(`   [Debug] Anthropic API response status: ${response.status}`);
 

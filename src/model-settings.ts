@@ -3,10 +3,14 @@ export type ThinkingEffort = (typeof VALID_EFFORTS)[number];
 
 export type SupportedSelectedModel = "claude-opus-4-7" | "claude-sonnet-4-6" | "claude-haiku-4-5";
 
+export const SUPPORTED_PLANS = ["pro", "max5x", "max20x"] as const;
+export type SubscriptionPlan = (typeof SUPPORTED_PLANS)[number];
+
 export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
   thinkingEnabled: boolean;
   thinkingEffort: ThinkingEffort;
+  subscriptionPlan: SubscriptionPlan;
 }
 
 export const PUBLIC_MODEL_ID = "Claude Code" as const;
@@ -15,7 +19,35 @@ export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-7",
   thinkingEnabled: true,
   thinkingEffort: "high",
+  subscriptionPlan: "max20x",
 } as const satisfies ModelSettings;
+
+/**
+ * Approximate public token quotas per Claude subscription plan.
+ *
+ * Sources (as of April 2026): community reports and Anthropic's public help
+ * center. These numbers are heuristics — Anthropic does not publish a firm
+ * public token quota for consumer plans, and the real limits are controlled by
+ * internal policy. Weekly values are conservative estimates.
+ */
+export interface PlanQuotas {
+  fiveHourTokens: number;
+  weeklyTokens: number;
+}
+
+const PLAN_QUOTAS: Record<SubscriptionPlan, PlanQuotas> = {
+  pro: { fiveHourTokens: 44_000, weeklyTokens: 1_500_000 },
+  max5x: { fiveHourTokens: 88_000, weeklyTokens: 7_500_000 },
+  max20x: { fiveHourTokens: 220_000, weeklyTokens: 30_000_000 },
+};
+
+export function getPlanQuotas(plan: SubscriptionPlan): PlanQuotas {
+  return PLAN_QUOTAS[plan];
+}
+
+export function isValidSubscriptionPlan(value: unknown): value is SubscriptionPlan {
+  return typeof value === "string" && (SUPPORTED_PLANS as readonly string[]).includes(value);
+}
 
 const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
 
@@ -98,9 +130,21 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error("Invalid thinkingEffort value");
   }
 
+  // Accept legacy payloads that predate the subscriptionPlan field by
+  // falling back to the default plan when the field is missing.
+  const subscriptionPlan: SubscriptionPlan =
+    candidate.subscriptionPlan === undefined
+      ? DEFAULT_MODEL_SETTINGS.subscriptionPlan
+      : isValidSubscriptionPlan(candidate.subscriptionPlan)
+        ? candidate.subscriptionPlan
+        : (() => {
+            throw new Error(`Unsupported subscriptionPlan: ${String(candidate.subscriptionPlan)}`);
+          })();
+
   return {
     selectedModel: candidate.selectedModel,
     thinkingEnabled: candidate.thinkingEnabled,
     thinkingEffort: candidate.thinkingEffort,
+    subscriptionPlan,
   };
 }

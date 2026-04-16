@@ -10,6 +10,7 @@ import {
   initModelSettingsSchema,
   saveModelSettingsToDb,
 } from "./model-settings-store";
+import { initPlanUsageSnapshotSchema } from "./plan-usage-snapshot";
 import type { RoutingDecision } from "./routing-policy";
 import { checkForStuckLoop } from "./stuck-loop-detector";
 import type { RequestShapeMetrics } from "./types";
@@ -132,6 +133,7 @@ function initSchema(database: Database) {
   database.run(`CREATE INDEX IF NOT EXISTS idx_requests_source ON requests(source)`);
 
   initModelSettingsSchema(database);
+  initPlanUsageSnapshotSchema(database);
 
   console.log(`✓ Database initialized at ${DB_PATH}`);
 }
@@ -546,4 +548,47 @@ export function getBudgetDaySummary(): {
 
 export function saveModelSettings(settings: ModelSettings): void {
   saveModelSettingsToDb(getDb(), settings);
+}
+
+/**
+ * Aggregate token usage for plan-tracking over a rolling window.
+ *
+ * Counts input + output + cache_creation at full weight, and cache_read at
+ * 10% weight (matching the burn-rate the API docs describe for cached reads).
+ * Only successful (non-error) requests are counted.
+ */
+export function getPlanWindowUsage(sinceMs: number): {
+  tokens: number;
+  oldestTimestamp: number | null;
+} {
+  const database = getDb();
+  const now = Date.now();
+
+  const row = database
+    .query(
+      `SELECT
+        COALESCE(SUM(input_tokens), 0) as input_tokens,
+        COALESCE(SUM(output_tokens), 0) as output_tokens,
+        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
+        COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+        MIN(timestamp) as oldest_timestamp
+       FROM requests
+       WHERE timestamp >= ? AND timestamp <= ? AND source = 'claude_code'`,
+    )
+    .get(sinceMs, now) as {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_creation_tokens: number;
+    oldest_timestamp: number | null;
+  };
+
+  const weightedTokens = Math.round(
+    row.input_tokens + row.output_tokens + row.cache_creation_tokens + row.cache_read_tokens * 0.1,
+  );
+
+  return {
+    tokens: weightedTokens,
+    oldestTimestamp: row.oldest_timestamp ?? null,
+  };
 }

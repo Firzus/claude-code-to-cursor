@@ -20,6 +20,7 @@ const mockSettings = {
     selectedModel: "claude-opus-4-7" as const,
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
+    subscriptionPlan: "max20x" as const,
   },
 };
 
@@ -58,6 +59,7 @@ describe("useUpdateSettings", () => {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: false,
       thinkingEffort: "low",
+      subscriptionPlan: "pro",
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

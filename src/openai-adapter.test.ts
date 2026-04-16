@@ -26,6 +26,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-haiku-4-5",
       thinkingEnabled: false,
       thinkingEffort: "high",
+      subscriptionPlan: "max20x",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -42,6 +43,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: true,
       thinkingEffort: "low",
+      subscriptionPlan: "max20x",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -58,6 +60,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "high",
+      subscriptionPlan: "max20x",
     };
 
     const request = {
@@ -76,6 +79,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "max",
+      subscriptionPlan: "max20x",
     };
 
     const request = {
@@ -93,6 +97,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "medium",
+      subscriptionPlan: "max20x",
     };
 
     const request = {
@@ -110,6 +115,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "high",
+      subscriptionPlan: "max20x",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -123,6 +129,7 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: false,
       thinkingEffort: "medium",
+      subscriptionPlan: "max20x",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);

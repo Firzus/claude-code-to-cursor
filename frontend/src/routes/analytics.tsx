@@ -1,15 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  Activity,
   AlertCircle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   Calendar,
-  DollarSign,
   Download,
   Inbox,
   RefreshCw,
   Trash2,
-  TrendingDown,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,7 +17,7 @@ import { AgoText } from "~/components/analytics/ago-text";
 import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import { ExpandableRow } from "~/components/analytics/expandable-row";
 import { Pagination } from "~/components/analytics/pagination";
-import { StatCard } from "~/components/analytics/stat-card";
+import { PlanUsageCard } from "~/components/analytics/plan-usage-card";
 import { EmptyState } from "~/components/empty-state";
 import { Card, CardContent } from "~/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltipContent } from "~/components/ui/chart";
@@ -30,7 +29,6 @@ import {
 } from "~/hooks/use-analytics";
 import { useBudgetDay } from "~/hooks/use-budget";
 import { apiFetch } from "~/lib/api-client";
-import { CACHE_READ_COST_RATIO, calculateCacheSavings } from "~/lib/pricing";
 import { queryKeys } from "~/lib/query-keys";
 import { cn } from "~/lib/utils";
 import type { RequestRecord } from "~/schemas/api-responses";
@@ -162,6 +160,7 @@ function AnalyticsPage() {
   function handleRefresh() {
     qc.invalidateQueries({ queryKey: ["analytics"] });
     qc.invalidateQueries({ queryKey: queryKeys.budget });
+    qc.invalidateQueries({ queryKey: queryKeys.planUsage });
   }
 
   function handleReset() {
@@ -171,16 +170,11 @@ function AnalyticsPage() {
       .then(() => {
         qc.invalidateQueries({ queryKey: ["analytics"] });
         qc.invalidateQueries({ queryKey: queryKeys.budget });
+        qc.invalidateQueries({ queryKey: queryKeys.planUsage });
       })
       .catch(() => {})
       .finally(() => setResetting(false));
   }
-
-  const s = summary.data;
-
-  const savings = s
-    ? calculateCacheSavings(s.totalInputTokens, s.totalCacheReadTokens, s.totalCacheCreationTokens)
-    : null;
 
   const timelineData = timeline.data?.buckets;
 
@@ -255,56 +249,63 @@ function AnalyticsPage() {
         onCancel={() => setConfirmOpen(false)}
       />
 
+      {/* Plan usage */}
+      <PlanUsageCard />
+
       {/* Budget — today (UTC) */}
       {budget.isLoading && (
-        <Card>
-          <CardContent className="p-5">
-            <Skeleton className="h-4 w-40 mb-4" />
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {budget.data && (
         <Card className="border-border/80">
           <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-[12px] text-muted-foreground font-medium">
-                Today (UTC) &mdash; {new Date(budget.data.periodStart).toISOString().slice(0, 10)}
-              </span>
+            <div className="flex items-center justify-between mb-5">
+              <Skeleton className="h-3.5 w-44" />
+              <Skeleton className="h-4 w-10" />
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-              <BudgetMetric
-                label="Estimated cost"
-                value={`$${budget.data.estimatedUsd.toFixed(2)}`}
-                accent="chart-3"
-                primary
-              />
-              <BudgetMetric
-                label="Tokens in"
-                value={fmt(
-                  budget.data.inputTokens +
-                    budget.data.cacheReadTokens +
-                    budget.data.cacheCreationTokens,
-                )}
-              />
-              <BudgetMetric label="Tokens out" value={fmt(budget.data.outputTokens)} />
-              <BudgetMetric label="Thinking" value={fmt(budget.data.thinkingTokens)} />
-              <BudgetMetric
-                label="Cache saved"
-                value={`$${(
-                  (budget.data.cacheReadTokens * (1 - CACHE_READ_COST_RATIO) * 15) / 1_000_000
-                ).toFixed(2)}`}
-                accent="success"
-              />
+            <div className="grid grid-cols-3 gap-4">
+              <Skeleton className="h-14" />
+              <Skeleton className="h-14" />
+              <Skeleton className="h-14" />
             </div>
           </CardContent>
         </Card>
       )}
+      {budget.data &&
+        (() => {
+          const totalIn =
+            budget.data.inputTokens + budget.data.cacheReadTokens + budget.data.cacheCreationTokens;
+          const cacheHitRate = totalIn > 0 ? (budget.data.cacheReadTokens / totalIn) * 100 : 0;
+          const dateLabel = new Date(budget.data.periodStart).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+          return (
+            <Card className="border-border/80">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] text-muted-foreground font-mono uppercase tracking-wider">
+                      Today &middot; {dateLabel}
+                    </span>
+                  </div>
+                  <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    UTC
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 sm:gap-5">
+                  <BudgetStat icon={ArrowDownToLine} label="Tokens in" value={fmt(totalIn)} />
+                  <BudgetStat
+                    icon={ArrowUpFromLine}
+                    label="Tokens out"
+                    value={fmt(budget.data.outputTokens)}
+                  />
+                  <BudgetStat icon={Zap} label="Cache hit rate" value={pct(cacheHitRate)} />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
       {budget.isError && (
         <Card className="border-destructive/40">
           <CardContent className="flex items-center gap-2 py-3 text-[12px] text-destructive">
@@ -336,62 +337,6 @@ function AnalyticsPage() {
             </button>
           </CardContent>
         </Card>
-      )}
-
-      {/* Stat cards — 4 essentials */}
-      {s && savings && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <StatCard
-            icon={Activity}
-            label="Requests"
-            value={fmt(s.totalRequests)}
-            sub={`${s.claudeCodeRequests} ok${s.errorRequests ? ` \u00b7 ${s.errorRequests} err` : ""}`}
-            accent="chart-1"
-          />
-          <StatCard
-            icon={DollarSign}
-            label="Est. cost saved"
-            value={`$${s.cacheSavingsUsdEstimate.toFixed(2)}`}
-            sub={
-              savings.savingsPercent > 0
-                ? `${pct(savings.savingsPercent)} less vs no cache`
-                : "no data yet"
-            }
-            accent="success"
-          />
-          <StatCard
-            icon={Zap}
-            label="Cache hit rate"
-            value={pct(s.cacheHitRate * 100)}
-            sub={`${fmt(s.totalCacheReadTokens)} of ${fmt(savings.allInput)} input`}
-            accent="chart-4"
-          />
-          <StatCard
-            icon={TrendingDown}
-            label="Avg output"
-            value={
-              s.totalRequests > 0
-                ? fmt(Math.round(s.totalOutputTokens / s.totalRequests))
-                : "\u2014"
-            }
-            sub={`${fmt(s.totalOutputTokens)} total`}
-            accent="chart-2"
-          />
-        </div>
-      )}
-
-      {summary.isLoading && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4 space-y-2">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-7 w-24" />
-                <Skeleton className="h-3 w-20" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       )}
 
       {/* Chart — Token usage over time */}
@@ -596,24 +541,24 @@ function AnalyticsPage() {
   );
 }
 
-function BudgetMetric({
+function BudgetStat({
+  icon: Icon,
   label,
   value,
-  accent,
-  primary,
 }: {
+  icon: typeof ArrowDownToLine;
   label: string;
   value: string;
-  accent?: string;
-  primary?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[11px] text-muted-foreground font-medium">{label}</span>
-      <span
-        className={cn("font-mono tabular font-semibold", primary ? "text-2xl" : "text-lg")}
-        style={accent ? { color: `var(--color-${accent})` } : undefined}
-      >
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <Icon className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium truncate">
+          {label}
+        </span>
+      </div>
+      <span className="font-mono font-semibold tabular-nums text-lg leading-none text-foreground">
         {value}
       </span>
     </div>

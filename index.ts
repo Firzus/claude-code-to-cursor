@@ -26,6 +26,7 @@ import {
 import { handleBudget } from "./src/routes/budget";
 import { handleModels } from "./src/routes/models";
 import { handleOpenAIChatCompletions } from "./src/routes/openai";
+import { handlePlanUsage } from "./src/routes/plan-usage";
 import { handleSettingsAPI, handleSettingsModelAPI } from "./src/routes/settings";
 import type { AnthropicError } from "./src/types";
 
@@ -174,6 +175,13 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
 
   if ((url.pathname === "/budget" || url.pathname === "/api/budget") && req.method === "GET") {
     return handleBudget();
+  }
+
+  if (
+    (url.pathname === "/plan-usage" || url.pathname === "/api/plan-usage") &&
+    req.method === "GET"
+  ) {
+    return handlePlanUsage();
   }
 
   // --- Rate limit management ---

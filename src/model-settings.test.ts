@@ -4,10 +4,13 @@ import {
   getApiModelId,
   getContextLength,
   getExposedModels,
+  getPlanQuotas,
   getSuggestedMaxTokens,
   isAllowedPublicModel,
+  isValidSubscriptionPlan,
   isValidThinkingEffort,
   PUBLIC_MODEL_ID,
+  SUPPORTED_PLANS,
   VALID_EFFORTS,
   validateModelSettings,
 } from "./model-settings";
@@ -27,6 +30,7 @@ describe("model settings contract", () => {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "high",
+      subscriptionPlan: "max20x",
     });
   });
 
@@ -44,19 +48,26 @@ describe("model settings contract", () => {
     expect(getSuggestedMaxTokens(effort as (typeof VALID_EFFORTS)[number])).toBe(suggested);
   });
 
-  test.each(["low", "medium", "high", "xhigh", "max"])(
-    "isValidThinkingEffort accepts %s",
-    (effort) => {
-      expect(isValidThinkingEffort(effort)).toBe(true);
-    },
-  );
+  test.each([
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ])("isValidThinkingEffort accepts %s", (effort) => {
+    expect(isValidThinkingEffort(effort)).toBe(true);
+  });
 
-  test.each(["ultra", "", "HIGH", null, undefined, 42])(
-    "isValidThinkingEffort rejects %p",
-    (value) => {
-      expect(isValidThinkingEffort(value)).toBe(false);
-    },
-  );
+  test.each([
+    "ultra",
+    "",
+    "HIGH",
+    null,
+    undefined,
+    42,
+  ])("isValidThinkingEffort rejects %p", (value) => {
+    expect(isValidThinkingEffort(value)).toBe(false);
+  });
 
   test("accepts valid model settings payloads", () => {
     expect(validateModelSettings(DEFAULT_MODEL_SETTINGS)).toEqual(DEFAULT_MODEL_SETTINGS);
@@ -65,44 +76,106 @@ describe("model settings contract", () => {
         selectedModel: "claude-sonnet-4-6",
         thinkingEnabled: false,
         thinkingEffort: "low",
+        subscriptionPlan: "pro",
       }),
     ).toEqual({
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: false,
       thinkingEffort: "low",
+      subscriptionPlan: "pro",
     });
     expect(
       validateModelSettings({
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: true,
         thinkingEffort: "medium",
+        subscriptionPlan: "max5x",
       }),
     ).toEqual({
       selectedModel: "claude-haiku-4-5",
       thinkingEnabled: true,
       thinkingEffort: "medium",
+      subscriptionPlan: "max5x",
     });
     expect(
       validateModelSettings({
         selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "xhigh",
+        subscriptionPlan: "max20x",
       }),
     ).toEqual({
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "xhigh",
+      subscriptionPlan: "max20x",
     });
     expect(
       validateModelSettings({
         selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "max",
+        subscriptionPlan: "max20x",
       }),
     ).toEqual({
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "max",
+      subscriptionPlan: "max20x",
+    });
+  });
+
+  test("falls back to default plan when subscriptionPlan is missing (legacy payloads)", () => {
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
+      }),
+    ).toEqual({
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
+      subscriptionPlan: "max20x",
+    });
+  });
+
+  test("rejects invalid subscriptionPlan values", () => {
+    expect(() =>
+      validateModelSettings({
+        ...DEFAULT_MODEL_SETTINGS,
+        subscriptionPlan: "enterprise",
+      }),
+    ).toThrow();
+  });
+
+  test("exposes the 3 supported subscription plans", () => {
+    expect(SUPPORTED_PLANS).toEqual(["pro", "max5x", "max20x"]);
+  });
+
+  test.each(["pro", "max5x", "max20x"])("isValidSubscriptionPlan accepts %s", (plan) => {
+    expect(isValidSubscriptionPlan(plan)).toBe(true);
+  });
+
+  test.each([
+    "PRO",
+    "",
+    null,
+    undefined,
+    42,
+    "enterprise",
+  ])("isValidSubscriptionPlan rejects %p", (value) => {
+    expect(isValidSubscriptionPlan(value)).toBe(false);
+  });
+
+  test.each([
+    ["pro", 44_000, 1_500_000],
+    ["max5x", 88_000, 7_500_000],
+    ["max20x", 220_000, 30_000_000],
+  ])("returns plan quotas for %s", (plan, fiveHour, weekly) => {
+    expect(getPlanQuotas(plan as "pro" | "max5x" | "max20x")).toEqual({
+      fiveHourTokens: fiveHour,
+      weeklyTokens: weekly,
     });
   });
 

@@ -268,6 +268,7 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "high",
+        subscriptionPlan: "max20x",
       },
     };
     expect(settingsResponseSchema.parse(data)).toEqual(data);
@@ -279,6 +280,7 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-invalid",
         thinkingEnabled: true,
         thinkingEffort: "high",
+        subscriptionPlan: "max20x",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -290,6 +292,19 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "ultra",
+        subscriptionPlan: "max20x",
+      },
+    };
+    expect(() => settingsResponseSchema.parse(data)).toThrow();
+  });
+
+  it("rejects invalid subscription plan", () => {
+    const data = {
+      settings: {
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
+        subscriptionPlan: "enterprise",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -302,6 +317,7 @@ describe("settingsResponseSchema", () => {
           selectedModel: "claude-opus-4-7",
           thinkingEnabled: true,
           thinkingEffort: effort,
+          subscriptionPlan: "max20x",
         },
       };
       expect(settingsResponseSchema.parse(data)).toEqual(data);

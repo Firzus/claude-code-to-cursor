@@ -7,6 +7,7 @@ const BASE_SETTINGS: ModelSettings = {
   selectedModel: "claude-opus-4-7",
   thinkingEnabled: true,
   thinkingEffort: "high",
+  subscriptionPlan: "max20x",
 };
 
 const BASE_BODY: AnthropicRequest = {
@@ -147,17 +148,20 @@ describe("applyThinkingToBody", () => {
     expect(body.max_tokens).toBe(512);
   });
 
-  test.each(["low", "medium", "high", "xhigh", "max"] as const)(
-    "sets output_config.effort=%s",
-    (effort) => {
-      const body = applyThinkingToBody(
-        BASE_BODY,
-        { effort, policy: "stored" },
-        undefined,
-        undefined,
-        "claude-opus-4-7",
-      );
-      expect(body.output_config?.effort).toBe(effort);
-    },
-  );
+  test.each([
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ] as const)("sets output_config.effort=%s", (effort) => {
+    const body = applyThinkingToBody(
+      BASE_BODY,
+      { effort, policy: "stored" },
+      undefined,
+      undefined,
+      "claude-opus-4-7",
+    );
+    expect(body.output_config?.effort).toBe(effort);
+  });
 });
