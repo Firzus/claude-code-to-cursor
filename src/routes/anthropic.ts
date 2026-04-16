@@ -222,9 +222,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       );
     }
     // Respect client's reasoning_budget if it maps to a known effort level
-    const clientEffort: ThinkingEffort | null = isValidThinkingEffort(
-      incomingBody.reasoning_budget,
-    )
+    const clientEffort: ThinkingEffort | null = isValidThinkingEffort(incomingBody.reasoning_budget)
       ? incomingBody.reasoning_budget
       : null;
 
@@ -249,9 +247,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     const decision = pickRoute({ settings: modelSettings, clientEffort });
 
     if (modelSettings.thinkingEnabled) {
-      logger.info(
-        `[Thinking] effort=${decision.effort}, policy=${decision.policy}`,
-      );
+      logger.info(`[Thinking] effort=${decision.effort}, policy=${decision.policy}`);
     }
 
     const body = applyThinkingToBody(
