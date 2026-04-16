@@ -22,6 +22,14 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
+const effortDescriptions: Record<(typeof thinkingEfforts)[number], string> = {
+  low: "Efficient. Best for short, scoped tasks.",
+  medium: "Balanced. Good default for general workloads.",
+  high: "Advanced use cases needing a balance of intelligence and token cost.",
+  xhigh: "Coding & long-horizon agentic work. Higher token usage (Opus 4.7 only).",
+  max: "Frontier problems requiring the deepest possible reasoning.",
+};
+
 const modelMeta: Record<(typeof supportedModels)[number], ModelMeta> = {
   "claude-opus-4-7": {
     context: "1M context · Most capable",
@@ -244,14 +252,14 @@ function SettingsPage() {
               )}
             >
               <div className="text-[12px] text-muted-foreground">Effort</div>
-              <div className="inline-flex rounded-lg border border-border text-[12px] overflow-hidden">
+              <div className="grid grid-cols-5 rounded-lg border border-border text-[12px] overflow-hidden">
                 {thinkingEfforts.map((e) => (
                   <button
                     key={e}
                     type="button"
                     onClick={() => form.setValue("thinkingEffort", e, { shouldDirty: true })}
                     className={cn(
-                      "px-4 py-1.5 font-mono capitalize transition-all duration-200 cursor-pointer",
+                      "px-2 py-1.5 font-mono transition-all duration-200 cursor-pointer text-center",
                       form.watch("thinkingEffort") === e
                         ? "bg-foreground text-background font-medium"
                         : "text-muted-foreground hover:text-foreground hover:bg-card/60",
@@ -260,6 +268,9 @@ function SettingsPage() {
                     {e}
                   </button>
                 ))}
+              </div>
+              <div className="text-[11px] text-muted-foreground/70 leading-relaxed">
+                {effortDescriptions[form.watch("thinkingEffort") ?? "high"]}
               </div>
             </div>
           </CardContent>

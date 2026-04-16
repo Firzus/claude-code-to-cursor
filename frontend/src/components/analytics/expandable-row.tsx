@@ -23,7 +23,11 @@ function effortBadge(effort: string | null | undefined) {
   if (!effort) return null;
   const upper = effort.toUpperCase();
   const variant =
-    upper === "HIGH" || upper === "MAX" ? "default" : upper === "LOW" ? "secondary" : "outline";
+    upper === "HIGH" || upper === "XHIGH" || upper === "MAX"
+      ? "default"
+      : upper === "LOW"
+        ? "secondary"
+        : "outline";
   return (
     <Badge variant={variant} className="ml-1.5 text-[9px] px-1 py-0 font-mono leading-tight">
       {upper}

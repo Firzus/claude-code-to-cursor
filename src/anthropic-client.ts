@@ -6,7 +6,7 @@ import {
 } from "./config";
 import { recordRequest } from "./db";
 import { logger } from "./logger";
-import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
+import { getSuggestedMaxTokens, isValidThinkingEffort } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import { trimToolResult } from "./tool-result-trimmer";
@@ -211,16 +211,17 @@ const TOOL_PREFIX = "mcp_";
 function convertReasoningBudget(prepared: AnthropicRequest): void {
   if (!("reasoning_budget" in prepared)) return;
   if (!prepared.thinking) {
-    const budgetMap: Record<string, number> = { high: 16384, medium: 8192, low: 4096 };
     const val = prepared.reasoning_budget;
-    const budgetTokens = typeof val === "string" ? budgetMap[val] || 8192 : Number(val) || 8192;
-    prepared.thinking = { type: "enabled", budget_tokens: budgetTokens };
+    const effort = isValidThinkingEffort(val) ? val : "medium";
+    prepared.thinking = { type: "adaptive" };
+    prepared.output_config = { effort };
     prepared.temperature = 1;
-    if (prepared.max_tokens < budgetTokens + THINKING_MAX_TOKENS_PADDING) {
-      prepared.max_tokens = budgetTokens + THINKING_MAX_TOKENS_PADDING;
+    const suggested = getSuggestedMaxTokens(effort);
+    if (prepared.max_tokens < suggested) {
+      prepared.max_tokens = suggested;
     }
     logger.verbose(
-      `   [Debug] Converted reasoning_budget (${val}) → thinking.budget_tokens=${budgetTokens}`,
+      `   [Debug] Converted reasoning_budget (${val}) → output_config.effort=${effort}`,
     );
   }
   delete prepared.reasoning_budget;

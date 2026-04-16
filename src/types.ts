@@ -58,9 +58,12 @@ export interface AnthropicRequest {
   tools?: Tool[];
   tool_choice?: ToolChoice;
   reasoning_budget?: number | string;
-  thinking?: {
-    type: "enabled" | "disabled";
-    budget_tokens: number;
+  thinking?:
+    | { type: "enabled"; budget_tokens: number }
+    | { type: "adaptive" }
+    | { type: "disabled" };
+  output_config?: {
+    effort?: "low" | "medium" | "high" | "xhigh" | "max";
   };
 }
 

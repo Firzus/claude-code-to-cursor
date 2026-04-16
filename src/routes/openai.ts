@@ -2,7 +2,7 @@ import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
-import { getApiModelId } from "../model-settings";
+import { getApiModelId, isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
 import {
   anthropicToOpenai,
   type OpenAIChatRequest,
@@ -59,8 +59,8 @@ function logAnthropicConversion(
   anthropicBody: AnthropicRequest,
 ): void {
   const thinkingEnabled = !!anthropicBody.thinking;
-  const thinkingBudget = thinkingEnabled ? anthropicBody.thinking?.budget_tokens : null;
-  const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (${thinkingBudget} tokens)` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
+  const effort = anthropicBody.output_config?.effort ?? null;
+  const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (effort=${effort})` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
   console.log(`\n→ ${routeSummary}`);
   logger.info(routeSummary);
 
@@ -98,11 +98,9 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     logOpenAIRequest(openaiBody);
 
-    const clientEffort =
-      typeof openaiBody.reasoning_effort === "string" &&
-      ["low", "medium", "high"].includes(openaiBody.reasoning_effort)
-        ? (openaiBody.reasoning_effort as "low" | "medium" | "high")
-        : null;
+    const clientEffort: ThinkingEffort | null = isValidThinkingEffort(openaiBody.reasoning_effort)
+      ? openaiBody.reasoning_effort
+      : null;
 
     const apiModelId = getApiModelId(modelSettings.selectedModel);
     const converted = openaiToAnthropicBase(openaiBody, apiModelId);

@@ -294,6 +294,19 @@ describe("settingsResponseSchema", () => {
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
   });
+
+  it("accepts xhigh and max effort levels", () => {
+    for (const effort of ["xhigh", "max"]) {
+      const data = {
+        settings: {
+          selectedModel: "claude-opus-4-7",
+          thinkingEnabled: true,
+          thinkingEffort: effort,
+        },
+      };
+      expect(settingsResponseSchema.parse(data)).toEqual(data);
+    }
+  });
 });
 
 describe("budgetResponseSchema", () => {

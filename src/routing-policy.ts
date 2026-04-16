@@ -2,33 +2,26 @@
  * Routing policy — decides the thinking effort for each proxied request.
  *
  * The model itself is always `settings.selectedModel`; routing only picks the
- * thinking budget based on user settings and any client-provided override.
+ * thinking effort based on user settings and any client-provided override.
  *
  * Pure module: no I/O, no logger dependency → easy to unit-test.
  */
 
 import {
-  getThinkingBudget,
+  getSuggestedMaxTokens,
   type ModelSettings,
-  THINKING_MAX_TOKENS_PADDING,
   type ThinkingEffort,
+  VALID_EFFORTS,
 } from "./model-settings";
 import type { AnthropicRequest } from "./types";
 
 export type RoutingPolicyLabel = "disabled" | "client" | "stored";
 
 function thinkingEffortRank(e: ThinkingEffort): number {
-  switch (e) {
-    case "low":
-      return 0;
-    case "medium":
-      return 1;
-    case "high":
-      return 2;
-  }
+  return VALID_EFFORTS.indexOf(e);
 }
 
-/** Lexicographic min: low < medium < high */
+/** Lexicographic min: low < medium < high < xhigh < max */
 export function minThinkingEffort(a: ThinkingEffort, b: ThinkingEffort): ThinkingEffort {
   return thinkingEffortRank(a) <= thinkingEffortRank(b) ? a : b;
 }
@@ -38,8 +31,6 @@ export interface RoutingDecision {
   effort: ThinkingEffort | null;
   /** How the decision was reached */
   policy: RoutingPolicyLabel;
-  /** Pre-resolved token budget (null when effort is null) */
-  budgetTokens: number | null;
 }
 
 /**
@@ -56,23 +47,14 @@ export function pickRoute(args: {
   const cap = settings.thinkingEffort;
 
   if (!settings.thinkingEnabled) {
-    return { effort: null, policy: "disabled", budgetTokens: null };
+    return { effort: null, policy: "disabled" };
   }
 
   if (clientEffort !== null) {
-    const effort = minThinkingEffort(clientEffort, cap);
-    return {
-      effort,
-      policy: "client",
-      budgetTokens: getThinkingBudget(effort),
-    };
+    return { effort: minThinkingEffort(clientEffort, cap), policy: "client" };
   }
 
-  return {
-    effort: cap,
-    policy: "stored",
-    budgetTokens: getThinkingBudget(cap),
-  };
+  return { effort: cap, policy: "stored" };
 }
 
 /**
@@ -80,9 +62,13 @@ export function pickRoute(args: {
  *
  * Centralises:
  * - Setting `model` to the resolved API model ID
- * - Setting `thinking` block (or removing it)
+ * - Setting `thinking: {type: "adaptive"}` + `output_config.effort` (or removing them)
  * - Forcing `temperature=1` when thinking is enabled
- * - Ensuring `max_tokens` is large enough to hold the thinking budget + output
+ * - Ensuring `max_tokens` is at least the suggested value for the effort level
+ *
+ * Anthropic's effort parameter is a behavioural signal — the model itself
+ * decides how much to reason via adaptive thinking. We only guarantee a
+ * reasonable `max_tokens` so the model has headroom to think + answer.
  */
 export function applyThinkingToBody(
   body: AnthropicRequest,
@@ -96,16 +82,17 @@ export function applyThinkingToBody(
     model: apiModelId,
   };
 
-  if (decision.effort === null || decision.budgetTokens === null) {
-    // Thinking disabled: restore client temperature, drop thinking block
+  if (decision.effort === null) {
     result.temperature = clientTemperature;
     result.max_tokens = baseMaxTokens ?? 4096;
     delete result.thinking;
+    delete result.output_config;
   } else {
-    const minTokens = decision.budgetTokens + THINKING_MAX_TOKENS_PADDING;
+    const suggested = getSuggestedMaxTokens(decision.effort);
     result.temperature = 1;
-    result.max_tokens = Math.max(baseMaxTokens ?? 0, minTokens);
-    result.thinking = { type: "enabled", budget_tokens: decision.budgetTokens };
+    result.max_tokens = Math.max(baseMaxTokens ?? 0, suggested);
+    result.thinking = { type: "adaptive" };
+    result.output_config = { effort: decision.effort };
   }
 
   return result;

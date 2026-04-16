@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_MODEL_SETTINGS, type ModelSettings } from "./model-settings";
+import {
+  DEFAULT_MODEL_SETTINGS,
+  getSuggestedMaxTokens,
+  type ModelSettings,
+} from "./model-settings";
 import { openaiToAnthropic } from "./openai-adapter";
 
 function createRequest(model = "Claude Code") {
@@ -28,11 +32,12 @@ describe("openaiToAnthropic", () => {
 
     expect(result.model).toBe("claude-haiku-4-5");
     expect(result.thinking).toBeUndefined();
+    expect(result.output_config).toBeUndefined();
     expect(result.temperature).toBeUndefined();
     expect(result.max_tokens).toBe(1024);
   });
 
-  test("uses selectedModel and saved thinking budget when thinkingEnabled=true", () => {
+  test("uses selectedModel and saved effort when thinkingEnabled=true", () => {
     const settings: ModelSettings = {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: true,
@@ -42,12 +47,10 @@ describe("openaiToAnthropic", () => {
     const result = openaiToAnthropic(createRequest(), settings);
 
     expect(result.model).toBe("claude-sonnet-4-6");
-    expect(result.thinking).toEqual({
-      type: "enabled",
-      budget_tokens: 4096,
-    });
+    expect(result.thinking).toEqual({ type: "adaptive" });
+    expect(result.output_config).toEqual({ effort: "low" });
     expect(result.temperature).toBe(1);
-    expect(result.max_tokens).toBe(12288);
+    expect(result.max_tokens).toBe(getSuggestedMaxTokens("low"));
   });
 
   test("respects reasoning_effort from client over stored settings", () => {
@@ -64,11 +67,42 @@ describe("openaiToAnthropic", () => {
 
     const result = openaiToAnthropic(request, settings);
 
-    // Should use client's "low" (4096) instead of stored "high" (16384)
-    expect(result.thinking).toEqual({
-      type: "enabled",
-      budget_tokens: 4096,
-    });
+    expect(result.thinking).toEqual({ type: "adaptive" });
+    expect(result.output_config).toEqual({ effort: "low" });
+  });
+
+  test("accepts xhigh from reasoning_effort when stored settings allow", () => {
+    const settings: ModelSettings = {
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "max",
+    };
+
+    const request = {
+      ...createRequest(),
+      reasoning_effort: "xhigh" as const,
+    };
+
+    const result = openaiToAnthropic(request, settings);
+
+    expect(result.output_config).toEqual({ effort: "xhigh" });
+  });
+
+  test("caps client reasoning_effort to stored effort", () => {
+    const settings: ModelSettings = {
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "medium",
+    };
+
+    const request = {
+      ...createRequest(),
+      reasoning_effort: "max" as const,
+    };
+
+    const result = openaiToAnthropic(request, settings);
+
+    expect(result.output_config).toEqual({ effort: "medium" });
   });
 
   test("falls back to stored settings when reasoning_effort is absent", () => {
@@ -80,10 +114,8 @@ describe("openaiToAnthropic", () => {
 
     const result = openaiToAnthropic(createRequest(), settings);
 
-    expect(result.thinking).toEqual({
-      type: "enabled",
-      budget_tokens: 16384,
-    });
+    expect(result.thinking).toEqual({ type: "adaptive" });
+    expect(result.output_config).toEqual({ effort: "high" });
   });
 
   test("maps opus to correct API model ID", () => {

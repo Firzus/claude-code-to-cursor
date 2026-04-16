@@ -12,7 +12,7 @@ export const modelLabels: Record<(typeof supportedModels)[number], string> = {
   "claude-haiku-4-5": "Claude Haiku 4.5",
 };
 
-export const thinkingEfforts = ["low", "medium", "high"] as const;
+export const thinkingEfforts = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export const settingsFormSchema = z.object({
   selectedModel: z.enum(supportedModels),

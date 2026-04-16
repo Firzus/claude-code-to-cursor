@@ -102,6 +102,8 @@ describe("SettingsPage", () => {
     expect(screen.getByText("low")).toBeInTheDocument();
     expect(screen.getByText("medium")).toBeInTheDocument();
     expect(screen.getByText("high")).toBeInTheDocument();
+    expect(screen.getByText("xhigh")).toBeInTheDocument();
+    expect(screen.getByText("max")).toBeInTheDocument();
   });
 
   it("shows save and discard buttons", async () => {

@@ -22,6 +22,17 @@ describe("settingsFormSchema", () => {
     }
   });
 
+  it("accepts all 5 thinking effort levels", () => {
+    for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
+      const result = settingsFormSchema.safeParse({
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: effort,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
   it("rejects invalid model", () => {
     const result = settingsFormSchema.safeParse({
       selectedModel: "gpt-4",

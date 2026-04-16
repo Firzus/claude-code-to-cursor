@@ -19,6 +19,7 @@ The API converts between OpenAI chat completion format and Anthropic messages fo
 - **Backend**: Bun v1.0+, TypeScript (strict mode), SQLite (Bun built-in), OAuth 2.0 PKCE, SSE streaming
 - **Frontend**: React 19, TanStack Router v1, TanStack Query v5, React Hook Form + Zod, Tailwind CSS v4, Vite v6, recharts v3
 - **Testing**: Bun test runner (backend), Vitest v3 + Testing Library (React v16, jest-dom v6, user-event v14) + jsdom (frontend)
+- **Linting / Formatting**: Biome v2 (single config at repo root, covers backend + frontend)
 - **Infrastructure**: Docker Compose, Cloudflare Tunnel (cloudflared 2025.4.0), nginx (frontend prod)
 
 ---
@@ -76,6 +77,8 @@ bun run dev          # Start with hot reload (bun --hot)
 bun run start        # Start without hot reload
 bun run typecheck    # Run TypeScript type checking (bunx tsc --noEmit)
 bun test             # Run all backend tests
+bun run lint         # Biome check (backend + frontend)
+bun run lint:fix     # Biome check with auto-fixes
 ```
 
 Entry point: `index.ts`. All source code in `src/`.
@@ -128,11 +131,16 @@ bun test --grep "pattern"                   # Run tests matching pattern
 - Test files live alongside source: `src/*.test.ts` and `src/routes/*.test.ts`
 - Key test files:
   - `src/openai-adapter.test.ts` — OpenAI-to-Anthropic format conversion
+  - `src/routing-policy.test.ts` — thinking effort resolution + adaptive body shaping
   - `src/request-normalization.test.ts` — request preprocessing
   - `src/model-settings.test.ts` — model configuration validation
   - `src/model-settings-store.test.ts` — SQLite persistence for settings
+  - `src/middleware.test.ts` — CORS, IP whitelist, logging
+  - `src/anthropic-client.test.ts` — rate limit cache + Anthropic client helpers
   - `src/routes/anthropic.test.ts` — Anthropic route handler
   - `src/routes/settings.test.ts` — Settings API endpoint
+  - `src/routes/auth.test.ts` — PKCE store eviction
+  - `src/routes/budget.test.ts` — Budget summary endpoint
 
 ### Frontend Tests
 
@@ -144,13 +152,13 @@ npm run test:watch                          # Watch mode
 
 - Test runner: Vitest (jsdom environment, globals enabled)
 - Setup file: `src/test-setup.ts` (extends `expect` with `@testing-library/jest-dom` matchers)
-- Shared utilities: `src/__tests__/test-utils.tsx` (QueryClient wrappers, `renderWithQuery`, `renderHookWithQuery`)
+- Shared utilities: `src/__tests__/test-utils.tsx` (QueryClient wrappers, `renderWithQuery`, `renderHookWithQuery`, `setupRouteComponentCapture`, `requireCapturedRouteComponent`)
 - Test directory: `frontend/src/__tests__/` organized by category:
   - `schemas/` — api-responses, login, settings schema validation
-  - `hooks/` — use-analytics, use-health, use-onboarding, use-settings
-  - `components/` — empty-state, error-boundary, nav-bar, oauth-flow
+  - `hooks/` — use-analytics, use-budget, use-health, use-onboarding, use-settings
+  - `components/` — confirm-dialog, empty-state, error-boundary, nav-bar, oauth-flow
   - `routes/` — analytics, login, settings page rendering
-  - `lib/` — api-client fetch wrapper
+  - `lib/` — api-client fetch wrapper, pricing
 
 ### Before Submitting Code
 
@@ -170,10 +178,10 @@ cd frontend && npm run typecheck && npm run test
 - **Strict mode** with `noUncheckedIndexedAccess` and `noImplicitOverride` enabled
 - ESNext target, bundler module resolution
 - Use `async/await` throughout, return `Response` objects from route handlers
-- Route handlers in `src/routes/` — one file per domain (anthropic, openai, auth, analytics, settings, models)
+- Route handlers in `src/routes/` — one file per domain (anthropic, openai, auth, analytics, settings, models, budget)
 - Use `type` imports (`import type { ... }`) via `verbatimModuleSyntax`
-- All types defined in `src/types.ts`
-- Use `logger.info()` / `logger.error()` for structured logging (file-based, auto-rotating)
+- All shared types defined in `src/types.ts`
+- Use `logger.info()` / `logger.error()` / `logger.verbose()` for structured logging (file-based, auto-rotating)
 - Zero runtime dependencies — backend relies entirely on Bun built-ins (HTTP server, SQLite, fetch, crypto)
 
 ### TypeScript (Frontend)
@@ -185,16 +193,22 @@ cd frontend && npm run typecheck && npm run test
 - API response validation: Zod schemas centralized in `src/schemas/api-responses.ts`
 - Styling: Tailwind CSS v4, utility merging via `clsx` + `tailwind-merge` (in `src/lib/utils.ts`)
 - Variants: `class-variance-authority` for components with style variants (e.g. `badge.tsx`)
-- UI primitives: native HTML elements styled with Tailwind (no shadcn-ui wrappers for button, input, label, select)
+- UI primitives: native HTML elements styled with Tailwind plus a few light wrappers in `src/components/ui/` (badge, button, card, chart, skeleton, tooltip)
 - Icons: `lucide-react`
 - Charts: `recharts`
-- Custom hooks in `src/hooks/` for data fetching (analytics, health, settings, onboarding)
+- Custom hooks in `src/hooks/` for data fetching (analytics, budget, health, settings, onboarding)
 - API client in `src/lib/api-client.ts` — typed fetch wrapper with optional Zod validation
+
+### Linting / Formatting
+
+- Biome v2 (root `biome.json`) covers both backend and frontend: `bun run lint`, `bun run lint:fix`
+- Formatter: 2-space indent, 100-char line width
+- Linter rules: `recommended` plus custom warnings (excessive complexity, unused params, `noExplicitAny`, etc.)
+- `frontend/src/routeTree.gen.ts` is generated and excluded
 
 ### General Conventions
 
 - camelCase for variables/functions, PascalCase for types/components
-- No semicolons needed (Bun default style)
 - Interfaces preferred over type aliases for object shapes
 - Error responses follow Anthropic's error format: `{ type: "error", error: { type: string, message: string } }`
 
@@ -204,96 +218,103 @@ cd frontend && npm run typecheck && npm run test
 
 ```
 claude-code-to-cursor/
-├── index.ts                    # Backend entry point — HTTP server + routing
+├── index.ts                       # Backend entry point — HTTP server + routing
+├── biome.json                     # Biome lint + format config (backend + frontend)
 ├── src/
-│   ├── config.ts               # Configuration, OAuth constants, env parsing
-│   ├── types.ts                # All TypeScript interfaces
-│   ├── oauth.ts                # OAuth 2.0 PKCE flow implementation
-│   ├── anthropic-client.ts     # Anthropic API interaction + rate limit cache
-│   ├── openai-adapter.ts       # OpenAI ↔ Anthropic format conversion
-│   ├── stream-handler.ts       # SSE stream processing and format conversion
-│   ├── model-settings.ts       # Model configuration types and validation
-│   ├── model-settings-store.ts # SQLite persistence for model settings
-│   ├── model-parser.ts         # Model ID parsing utilities
-│   ├── request-normalization.ts # Request preprocessing
-│   ├── internal-tools.ts       # Internal tool text extraction (CreatePlan, TodoWrite)
-│   ├── cache-keepalive.ts     # Periodic ping to keep Anthropic prompt cache warm
-│   ├── middleware.ts           # CORS, IP whitelist, request logging
-│   ├── logger.ts               # File-based logging with auto-rotation
-│   ├── db.ts                   # SQLite database setup + analytics storage
+│   ├── config.ts                  # Configuration, OAuth constants, env parsing
+│   ├── types.ts                   # Shared TypeScript interfaces (AnthropicRequest, etc.)
+│   ├── oauth.ts                   # OAuth 2.0 PKCE flow implementation
+│   ├── anthropic-client.ts        # Anthropic API interaction + rate limit cache
+│   ├── openai-adapter.ts          # OpenAI ↔ Anthropic format conversion
+│   ├── stream-handler.ts          # SSE stream processing and format conversion
+│   ├── routing-policy.ts          # Picks thinking effort + applies adaptive thinking/output_config
+│   ├── model-settings.ts          # Model configuration types, effort levels, validation
+│   ├── model-settings-store.ts    # SQLite persistence for model settings
+│   ├── request-metrics.ts         # Request shape metrics (messageCount, tool counts, hashes)
+│   ├── request-normalization.ts   # Request preprocessing (model aliasing, tool id sanitization)
+│   ├── tool-result-trimmer.ts     # Truncates oversized tool_result blocks
+│   ├── stuck-loop-detector.ts     # Detects repeated tool_use/tool_result loops
+│   ├── internal-tools.ts          # Internal tool text extraction (CreatePlan, TodoWrite)
+│   ├── middleware.ts              # CORS, IP whitelist, request logging
+│   ├── logger.ts                  # File-based logging with auto-rotation
+│   ├── db.ts                      # SQLite database setup + analytics + budget storage
 │   └── routes/
-│       ├── anthropic.ts        # POST /v1/messages (Anthropic format proxy)
-│       ├── openai.ts           # POST /v1/chat/completions (OpenAI format proxy)
-│       ├── models.ts           # GET /v1/models
-│       ├── auth.ts             # OAuth login/callback/status API
-│       ├── analytics.ts        # Analytics queries API
-│       └── settings.ts         # Model settings API
+│       ├── anthropic.ts           # POST /v1/messages (Anthropic format proxy)
+│       ├── openai.ts              # POST /v1/chat/completions (OpenAI format proxy)
+│       ├── models.ts              # GET /v1/models
+│       ├── auth.ts                # OAuth login/callback/status API
+│       ├── analytics.ts           # Analytics queries API
+│       ├── budget.ts              # GET /api/budget (daily token/cost summary)
+│       └── settings.ts            # Model settings API
 ├── frontend/
 │   ├── src/
-│   │   ├── main.tsx            # React entry point
-│   │   ├── router.tsx          # TanStack Router + QueryClient setup
-│   │   ├── test-setup.ts       # Vitest setup (jest-dom matchers)
+│   │   ├── main.tsx               # React entry point
+│   │   ├── router.tsx             # TanStack Router + QueryClient setup
+│   │   ├── test-setup.ts          # Vitest setup (jest-dom matchers)
 │   │   ├── styles/
-│   │   │   └── app.css         # Tailwind v4 theme (dark mode, oklch colors)
+│   │   │   └── app.css            # Tailwind v4 theme (dark mode, oklch colors)
 │   │   ├── routes/
-│   │   │   ├── __root.tsx      # Root layout (NavBar, ErrorBoundary, Suspense)
-│   │   │   ├── index.tsx       # Redirect → /analytics or /setup
-│   │   │   ├── analytics.tsx   # Analytics dashboard (stats, charts, request history)
-│   │   │   ├── login.tsx       # OAuth authentication page
-│   │   │   ├── settings.tsx    # Model selection, thinking toggle
-│   │   │   └── setup.tsx       # Onboarding wizard (4 steps)
+│   │   │   ├── __root.tsx         # Root layout (NavBar, ErrorBoundary, Suspense)
+│   │   │   ├── index.tsx          # Redirect → /analytics or /setup
+│   │   │   ├── analytics.tsx      # Analytics dashboard (stats, charts, request history)
+│   │   │   ├── login.tsx          # OAuth authentication page
+│   │   │   ├── settings.tsx       # Model selection, thinking toggle, effort control
+│   │   │   └── setup.tsx          # Onboarding wizard (4 steps)
 │   │   ├── components/
-│   │   │   ├── empty-state.tsx       # Empty state placeholder
-│   │   │   ├── error-boundary.tsx    # React error boundary
-│   │   │   ├── health-indicator.tsx  # Health status badge
-│   │   │   ├── nav-bar.tsx           # Navigation bar
-│   │   │   ├── oauth-flow.tsx        # OAuth login flow component
+│   │   │   ├── empty-state.tsx           # Empty state placeholder
+│   │   │   ├── error-boundary.tsx        # React error boundary
+│   │   │   ├── health-indicator.tsx      # Health status badge
+│   │   │   ├── nav-bar.tsx               # Navigation bar
+│   │   │   ├── oauth-flow.tsx            # OAuth login flow component
 │   │   │   ├── analytics/
-│   │   │   │   ├── ago-text.tsx      # Relative time display
-│   │   │   │   ├── confirm-dialog.tsx # Confirmation dialog
-│   │   │   │   ├── pagination.tsx    # Table pagination
-│   │   │   │   └── stat-card.tsx     # Statistics card
+│   │   │   │   ├── ago-text.tsx          # Relative time display
+│   │   │   │   ├── confirm-dialog.tsx    # Confirmation dialog
+│   │   │   │   ├── expandable-row.tsx    # Analytics row with collapsible details + effort badge
+│   │   │   │   ├── pagination.tsx        # Table pagination
+│   │   │   │   └── stat-card.tsx         # Statistics card
 │   │   │   ├── setup/
-│   │   │   │   ├── copy-block.tsx    # Copy-to-clipboard code block
-│   │   │   │   ├── nav-buttons.tsx   # Wizard navigation buttons
-│   │   │   │   ├── status-row.tsx    # Status check row
-│   │   │   │   └── step-indicator.tsx # Step progress indicator
+│   │   │   │   ├── copy-block.tsx        # Copy-to-clipboard code block
+│   │   │   │   ├── nav-buttons.tsx       # Wizard navigation buttons
+│   │   │   │   ├── status-row.tsx        # Status check row
+│   │   │   │   └── step-indicator.tsx    # Step progress indicator
 │   │   │   └── ui/
-│   │   │       ├── badge.tsx         # Badge with variants (cva)
-│   │   │       ├── card.tsx          # Card components
-│   │   │       ├── chart.tsx         # Recharts wrapper
-│   │   │       ├── skeleton.tsx      # Loading skeleton
-│   │   │       └── tooltip.tsx       # Tooltip component
+│   │   │       ├── badge.tsx             # Badge with variants (cva)
+│   │   │       ├── button.tsx            # Button wrapper
+│   │   │       ├── card.tsx              # Card components
+│   │   │       ├── chart.tsx             # Recharts wrapper
+│   │   │       ├── skeleton.tsx          # Loading skeleton
+│   │   │       └── tooltip.tsx           # Tooltip component
 │   │   ├── hooks/
-│   │   │   ├── use-analytics.ts      # Analytics data hooks (summary, requests, timeline)
-│   │   │   ├── use-health.ts         # Health check hook
-│   │   │   ├── use-onboarding.ts     # Onboarding state (localStorage)
-│   │   │   └── use-settings.ts       # Settings query + mutation
+│   │   │   ├── use-analytics.ts          # Analytics data hooks (summary, requests, timeline)
+│   │   │   ├── use-budget.ts             # Daily token budget hook
+│   │   │   ├── use-health.ts             # Health check hook
+│   │   │   ├── use-onboarding.ts         # Onboarding state (localStorage)
+│   │   │   └── use-settings.ts           # Settings query + mutation
 │   │   ├── lib/
-│   │   │   ├── api-client.ts         # Typed fetch wrapper with Zod validation
-│   │   │   ├── pricing.ts            # Cache savings calculation
-│   │   │   ├── query-keys.ts         # TanStack Query key constants
-│   │   │   └── utils.ts              # cn() utility (clsx + tailwind-merge)
+│   │   │   ├── api-client.ts             # Typed fetch wrapper with Zod validation
+│   │   │   ├── pricing.ts                # Cache savings calculation
+│   │   │   ├── query-keys.ts             # TanStack Query key constants
+│   │   │   └── utils.ts                  # cn() utility (clsx + tailwind-merge)
 │   │   ├── schemas/
-│   │   │   ├── api-responses.ts      # Zod schemas for all API responses
-│   │   │   ├── login.ts              # Login form schema
-│   │   │   └── settings.ts           # Settings form schema
+│   │   │   ├── api-responses.ts          # Zod schemas for all API responses
+│   │   │   ├── login.ts                  # Login form schema
+│   │   │   └── settings.ts               # Settings form schema (5 effort levels)
 │   │   └── __tests__/
-│   │       ├── test-utils.tsx        # Shared test utilities
-│   │       ├── schemas/              # Schema validation tests
-│   │       ├── hooks/                # Hook behavior tests
-│   │       ├── components/           # Component rendering tests
-│   │       ├── routes/               # Route/page rendering tests
-│   │       └── lib/                  # Utility function tests
+│   │       ├── test-utils.tsx            # Shared test utilities
+│   │       ├── schemas/                  # Schema validation tests
+│   │       ├── hooks/                    # Hook behavior tests
+│   │       ├── components/               # Component rendering tests
+│   │       ├── routes/                   # Route/page rendering tests
+│   │       └── lib/                      # Utility function tests
 │   ├── vite.config.ts
 │   ├── vitest.config.ts
 │   ├── tsconfig.json
-│   └── nginx.conf              # Production nginx config
-├── docker-compose.yml          # Production orchestration
-├── docker-compose.dev.yml      # Dev overrides (hot reload, via include)
-├── Dockerfile                  # Backend container (oven/bun:1, non-root)
-├── docker-entrypoint.sh        # Docker startup script (permissions + bun run)
-└── frontend/Dockerfile         # Frontend container (node:22 → nginx-unprivileged)
+│   └── nginx.conf                 # Production nginx config
+├── docker-compose.yml             # Production orchestration
+├── docker-compose.dev.yml         # Dev overrides (hot reload, via include)
+├── Dockerfile                     # Backend container (oven/bun:1, non-root)
+├── docker-entrypoint.sh           # Docker startup script (permissions + bun run)
+└── frontend/Dockerfile            # Frontend container (node:22 → nginx-unprivileged)
 ```
 
 ---
@@ -308,14 +329,15 @@ claude-code-to-cursor/
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions API proxy |
 | `GET`  | `/v1/models`           | List available models             |
 
-### Analytics Endpoints (IP whitelisted)
+### Analytics & Budget Endpoints (IP whitelisted)
 
-| Method | Path                                                    | Description                 |
-| ------ | ------------------------------------------------------- | --------------------------- |
-| `GET`  | `/api/analytics` (alias `/analytics`)                   | Analytics summary           |
-| `GET`  | `/api/analytics/requests` (alias `/analytics/requests`) | Request history (paginated) |
-| `GET`  | `/api/analytics/timeline` (alias `/analytics/timeline`) | Timeline data (bucketed)    |
-| `POST` | `/api/analytics/reset` (alias `/analytics/reset`)       | Reset analytics             |
+| Method | Path                                                    | Description                        |
+| ------ | ------------------------------------------------------- | ---------------------------------- |
+| `GET`  | `/api/analytics` (alias `/analytics`)                   | Analytics summary                  |
+| `GET`  | `/api/analytics/requests` (alias `/analytics/requests`) | Request history (paginated)        |
+| `GET`  | `/api/analytics/timeline` (alias `/analytics/timeline`) | Timeline data (bucketed)           |
+| `POST` | `/api/analytics/reset` (alias `/analytics/reset`)       | Reset analytics                    |
+| `GET`  | `/api/budget` (alias `/budget`)                         | UTC-day token totals + est. USD    |
 
 ### Auth Endpoints
 
@@ -373,22 +395,47 @@ The proxy uses 4 cache breakpoints in `src/anthropic-client.ts` to maximize Anth
 
 Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache keys. TTL-based `cache_control` is stripped (not supported by Claude Code OAuth).
 
-### Cache Keepalive
-
-- `src/cache-keepalive.ts` sends a lightweight ping every 4 minutes to keep the Anthropic prompt cache warm (ephemeral cache TTL is 5 minutes)
-- After each successful request, `updateCachePrefix()` stores the model, system prompt, and tools
-- A `setInterval` timer calls `sendKeepalivePing()` with a minimal `max_tokens=1` request using the same prefix
-- Started automatically on server boot via `startCacheKeepalive()` in `index.ts`
-- Inspired by Aider's `--cache-keepalive-pings` feature
-
-### Model Settings
+### Model Settings & Thinking Effort
 
 - Supported models: `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`
-- Thinking mode: enabled/disabled with effort levels (low: 4096, medium: 8192, high: 16384 tokens)
-- `THINKING_MAX_TOKENS_PADDING` = 8192 (added to thinking budget to compute max_tokens)
-- Default: Opus 4.7, thinking enabled, high effort
+- Supported effort levels (ranked low → max): `low`, `medium`, `high`, `xhigh`, `max`
+  - `xhigh` is only officially supported by Opus 4.7 (see Anthropic docs)
+  - `max` is available on Opus 4.6/4.7 and Sonnet 4.6
+- Default: Opus 4.7, thinking enabled, effort `high`
 - Settings persisted in SQLite (`model_settings` table)
 - Context window: 1M tokens for Opus 4.7, 200K for Sonnet 4.6 and Haiku 4.5
+
+**Effort → request format** (see `src/routing-policy.ts`):
+
+When thinking is enabled, the proxy emits Anthropic's **adaptive** thinking + `output_config.effort` (the model decides its own reasoning depth). This replaces the deprecated `thinking.budget_tokens` integer — manual thinking is no longer supported on Opus 4.7.
+
+```jsonc
+{
+  "thinking": { "type": "adaptive" },
+  "output_config": { "effort": "xhigh" },
+  "max_tokens": 65536
+}
+```
+
+**Suggested `max_tokens`** per effort (used as the floor when the client doesn't provide a larger value) — see `getSuggestedMaxTokens` in `src/model-settings.ts`:
+
+| Effort | Suggested `max_tokens` |
+| ------ | ---------------------- |
+| low    | 8 192                  |
+| medium | 16 384                 |
+| high   | 32 768                 |
+| xhigh  | 65 536                 |
+| max    | 65 536                 |
+
+These are ceilings to guarantee the model has headroom to think + answer — Anthropic's `effort` is a behavioural signal, not a strict token budget.
+
+**Effort routing** (`pickRoute` in `src/routing-policy.ts`):
+
+- `thinkingEnabled: false` → thinking disabled, `policy: "disabled"`
+- Client sends `reasoning_effort` (OpenAI) or `reasoning_budget` (Anthropic) → `min(client, stored)`, `policy: "client"`
+- Otherwise → stored effort, `policy: "stored"`
+
+Clients can override thinking per-request using either `reasoning_effort` (OpenAI) or `reasoning_budget` (Anthropic) with any of the 5 effort strings. The proxy caps the client value to the stored setting.
 
 ### Rate Limiting
 
@@ -415,8 +462,9 @@ Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache k
 
 - SQLite via Bun's built-in driver
 - Tables: `requests` (analytics with cache token tracking), `model_settings`
-- `requests` table includes `cache_read_tokens` and `cache_creation_tokens` columns (added via migration)
-- Auto-migrated on startup in `src/db.ts`
+- `requests` table includes `cache_read_tokens`, `cache_creation_tokens`, `applied_thinking_effort`, `client_reasoning_effort` columns (added via migrations)
+- Auto-migrated on startup in `src/db.ts` (see the migrations array)
+- Budget queries aggregate per UTC day in `getBudgetDaySummary()`
 - Docker volume `cctc-data` for persistence
 
 ---
@@ -469,10 +517,18 @@ docker compose -f docker-compose.dev.yml up
 
 ### Adding a New Supported Model
 
-1. Add model ID to `SupportedSelectedModel` type in `src/model-settings.ts`
-2. Add to `SUPPORTED_SELECTED_MODELS` array
+1. Add model ID to the `SupportedSelectedModel` union in `src/model-settings.ts`
+2. Add it to `SUPPORTED_SELECTED_MODELS`
 3. Update `getContextLength()` if the new model has a different context window
-4. Update thinking budgets if needed
+4. Update the frontend `supportedModels` / `modelLabels` / `modelMeta` in `frontend/src/schemas/settings.ts` and `frontend/src/routes/settings.tsx`
+
+### Adding a New Effort Level
+
+1. Extend `VALID_EFFORTS` in `src/model-settings.ts` (order matters — it defines rank for `minThinkingEffort`)
+2. Add a suggested `max_tokens` entry in `SUGGESTED_MAX_TOKENS`
+3. Extend `thinkingEfforts` in `frontend/src/schemas/settings.ts`
+4. Add a description in `effortDescriptions` in `frontend/src/routes/settings.tsx`
+5. Update `effortBadge` variant in `frontend/src/components/analytics/expandable-row.tsx` if needed
 
 ### Adding a Frontend Test
 
@@ -512,12 +568,14 @@ docker compose -f docker-compose.dev.yml up
 | Requests fail with 429         | Rate limited by Anthropic. Dashboard shows reset time                               |
 | Tunnel not connecting          | Verify `CLOUDFLARE_TUNNEL_TOKEN` in `.env`. Check `docker compose logs cloudflared` |
 | Frontend can't reach API       | Ensure API is healthy first. In Docker, frontend uses `API_URL=http://api:8082`     |
+| `xhigh` rejected by API        | Only Opus 4.7 officially supports `xhigh`. Switch model or lower effort to `high`   |
 
 ---
 
 ## PR Guidelines
 
 - Run `bun run typecheck && bun test` (backend) and `cd frontend && npm run typecheck && npm run test` (frontend) before committing
+- Run `bun run lint` at the repo root for Biome formatting/lint checks
 - Title format: `[backend|frontend|docker] Brief description`
-- Keep database migrations backward-compatible
+- Keep database migrations backward-compatible (append to the migrations array in `src/db.ts`; never drop or rewrite existing rows)
 - Don't commit log files (`api.log` is gitignored)

@@ -4,9 +4,11 @@ import {
   getApiModelId,
   getContextLength,
   getExposedModels,
-  getThinkingBudget,
+  getSuggestedMaxTokens,
   isAllowedPublicModel,
+  isValidThinkingEffort,
   PUBLIC_MODEL_ID,
+  VALID_EFFORTS,
   validateModelSettings,
 } from "./model-settings";
 
@@ -28,13 +30,33 @@ describe("model settings contract", () => {
     });
   });
 
-  test.each([
-    ["low", 4096],
-    ["medium", 8192],
-    ["high", 16384],
-  ])("maps %s thinking effort to %i tokens", (effort, budget) => {
-    expect(getThinkingBudget(effort as "low" | "medium" | "high")).toBe(budget);
+  test("exposes the 5 valid effort levels in rank order", () => {
+    expect(VALID_EFFORTS).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
+
+  test.each([
+    ["low", 8192],
+    ["medium", 16384],
+    ["high", 32768],
+    ["xhigh", 65536],
+    ["max", 65536],
+  ])("suggests %i max_tokens for %s effort", (effort, suggested) => {
+    expect(getSuggestedMaxTokens(effort as (typeof VALID_EFFORTS)[number])).toBe(suggested);
+  });
+
+  test.each(["low", "medium", "high", "xhigh", "max"])(
+    "isValidThinkingEffort accepts %s",
+    (effort) => {
+      expect(isValidThinkingEffort(effort)).toBe(true);
+    },
+  );
+
+  test.each(["ultra", "", "HIGH", null, undefined, 42])(
+    "isValidThinkingEffort rejects %p",
+    (value) => {
+      expect(isValidThinkingEffort(value)).toBe(false);
+    },
+  );
 
   test("accepts valid model settings payloads", () => {
     expect(validateModelSettings(DEFAULT_MODEL_SETTINGS)).toEqual(DEFAULT_MODEL_SETTINGS);
@@ -60,6 +82,37 @@ describe("model settings contract", () => {
       thinkingEnabled: true,
       thinkingEffort: "medium",
     });
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "xhigh",
+      }),
+    ).toEqual({
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "xhigh",
+    });
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "max",
+      }),
+    ).toEqual({
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "max",
+    });
+  });
+
+  test("rejects invalid thinkingEffort values", () => {
+    expect(() =>
+      validateModelSettings({
+        ...DEFAULT_MODEL_SETTINGS,
+        thinkingEffort: "ultra",
+      }),
+    ).toThrow();
   });
 
   test("returns API model ID unchanged", () => {

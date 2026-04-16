@@ -9,6 +9,7 @@ import {
   getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
+  isValidThinkingEffort,
   type ModelSettings,
   type ThinkingEffort,
 } from "./model-settings";
@@ -69,7 +70,7 @@ export interface OpenAIChatRequest {
   tool_choice?: "none" | "auto" | "required" | { type: "function"; function: { name: string } };
   stream_options?: { include_usage?: boolean };
   /** OpenAI reasoning_effort field — Cursor sends this when thinking is toggled */
-  reasoning_effort?: "low" | "medium" | "high";
+  reasoning_effort?: ThinkingEffort;
 }
 
 interface OpenAIChatResponse {
@@ -486,11 +487,9 @@ export function openaiToAnthropic(
 ): AnthropicRequest {
   const apiModelId = getApiModelId(modelSettings.selectedModel);
   const base = openaiToAnthropicBase(originalRequest, apiModelId);
-  const clientEffort =
-    typeof originalRequest.reasoning_effort === "string" &&
-    ["low", "medium", "high"].includes(originalRequest.reasoning_effort)
-      ? (originalRequest.reasoning_effort as ThinkingEffort)
-      : null;
+  const clientEffort = isValidThinkingEffort(originalRequest.reasoning_effort)
+    ? (originalRequest.reasoning_effort as ThinkingEffort)
+    : null;
   const decision = pickRoute({ settings: modelSettings, clientEffort });
   return applyThinkingToBody(
     base,

@@ -162,7 +162,7 @@ if (!SKIP) {
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
-    test("continuation turn after tool_result uses stored thinking budget", async () => {
+    test("continuation turn after tool_result uses stored adaptive thinking + effort", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-opus-4-7",
@@ -199,8 +199,39 @@ if (!SKIP) {
       expect(proxiedBody).toBeDefined();
       const body4 = proxiedBody as unknown as AnthropicRequest;
       expect(body4.model).toBe("claude-opus-4-7");
-      expect(body4.thinking).toBeDefined();
-      expect((body4.thinking as { budget_tokens: number }).budget_tokens).toBe(16384);
+      expect(body4.thinking).toEqual({ type: "adaptive" });
+      expect(body4.output_config).toEqual({ effort: "high" });
+    });
+
+    test("respects xhigh from client reasoning_budget when stored cap allows it", async () => {
+      proxiedBody = undefined;
+      currentModelSettings = {
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "max",
+      };
+      proxyResponse = new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const request = new Request("http://localhost/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "Claude Code",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: "Hello" }],
+          reasoning_budget: "xhigh",
+        } satisfies AnthropicRequest),
+      });
+
+      const response = await handleAnthropicMessages(request);
+
+      expect(response.status).toBe(200);
+      const body5 = proxiedBody as unknown as AnthropicRequest;
+      expect(body5.thinking).toEqual({ type: "adaptive" });
+      expect(body5.output_config).toEqual({ effort: "xhigh" });
     });
   });
 } else {

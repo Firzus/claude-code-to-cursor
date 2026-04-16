@@ -1,4 +1,5 @@
-export type ThinkingEffort = "low" | "medium" | "high";
+export const VALID_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingEffort = (typeof VALID_EFFORTS)[number];
 
 export type SupportedSelectedModel = "claude-opus-4-7" | "claude-sonnet-4-6" | "claude-haiku-4-5";
 
@@ -16,15 +17,26 @@ export const DEFAULT_MODEL_SETTINGS = {
   thinkingEffort: "high",
 } as const satisfies ModelSettings;
 
-/** Padding added to thinking budget to compute max_tokens */
-export const THINKING_MAX_TOKENS_PADDING = 8192;
-
 const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
 
-const THINKING_BUDGETS: Record<ThinkingEffort, number> = {
-  low: 4096,
-  medium: 8192,
-  high: 16384,
+/**
+ * Suggested `max_tokens` per effort level.
+ *
+ * Anthropic's docs state that "effort is a behavioral signal, not a strict
+ * token budget" - the real depth of reasoning is chosen adaptively by the
+ * model. These values are used only to guarantee a reasonable default
+ * `max_tokens` when the client doesn't provide one, so that the model has
+ * enough headroom to think + answer at the given effort level.
+ *
+ * For Opus 4.7, the docs recommend a `max_tokens` of ~64k when running at
+ * `xhigh` or `max`.
+ */
+const SUGGESTED_MAX_TOKENS: Record<ThinkingEffort, number> = {
+  low: 8192,
+  medium: 16384,
+  high: 32768,
+  xhigh: 65536,
+  max: 65536,
 };
 
 export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
@@ -45,8 +57,12 @@ export function getInvalidPublicModelMessage(modelId: string): string {
   return `Invalid model "${modelId}": only "${PUBLIC_MODEL_ID}" is supported.`;
 }
 
-export function getThinkingBudget(effort: ThinkingEffort): number {
-  return THINKING_BUDGETS[effort];
+export function getSuggestedMaxTokens(effort: ThinkingEffort): number {
+  return SUGGESTED_MAX_TOKENS[effort];
+}
+
+export function isValidThinkingEffort(value: unknown): value is ThinkingEffort {
+  return typeof value === "string" && (VALID_EFFORTS as readonly string[]).includes(value);
 }
 
 /** Maps a user-facing selected model to the actual API model ID */
@@ -78,11 +94,7 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error("Invalid thinkingEnabled value");
   }
 
-  if (
-    candidate.thinkingEffort !== "low" &&
-    candidate.thinkingEffort !== "medium" &&
-    candidate.thinkingEffort !== "high"
-  ) {
+  if (!isValidThinkingEffort(candidate.thinkingEffort)) {
     throw new Error("Invalid thinkingEffort value");
   }
 

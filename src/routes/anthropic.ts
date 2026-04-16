@@ -6,6 +6,7 @@ import {
   getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
+  isValidThinkingEffort,
   PUBLIC_MODEL_ID,
   type ThinkingEffort,
 } from "../model-settings";
@@ -221,11 +222,11 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       );
     }
     // Respect client's reasoning_budget if it maps to a known effort level
-    const clientEffort =
-      typeof incomingBody.reasoning_budget === "string" &&
-      ["low", "medium", "high"].includes(incomingBody.reasoning_budget)
-        ? (incomingBody.reasoning_budget as ThinkingEffort)
-        : null;
+    const clientEffort: ThinkingEffort | null = isValidThinkingEffort(
+      incomingBody.reasoning_budget,
+    )
+      ? incomingBody.reasoning_budget
+      : null;
 
     // Normalize to default model placeholder first; routing-policy will set the real model
     const normalizedBody = normalizeAnthropicRequestModel(
@@ -235,6 +236,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     const {
       reasoning_budget: _clientReasoningBudget,
       thinking: _clientThinking,
+      output_config: _clientOutputConfig,
       ...bodyWithoutClientThinkingControls
     } = normalizedBody;
 
@@ -261,7 +263,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     );
 
     console.log(
-      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking ? `${body.thinking.budget_tokens} tokens` : "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
+      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking?.type ?? "none"} | effort=${body.output_config?.effort ?? "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
     );
 
     const proxiedResponse = await proxyRequest("/v1/messages", body);
