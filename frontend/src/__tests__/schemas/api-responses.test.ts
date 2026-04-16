@@ -107,7 +107,7 @@ describe("requestRecordSchema", () => {
     const data = {
       id: 1,
       timestamp: Date.now(),
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-7",
       source: "claude_code",
       inputTokens: 100,
       outputTokens: 50,
@@ -156,7 +156,7 @@ describe("requestRecordSchema", () => {
     const data = {
       id: 4,
       timestamp: Date.now(),
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-7",
       source: "claude_code" as const,
       inputTokens: 10,
       outputTokens: 1,
@@ -265,10 +265,9 @@ describe("settingsResponseSchema", () => {
   it("accepts valid settings response", () => {
     const data = {
       settings: {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        cacheTTL: "5m",
       },
     };
     expect(settingsResponseSchema.parse(data)).toEqual(data);
@@ -280,7 +279,6 @@ describe("settingsResponseSchema", () => {
         selectedModel: "claude-invalid",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        cacheTTL: "5m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
@@ -289,10 +287,9 @@ describe("settingsResponseSchema", () => {
   it("rejects invalid effort", () => {
     const data = {
       settings: {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "ultra",
-        cacheTTL: "5m",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();

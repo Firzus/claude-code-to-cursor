@@ -9,8 +9,6 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
 import { cn } from "~/lib/utils";
 import {
-  cacheTTLLabels,
-  cacheTTLValues,
   modelLabels,
   type SettingsFormValues,
   settingsFormSchema,
@@ -25,7 +23,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 const modelMeta: Record<(typeof supportedModels)[number], ModelMeta> = {
-  "claude-opus-4-6": {
+  "claude-opus-4-7": {
     context: "1M context · Most capable",
     icon: Sparkles,
     accentClass: "model-opus",
@@ -54,7 +52,6 @@ function SettingsPage() {
 
   const thinkingEnabled = form.watch("thinkingEnabled");
   const selectedModel = form.watch("selectedModel");
-  const cacheTTL = form.watch("cacheTTL");
   const isDirty = form.formState.isDirty;
 
   useEffect(() => {
@@ -83,8 +80,8 @@ function SettingsPage() {
         <Skeleton className="h-5 w-20" />
         <Card>
           <CardContent className="p-5 space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
+            {["skel-1", "skel-2", "skel-3"].map((id) => (
+              <Skeleton key={id} className="h-16 w-full" />
             ))}
           </CardContent>
         </Card>
@@ -264,40 +261,6 @@ function SettingsPage() {
                   </button>
                 ))}
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Cache TTL */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-[13px]">Cache TTL</CardTitle>
-            <CardDescription className="text-[12px]">
-              How long Anthropic should keep prompt cache entries alive
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-2">
-            <div className="inline-flex rounded-lg border border-border text-[12px] overflow-hidden">
-              {cacheTTLValues.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => form.setValue("cacheTTL", v, { shouldDirty: true })}
-                  className={cn(
-                    "px-4 py-1.5 font-mono capitalize transition-all duration-200 cursor-pointer",
-                    cacheTTL === v
-                      ? "bg-foreground text-background font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-card/60",
-                  )}
-                >
-                  {cacheTTLLabels[v]}
-                </button>
-              ))}
-            </div>
-            <div className="text-[11px] text-muted-foreground">
-              {cacheTTL === "1h"
-                ? "1-hour cache: 2× write cost, survives async/batch gaps"
-                : "5-minute cache: free writes, default for interactive sessions"}
             </div>
           </CardContent>
         </Card>

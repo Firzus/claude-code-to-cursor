@@ -1,45 +1,34 @@
 export type ThinkingEffort = "low" | "medium" | "high";
 
-export type SupportedSelectedModel = "claude-opus-4-6" | "claude-sonnet-4-6" | "claude-haiku-4-5";
-
-/**
- * Anthropic prompt cache TTL. "5m" is the default (free cache writes); "1h"
- * requires the extended-cache-ttl-2025-04-11 beta header and 2× write cost,
- * useful for async/batch workflows where the 5m default would expire.
- */
-export type CacheTTL = "5m" | "1h";
-
-export const CACHE_TTL_VALUES: readonly CacheTTL[] = ["5m", "1h"];
+export type SupportedSelectedModel = "claude-opus-4-7" | "claude-sonnet-4-6" | "claude-haiku-4-5";
 
 export interface ModelSettings {
   selectedModel: SupportedSelectedModel;
   thinkingEnabled: boolean;
   thinkingEffort: ThinkingEffort;
-  cacheTTL: CacheTTL;
 }
 
 export const PUBLIC_MODEL_ID = "Claude Code" as const;
 
 export const DEFAULT_MODEL_SETTINGS = {
-  selectedModel: "claude-opus-4-6",
+  selectedModel: "claude-opus-4-7",
   thinkingEnabled: true,
   thinkingEffort: "high",
-  cacheTTL: "5m",
 } as const satisfies ModelSettings;
 
 /** Padding added to thinking budget to compute max_tokens */
-export const THINKING_MAX_TOKENS_PADDING = 2048;
+export const THINKING_MAX_TOKENS_PADDING = 8192;
 
 const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
 
 const THINKING_BUDGETS: Record<ThinkingEffort, number> = {
-  low: 2048,
-  medium: 4096,
-  high: 8192,
+  low: 4096,
+  medium: 8192,
+  high: 16384,
 };
 
 export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
-  "claude-opus-4-6",
+  "claude-opus-4-7",
   "claude-sonnet-4-6",
   "claude-haiku-4-5",
 ];
@@ -67,7 +56,7 @@ export function getApiModelId(model: SupportedSelectedModel): string {
 
 /** Returns the context window size for a given selected model */
 export function getContextLength(model: SupportedSelectedModel): number {
-  if (model === "claude-opus-4-6") return 1000000;
+  if (model === "claude-opus-4-7") return 1000000;
   return 200000;
 }
 
@@ -97,14 +86,9 @@ export function validateModelSettings(input: unknown): ModelSettings {
     throw new Error("Invalid thinkingEffort value");
   }
 
-  if (candidate.cacheTTL === undefined || !CACHE_TTL_VALUES.includes(candidate.cacheTTL)) {
-    throw new Error(`Invalid cacheTTL value: ${String(candidate.cacheTTL)}`);
-  }
-
   return {
     selectedModel: candidate.selectedModel,
     thinkingEnabled: candidate.thinkingEnabled,
     thinkingEffort: candidate.thinkingEffort,
-    cacheTTL: candidate.cacheTTL,
   };
 }

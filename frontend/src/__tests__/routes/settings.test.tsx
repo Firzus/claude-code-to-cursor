@@ -27,10 +27,9 @@ async function renderSettingsPage() {
 
 const mockSettings = {
   settings: {
-    selectedModel: "claude-opus-4-6" as const,
+    selectedModel: "claude-opus-4-7" as const,
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
-    cacheTTL: "5m" as const,
   },
 };
 
@@ -83,7 +82,7 @@ describe("SettingsPage", () => {
     await renderSettingsPage();
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
-    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
+    expect(screen.getByText("Claude Opus 4.7")).toBeInTheDocument();
     expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
     expect(screen.getByText("Claude Haiku 4.5")).toBeInTheDocument();
   });

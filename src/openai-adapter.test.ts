@@ -13,8 +13,8 @@ function createRequest(model = "Claude Code") {
 describe("openaiToAnthropic", () => {
   test('rejects requests whose model is not "Claude Code"', () => {
     expect(() =>
-      openaiToAnthropic(createRequest("claude-opus-4-6"), DEFAULT_MODEL_SETTINGS),
-    ).toThrow('Invalid model "claude-opus-4-6": only "Claude Code" is supported.');
+      openaiToAnthropic(createRequest("claude-opus-4-7"), DEFAULT_MODEL_SETTINGS),
+    ).toThrow('Invalid model "claude-opus-4-7": only "Claude Code" is supported.');
   });
 
   test("uses selectedModel and omits thinking when thinkingEnabled=false", () => {
@@ -22,7 +22,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-haiku-4-5",
       thinkingEnabled: false,
       thinkingEffort: "high",
-      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -38,7 +37,6 @@ describe("openaiToAnthropic", () => {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: true,
       thinkingEffort: "low",
-      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
@@ -46,18 +44,17 @@ describe("openaiToAnthropic", () => {
     expect(result.model).toBe("claude-sonnet-4-6");
     expect(result.thinking).toEqual({
       type: "enabled",
-      budget_tokens: 2048,
+      budget_tokens: 4096,
     });
     expect(result.temperature).toBe(1);
-    expect(result.max_tokens).toBe(4096);
+    expect(result.max_tokens).toBe(12288);
   });
 
   test("respects reasoning_effort from client over stored settings", () => {
     const settings: ModelSettings = {
-      selectedModel: "claude-opus-4-6",
+      selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      cacheTTL: "5m",
     };
 
     const request = {
@@ -67,39 +64,37 @@ describe("openaiToAnthropic", () => {
 
     const result = openaiToAnthropic(request, settings);
 
-    // Should use client's "low" (2048) instead of stored "high" (8192)
+    // Should use client's "low" (4096) instead of stored "high" (16384)
     expect(result.thinking).toEqual({
       type: "enabled",
-      budget_tokens: 2048,
+      budget_tokens: 4096,
     });
   });
 
   test("falls back to stored settings when reasoning_effort is absent", () => {
     const settings: ModelSettings = {
-      selectedModel: "claude-opus-4-6",
+      selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "high",
-      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
 
     expect(result.thinking).toEqual({
       type: "enabled",
-      budget_tokens: 8192,
+      budget_tokens: 16384,
     });
   });
 
   test("maps opus to correct API model ID", () => {
     const settings: ModelSettings = {
-      selectedModel: "claude-opus-4-6",
+      selectedModel: "claude-opus-4-7",
       thinkingEnabled: false,
       thinkingEffort: "medium",
-      cacheTTL: "5m",
     };
 
     const result = openaiToAnthropic(createRequest(), settings);
 
-    expect(result.model).toBe("claude-opus-4-6");
+    expect(result.model).toBe("claude-opus-4-7");
   });
 });

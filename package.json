@@ -6,6 +6,10 @@
   "scripts": {
     "start": "bun run index.ts",
     "dev": "bun --hot run index.ts",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "lint": "biome check .",

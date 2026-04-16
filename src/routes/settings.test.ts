@@ -16,7 +16,6 @@ const currentSettings: ModelSettings = {
   selectedModel: "claude-sonnet-4-6",
   thinkingEnabled: true,
   thinkingEffort: "medium",
-  cacheTTL: "5m",
 };
 
 const savedSettingsCalls: ModelSettings[] = [];
@@ -55,7 +54,6 @@ describe("settings JSON API", () => {
         selectedModel: "claude-unknown",
         thinkingEnabled: true,
         thinkingEffort: "medium",
-        cacheTTL: "5m",
       }),
     });
 
@@ -78,7 +76,6 @@ describe("settings JSON API", () => {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: false,
         thinkingEffort: "low",
-        cacheTTL: "1h",
       }),
     });
 
@@ -93,7 +90,6 @@ describe("settings JSON API", () => {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: false,
         thinkingEffort: "low",
-        cacheTTL: "1h",
       },
     ]);
   });

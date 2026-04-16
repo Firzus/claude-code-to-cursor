@@ -17,10 +17,9 @@ beforeEach(() => {
 
 const mockSettings = {
   settings: {
-    selectedModel: "claude-opus-4-6" as const,
+    selectedModel: "claude-opus-4-7" as const,
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
-    cacheTTL: "5m" as const,
   },
 };
 
@@ -31,7 +30,7 @@ describe("useSettings", () => {
     const { result } = renderHookWithQuery(() => useSettings());
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data?.settings.selectedModel).toBe("claude-opus-4-6");
+    expect(result.current.data?.settings.selectedModel).toBe("claude-opus-4-7");
     expect(result.current.data?.settings.thinkingEnabled).toBe(true);
   });
 
@@ -59,7 +58,6 @@ describe("useUpdateSettings", () => {
       selectedModel: "claude-sonnet-4-6",
       thinkingEnabled: false,
       thinkingEffort: "low",
-      cacheTTL: "1h",
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

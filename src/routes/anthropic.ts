@@ -11,12 +11,7 @@ import {
 } from "../model-settings";
 import { computeRequestShape } from "../request-metrics";
 import { normalizeAnthropicRequestModel } from "../request-normalization";
-import {
-  adaptiveThinkingEffort,
-  applyThinkingToBody,
-  minThinkingEffort,
-  pickRoute,
-} from "../routing-policy";
+import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
 
 function rewriteAnthropicJsonResponseModel(bodyText: string): string {
@@ -249,19 +244,11 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       typeof incomingBody.reasoning_budget === "string" ? incomingBody.reasoning_budget : null,
     );
 
-    const decision = pickRoute({ settings: modelSettings, clientEffort, shape });
+    const decision = pickRoute({ settings: modelSettings, clientEffort });
 
     if (modelSettings.thinkingEnabled) {
-      const cap = modelSettings.thinkingEffort;
-      const adaptiveBase = adaptiveThinkingEffort(shape, cap);
-      const afterAdaptive = minThinkingEffort(adaptiveBase, cap);
-      const adaptiveLabel = shape.lastMsgHasToolResult
-        ? "tool_result"
-        : shape.messageCount > 10
-          ? "long_thread"
-          : "none";
       logger.info(
-        `[Thinking] cap=${cap}, adaptive=${afterAdaptive} (${adaptiveLabel}), policy=${decision.policy}, final=${decision.effort}`,
+        `[Thinking] effort=${decision.effort}, policy=${decision.policy}`,
       );
     }
 

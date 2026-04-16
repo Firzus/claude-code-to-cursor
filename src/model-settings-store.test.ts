@@ -27,10 +27,9 @@ describe("model settings store", () => {
       initModelSettingsSchema(database);
 
       const settings = {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: false,
         thinkingEffort: "medium",
-        cacheTTL: "1h",
       } as const;
 
       saveModelSettingsToDb(database, settings);
@@ -48,17 +47,15 @@ describe("model settings store", () => {
       initModelSettingsSchema(database);
 
       saveModelSettingsToDb(database, {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        cacheTTL: "5m",
       });
 
       const updatedSettings = {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: false,
         thinkingEffort: "low",
-        cacheTTL: "1h",
       } as const;
 
       saveModelSettingsToDb(database, updatedSettings);

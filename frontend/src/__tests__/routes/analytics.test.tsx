@@ -86,7 +86,7 @@ const requestsData = {
     {
       id: 1,
       timestamp: Date.now(),
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-7",
       source: "claude_code" as const,
       inputTokens: 500,
       outputTokens: 200,
@@ -335,7 +335,7 @@ describe("AnalyticsPage", () => {
     await renderAnalyticsPage();
 
     expect(screen.getByText("Request History")).toBeInTheDocument();
-    expect(screen.getByText("opus-4-6")).toBeInTheDocument();
+    expect(screen.getByText("opus-4-7")).toBeInTheDocument();
     expect(screen.getByText("$0.03")).toBeInTheDocument();
   });
 });

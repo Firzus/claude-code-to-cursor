@@ -40,7 +40,7 @@ const mockRequests = {
     {
       id: 1,
       timestamp: Date.now(),
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-7",
       source: "claude_code" as const,
       inputTokens: 500,
       outputTokens: 200,

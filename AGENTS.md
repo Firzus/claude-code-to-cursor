@@ -12,7 +12,7 @@ Three services orchestrated via Docker Compose:
 - **Frontend Dashboard** (React + Vite, port 3111) — authentication UI, onboarding wizard, analytics dashboard, settings management
 - **Cloudflare Tunnel** (cloudflared) — secure external access to the API
 
-The API converts between OpenAI chat completion format and Anthropic messages format, allowing any OpenAI-compatible client to talk to Claude. It exposes a single public model ID (`Claude Code`) and maps it to a user-configured backend model (Opus 4.6, Sonnet 4.6, or Haiku 4.5).
+The API converts between OpenAI chat completion format and Anthropic messages format, allowing any OpenAI-compatible client to talk to Claude. It exposes a single public model ID (`Claude Code`) and maps it to a user-configured backend model (Opus 4.7, Sonnet 4.6, or Haiku 4.5).
 
 ### Key Technologies
 
@@ -352,7 +352,7 @@ claude-code-to-cursor/
 - Required beta headers: `oauth-2025-04-20`, `interleaved-thinking-2025-05-14`
 - User-Agent must match: `claude-cli/2.1.97 (external, cli)`
 - System prompt must start with: `"You are Claude Code, Anthropic's official CLI for Claude."` (required for OAuth to work)
-- Note: `context-1m` beta header was removed — 1M context is GA for Opus 4.6
+- Note: `context-1m` beta header was removed — 1M context is GA for Opus 4.7
 
 ### Request Translation (OpenAI ↔ Anthropic)
 
@@ -383,12 +383,12 @@ Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache k
 
 ### Model Settings
 
-- Supported models: `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`
+- Supported models: `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`
 - Thinking mode: enabled/disabled with effort levels (low: 4096, medium: 8192, high: 16384 tokens)
 - `THINKING_MAX_TOKENS_PADDING` = 8192 (added to thinking budget to compute max_tokens)
-- Default: Opus 4.6, thinking enabled, high effort
+- Default: Opus 4.7, thinking enabled, high effort
 - Settings persisted in SQLite (`model_settings` table)
-- Context window: 1M tokens for Opus 4.6, 200K for Sonnet 4.6 and Haiku 4.5
+- Context window: 1M tokens for Opus 4.7, 200K for Sonnet 4.6 and Haiku 4.5
 
 ### Rate Limiting
 

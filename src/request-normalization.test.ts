@@ -32,13 +32,13 @@ describe("normalizeAnthropicRequest", () => {
       ],
     };
 
-    const normalized = normalizeAnthropicRequest(input, "claude-opus-4-6");
+    const normalized = normalizeAnthropicRequest(input, "claude-opus-4-7");
     const toolUse = normalized.messages[0]
       ?.content as AnthropicRequest["messages"][number]["content"];
     const toolResult = normalized.messages[1]
       ?.content as AnthropicRequest["messages"][number]["content"];
 
-    expect(normalized.model).toBe("claude-opus-4-6");
+    expect(normalized.model).toBe("claude-opus-4-7");
     expect((toolUse as Array<{ id?: string }>)[0]?.id).toBe("toolu_01_bad_id");
     expect((toolResult as Array<{ tool_use_id?: string }>)[0]?.tool_use_id).toBe("toolu_01_bad_id");
     expect(input.model).toBe("Claude Code");

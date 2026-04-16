@@ -8,12 +8,10 @@ if (!SKIP) {
     selectedModel: string;
     thinkingEnabled: boolean;
     thinkingEffort: string;
-    cacheTTL: string;
   } = {
-    selectedModel: "claude-opus-4-6",
+    selectedModel: "claude-opus-4-7",
     thinkingEnabled: false,
     thinkingEffort: "high",
-    cacheTTL: "5m",
   };
 
   let proxiedBody: AnthropicRequest | undefined;
@@ -33,7 +31,8 @@ if (!SKIP) {
   mock.module("../anthropic-client", () => ({
     proxyRequest: async (_path: string, body: AnthropicRequest) => {
       proxiedBody = body;
-      return proxyResponse!;
+      if (!proxyResponse) throw new Error("proxyResponse not set");
+      return proxyResponse;
     },
   }));
 
@@ -52,10 +51,9 @@ if (!SKIP) {
     test("removes client thinking controls when saved settings disable thinking", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: false,
         thinkingEffort: "high",
-        cacheTTL: "5m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -78,9 +76,10 @@ if (!SKIP) {
 
       expect(response.status).toBe(200);
       expect(proxiedBody).toBeDefined();
-      expect(proxiedBody!.model).toBe("claude-opus-4-6");
-      expect(proxiedBody!.thinking).toBeUndefined();
-      expect("reasoning_budget" in proxiedBody!).toBe(false);
+      const body1 = proxiedBody as unknown as AnthropicRequest;
+      expect(body1.model).toBe("claude-opus-4-7");
+      expect(body1.thinking).toBeUndefined();
+      expect("reasoning_budget" in body1).toBe(false);
     });
 
     test("rewrites the native sync response model back to Claude Code", async () => {
@@ -89,7 +88,6 @@ if (!SKIP) {
         selectedModel: "claude-sonnet-4-6",
         thinkingEnabled: true,
         thinkingEffort: "medium",
-        cacheTTL: "5m",
       };
       proxyResponse = new Response(
         JSON.stringify({
@@ -131,7 +129,6 @@ if (!SKIP) {
         selectedModel: "claude-haiku-4-5",
         thinkingEnabled: true,
         thinkingEffort: "low",
-        cacheTTL: "5m",
       };
       proxyResponse = new Response(
         [
@@ -165,13 +162,12 @@ if (!SKIP) {
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
-    test("continuation turn after tool_result uses adaptive low thinking budget", async () => {
+    test("continuation turn after tool_result uses stored thinking budget", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
-        selectedModel: "claude-opus-4-6",
+        selectedModel: "claude-opus-4-7",
         thinkingEnabled: true,
         thinkingEffort: "high",
-        cacheTTL: "5m",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -201,9 +197,10 @@ if (!SKIP) {
 
       expect(response.status).toBe(200);
       expect(proxiedBody).toBeDefined();
-      expect(proxiedBody!.model).toBe("claude-opus-4-6");
-      expect(proxiedBody!.thinking).toBeDefined();
-      expect(proxiedBody!.thinking!.budget_tokens).toBe(2048);
+      const body4 = proxiedBody as unknown as AnthropicRequest;
+      expect(body4.model).toBe("claude-opus-4-7");
+      expect(body4.thinking).toBeDefined();
+      expect((body4.thinking as { budget_tokens: number }).budget_tokens).toBe(16384);
     });
   });
 } else {

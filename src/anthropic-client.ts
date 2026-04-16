@@ -1,12 +1,12 @@
 import {
   ANTHROPIC_API_URL,
+  CLAUDE_CODE_BETA_HEADERS,
   CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_USER_AGENT,
-  getClaudeCodeBetaHeaders,
 } from "./config";
-import { getModelSettings, recordRequest } from "./db";
+import { recordRequest } from "./db";
 import { logger } from "./logger";
-import { type CacheTTL, THINKING_MAX_TOKENS_PADDING } from "./model-settings";
+import { THINKING_MAX_TOKENS_PADDING } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
 import { normalizeAnthropicToolIds } from "./request-normalization";
 import { trimToolResult } from "./tool-result-trimmer";
@@ -235,8 +235,10 @@ function prefixToolNames(prepared: AnthropicRequest): void {
     }));
     if (prepared.tools.length > 0) {
       const lastIdx = prepared.tools.length - 1;
-      const lastTool = prepared.tools[lastIdx]!;
-      prepared.tools[lastIdx] = { ...lastTool, cache_control: { type: "ephemeral" } };
+      const lastTool = prepared.tools[lastIdx];
+      if (lastTool) {
+        prepared.tools[lastIdx] = { ...lastTool, cache_control: { type: "ephemeral" } };
+      }
     }
     logger.verbose(
       `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with mcp_, last cached)`,
@@ -292,8 +294,10 @@ function buildSystemPrompt(existing: AnthropicRequest["system"]): ContentBlock[]
   }
   if (systemPrompts.length > 0) {
     const lastIdx = systemPrompts.length - 1;
-    const lastBlock = systemPrompts[lastIdx]!;
-    systemPrompts[lastIdx] = { ...lastBlock, cache_control: { type: "ephemeral" } };
+    const lastBlock = systemPrompts[lastIdx];
+    if (lastBlock) {
+      systemPrompts[lastIdx] = { ...lastBlock, cache_control: { type: "ephemeral" } };
+    }
   }
   return systemPrompts;
 }
@@ -302,7 +306,8 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
   if (!Array.isArray(messages)) return;
 
   const addBreakpoint = (idx: number) => {
-    const msg = messages[idx]!;
+    const msg = messages[idx];
+    if (!msg) return;
     if (typeof msg.content === "string") {
       messages[idx] = {
         role: msg.role,
@@ -312,8 +317,10 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
       };
     } else if (Array.isArray(msg.content) && msg.content.length > 0) {
       const blocks = [...msg.content];
-      const lastBlock = blocks[blocks.length - 1]!;
-      blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
+      const lastBlock = blocks[blocks.length - 1];
+      if (lastBlock) {
+        blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: "ephemeral" } };
+      }
       messages[idx] = { role: msg.role, content: blocks };
     }
   };
@@ -327,69 +334,14 @@ function applyCacheBreakpoints(messages: AnthropicRequest["messages"]): void {
   // System (1) + tools (1) consume 2, leaving 2 for messages.
   // Priority: second-to-last user msg (recent stable), then first user msg (conversation start).
   if (userMsgIndices.length >= 2) {
-    addBreakpoint(userMsgIndices[userMsgIndices.length - 2]!);
+    const secondToLast = userMsgIndices[userMsgIndices.length - 2];
+    if (secondToLast !== undefined) addBreakpoint(secondToLast);
   }
 
   if (userMsgIndices.length >= 3) {
-    const firstIdx = userMsgIndices[0]!;
-    if (firstIdx !== userMsgIndices[userMsgIndices.length - 2]) {
+    const firstIdx = userMsgIndices[0];
+    if (firstIdx !== undefined && firstIdx !== userMsgIndices[userMsgIndices.length - 2]) {
       addBreakpoint(firstIdx);
-    }
-  }
-}
-
-/**
- * Normalize every `cache_control` block in the request to match the configured
- * cache TTL.
- *
- * - `"5m"` (default): strip any `ttl` field so Anthropic falls back to the
- *   free 5-minute cache.
- * - `"1h"`: stamp `ttl: "1h"` on every cache_control block so Anthropic uses
- *   the 1-hour cache (2× write cost, requires `extended-cache-ttl-2025-04-11`
- *   beta header).
- *
- * Tools are also checked — they can carry `cache_control` on the last entry
- * (see `prefixToolNames`).
- *
- * Exported for unit tests only.
- */
-export function applyCacheTtl(prepared: AnthropicRequest, cacheTTL: CacheTTL): void {
-  const applyTo = (content: ContentBlock[] | undefined) => {
-    if (!Array.isArray(content)) return;
-    for (const item of content) {
-      if (item && typeof item === "object" && "cache_control" in item) {
-        const cc = item.cache_control as Record<string, unknown> | null | undefined;
-        if (!cc) continue;
-        if (cacheTTL === "1h") {
-          cc.ttl = "1h";
-        } else if ("ttl" in cc) {
-          delete cc.ttl;
-        }
-      }
-    }
-  };
-
-  if (Array.isArray(prepared.system)) {
-    applyTo(prepared.system as ContentBlock[]);
-  }
-  if (Array.isArray(prepared.messages)) {
-    for (const message of prepared.messages) {
-      if (Array.isArray(message.content)) {
-        applyTo(message.content);
-      }
-    }
-  }
-  if (Array.isArray(prepared.tools)) {
-    // Tools carry cache_control directly on the tool object, not inside a
-    // content array, so walk them separately.
-    for (const tool of prepared.tools) {
-      const cc = (tool as { cache_control?: Record<string, unknown> }).cache_control;
-      if (!cc) continue;
-      if (cacheTTL === "1h") {
-        cc.ttl = "1h";
-      } else if ("ttl" in cc) {
-        delete cc.ttl;
-      }
     }
   }
 }
@@ -399,15 +351,15 @@ function trimMessageToolResults(messages: AnthropicRequest["messages"]): void {
   for (const msg of messages) {
     if (!Array.isArray(msg.content)) continue;
     for (let i = 0; i < msg.content.length; i++) {
-      const block = msg.content[i]!;
-      if (block.type === "tool_result" && typeof block.content === "string") {
+      const block = msg.content[i];
+      if (block && block.type === "tool_result" && typeof block.content === "string") {
         msg.content[i] = { ...block, content: trimToolResult(block.content) };
       }
     }
   }
 }
 
-function prepareClaudeCodeBody(body: AnthropicRequest, cacheTTL: CacheTTL): AnthropicRequest {
+function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   let prepared = { ...body };
 
   convertReasoningBudget(prepared);
@@ -430,10 +382,119 @@ function prepareClaudeCodeBody(body: AnthropicRequest, cacheTTL: CacheTTL): Anth
       .join("\n"),
   );
 
-  applyCacheTtl(prepared, cacheTTL);
   prepared = normalizeAnthropicToolIds(prepared);
 
   return prepared;
+}
+
+function handle429(response: Response, isProbe: boolean): { resetInfo: string } {
+  const retryAfter = response.headers.get("retry-after");
+  const rateLimitReset = response.headers.get("x-ratelimit-reset");
+
+  let resetInfo = "";
+  let resetAt: number | null = null;
+
+  if (retryAfter) {
+    const seconds = parseInt(retryAfter, 10);
+    if (!Number.isNaN(seconds)) {
+      resetAt = Date.now() + seconds * 1000;
+      resetInfo = ` (resets in ${Math.ceil(seconds / 60)}m)`;
+    }
+  } else if (rateLimitReset) {
+    const resetTime = new Date(rateLimitReset);
+    if (!Number.isNaN(resetTime.getTime())) {
+      resetAt = resetTime.getTime();
+      resetInfo = ` (resets in ${Math.ceil((resetAt - Date.now()) / 1000 / 60)}m)`;
+    }
+  }
+
+  if (resetAt) {
+    cacheRateLimit(resetAt);
+  } else if (isProbe) {
+    finalizeRateLimitProbe("retry");
+  }
+
+  return { resetInfo };
+}
+
+async function handle400(response: Response): Promise<RequestResult> {
+  const errorBody = (await response
+    .clone()
+    .json()
+    .catch(() => ({}))) as { error?: { message?: string } };
+  const errorMessage = errorBody?.error?.message || "";
+
+  if (errorMessage.includes("only authorized for use with Claude Code")) {
+    console.log("OAuth token not authorized for direct API use");
+    return { success: false, error: "OAuth not authorized for API" };
+  }
+
+  console.log("Claude Code 400 error:", JSON.stringify(errorBody));
+  return { success: false, error: errorMessage || "Bad request" };
+}
+
+async function handleNonOkStatus(response: Response, stream: boolean): Promise<RequestResult> {
+  const errorBody = await response
+    .clone()
+    .text()
+    .catch(() => "");
+  console.log(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
+
+  if (stream) {
+    return { success: true, response, source: "claude_code" };
+  }
+
+  let errorMessage = "API error";
+  try {
+    const parsed = JSON.parse(errorBody) as { error?: { message?: string; type?: string } };
+    errorMessage = parsed?.error?.message || `HTTP ${response.status}`;
+  } catch {
+    errorMessage = `HTTP ${response.status}: ${errorBody.substring(0, 200)}`;
+  }
+  return { success: false, error: errorMessage };
+}
+
+async function handleErrorStatus(
+  response: Response,
+  isProbe: boolean,
+  stream: boolean,
+): Promise<RequestResult | null> {
+  if (response.status === 429) {
+    const errorBody429 = await response
+      .clone()
+      .text()
+      .catch(() => "");
+    console.log(`Claude Code 429 response body: ${errorBody429.substring(0, 500)}`);
+    const { resetInfo } = handle429(response, isProbe);
+    console.log(`Claude Code rate limited${resetInfo}`);
+    return { success: false, error: `Rate limited${resetInfo}` };
+  }
+
+  if (response.status === 401) {
+    if (isProbe) finalizeRateLimitProbe("retry");
+    console.log("OAuth token expired or invalid, clearing cache");
+    clearCachedToken();
+    return { success: false, error: "OAuth token invalid — visit /login to re-authenticate" };
+  }
+
+  if (response.status === 403) {
+    if (isProbe) finalizeRateLimitProbe("retry");
+    const errorBody = await response.clone().text();
+    console.log("Claude Code 403 error:", errorBody);
+    return { success: false, error: "Permission denied" };
+  }
+
+  if (response.status === 400) {
+    if (isProbe) finalizeRateLimitProbe("retry");
+    return handle400(response);
+  }
+
+  if (!response.ok) {
+    if (isProbe) finalizeRateLimitProbe("retry");
+    return handleNonOkStatus(response, stream);
+  }
+
+  return null;
 }
 
 async function makeClaudeCodeRequest(
@@ -444,175 +505,39 @@ async function makeClaudeCodeRequest(
   if (limited) {
     const minutes = getRateLimitResetMinutes();
     console.log(`Claude Code rate limited (cached), skipping request (resets in ${minutes}m)`);
-    return {
-      success: false,
-      error: `Rate limited (cached, resets in ${minutes}m)`,
-    };
+    return { success: false, error: `Rate limited (cached, resets in ${minutes}m)` };
   }
 
   const token = await getValidToken();
   if (!token) {
-    // No token means we never made the upstream call — release the probe
-    // slot so the next request can try again, otherwise a missing token
-    // would deadlock future probes in the soft-expiry window.
     if (isProbe) finalizeRateLimitProbe("retry");
-    return {
-      success: false,
-      error: "No valid OAuth token — visit /login to authenticate",
-    };
+    return { success: false, error: "No valid OAuth token — visit /login to authenticate" };
   }
 
   try {
-    // Read persisted settings once per request so cacheTTL + beta headers stay
-    // in sync even if the setting changes mid-session.
-    const modelSettings = getModelSettings();
+    const preparedBody = prepareClaudeCodeBody(body);
 
-    // Prepare the body with required Claude Code modifications
-    const preparedBody = prepareClaudeCodeBody(body, modelSettings.cacheTTL);
-
-    // Debug: log the model name being sent
     logger.verbose(`   [Debug] Sending model to Claude Code: "${preparedBody.model}"`);
     logger.verbose(`   [Debug] Request body keys: ${Object.keys(preparedBody).join(", ")}`);
 
-    // Use ONLY our Claude Code beta headers - don't merge with Cursor's
-    const betaHeaders = getClaudeCodeBetaHeaders({
-      extendedCacheTtl: modelSettings.cacheTTL === "1h",
-    });
-    console.log(`   [Debug] Using Claude Code beta headers: "${betaHeaders}"`);
-
-    const requestHeaders = {
-      Authorization: `Bearer ${token.accessToken}`,
-      "anthropic-beta": betaHeaders,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-      "User-Agent": CLAUDE_CODE_USER_AGENT,
-    };
-    const apiUrl = `${ANTHROPIC_API_URL}${endpoint}?beta=true`;
-
-    const response = await fetch(apiUrl, {
+    const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}?beta=true`, {
       method: "POST",
-      headers: requestHeaders,
+      headers: {
+        Authorization: `Bearer ${token.accessToken}`,
+        "anthropic-beta": CLAUDE_CODE_BETA_HEADERS,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+        "User-Agent": CLAUDE_CODE_USER_AGENT,
+      },
       body: JSON.stringify(preparedBody),
       signal: AbortSignal.timeout(120_000),
     });
 
     console.log(`   [Debug] Anthropic API response status: ${response.status}`);
 
-    if (response.status === 429) {
-      const errorBody429 = await response
-        .clone()
-        .text()
-        .catch(() => "");
-      console.log(`Claude Code 429 response body: ${errorBody429.substring(0, 500)}`);
-      const retryAfter = response.headers.get("retry-after");
-      const rateLimitReset = response.headers.get("x-ratelimit-reset");
+    const errorResult = await handleErrorStatus(response, isProbe, body.stream || false);
+    if (errorResult) return errorResult;
 
-      let resetInfo = "";
-      let resetAt: number | null = null;
-
-      if (retryAfter) {
-        const seconds = parseInt(retryAfter, 10);
-        if (!Number.isNaN(seconds)) {
-          resetAt = Date.now() + seconds * 1000;
-          const minutes = Math.ceil(seconds / 60);
-          resetInfo = ` (resets in ${minutes}m)`;
-        }
-      } else if (rateLimitReset) {
-        const resetTime = new Date(rateLimitReset);
-        if (!Number.isNaN(resetTime.getTime())) {
-          resetAt = resetTime.getTime();
-          const diff = resetAt - Date.now();
-          const minutes = Math.ceil(diff / 1000 / 60);
-          resetInfo = ` (resets in ${minutes}m)`;
-        }
-      }
-
-      if (resetAt) {
-        // cacheRateLimit() replaces the whole entry; probeInFlight is reset
-        // to false as a side-effect so the next probe can fire at soft expiry.
-        cacheRateLimit(resetAt);
-      } else if (isProbe) {
-        // 429 with no resetAt header — nothing to re-cache. Release the probe
-        // slot so future requests can retry.
-        finalizeRateLimitProbe("retry");
-      }
-
-      console.log(`Claude Code rate limited${resetInfo}`);
-      return { success: false, error: `Rate limited${resetInfo}` };
-    }
-
-    if (response.status === 401) {
-      if (isProbe) finalizeRateLimitProbe("retry");
-      console.log("OAuth token expired or invalid, clearing cache");
-      clearCachedToken();
-      return {
-        success: false,
-        error: "OAuth token invalid — visit /login to re-authenticate",
-      };
-    }
-
-    if (response.status === 403) {
-      if (isProbe) finalizeRateLimitProbe("retry");
-      const errorBody = await response.clone().text();
-      console.log("Claude Code 403 error:", errorBody);
-      return {
-        success: false,
-        error: "Permission denied",
-      };
-    }
-
-    // Check for API errors in the response body (can happen even with 200 status)
-    if (response.status === 400) {
-      if (isProbe) finalizeRateLimitProbe("retry");
-      const errorBody = (await response
-        .clone()
-        .json()
-        .catch(() => ({}))) as { error?: { message?: string } };
-      const errorMessage = errorBody?.error?.message || "";
-
-      if (errorMessage.includes("only authorized for use with Claude Code")) {
-        console.log("OAuth token not authorized for direct API use");
-        return {
-          success: false,
-          error: "OAuth not authorized for API",
-        };
-      }
-
-      console.log("Claude Code 400 error:", JSON.stringify(errorBody));
-      return {
-        success: false,
-        error: errorMessage || "Bad request",
-      };
-    }
-
-    // Handle other non-OK status codes (500, 529 overloaded, etc.)
-    if (!response.ok) {
-      if (isProbe) finalizeRateLimitProbe("retry");
-      const errorBody = await response
-        .clone()
-        .text()
-        .catch(() => "");
-      console.log(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
-
-      // For streaming requests, return the response as-is so the stream handler
-      // can process SSE error events (Anthropic may return 200 for streaming errors,
-      // but non-200 streaming responses should still be passed through)
-      if (body.stream) {
-        return { success: true, response, source: "claude_code" };
-      }
-
-      let errorMessage = "API error";
-      try {
-        const parsed = JSON.parse(errorBody) as { error?: { message?: string; type?: string } };
-        errorMessage = parsed?.error?.message || `HTTP ${response.status}`;
-      } catch {
-        errorMessage = `HTTP ${response.status}: ${errorBody.substring(0, 200)}`;
-      }
-      return { success: false, error: errorMessage };
-    }
-
-    // Probe succeeded — tear down the rate-limit cache so the next request
-    // goes through normally.
     if (isProbe) {
       console.log("Rate limit probe succeeded, clearing cache");
       finalizeRateLimitProbe("cleared");
@@ -620,8 +545,6 @@ async function makeClaudeCodeRequest(
 
     return { success: true, response, source: "claude_code" };
   } catch (error) {
-    // Network error, timeout, aborted, etc. — never call cacheRateLimit,
-    // but we still need to release the probe slot so it doesn't deadlock.
     if (isProbe) finalizeRateLimitProbe("retry");
     console.error("Claude Code OAuth request failed:", error);
     return { success: false, error: String(error) };

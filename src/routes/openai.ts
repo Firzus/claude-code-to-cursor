@@ -9,12 +9,7 @@ import {
   openaiToAnthropicBase,
 } from "../openai-adapter";
 import { computeRequestShape } from "../request-metrics";
-import {
-  adaptiveThinkingEffort,
-  applyThinkingToBody,
-  minThinkingEffort,
-  pickRoute,
-} from "../routing-policy";
+import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
 
@@ -114,19 +109,11 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     const shape = computeRequestShape(converted, "openai", clientEffort);
 
-    const decision = pickRoute({ settings: modelSettings, clientEffort, shape });
+    const decision = pickRoute({ settings: modelSettings, clientEffort });
 
     if (modelSettings.thinkingEnabled) {
-      const cap = modelSettings.thinkingEffort;
-      const adaptiveBase = adaptiveThinkingEffort(shape, cap);
-      const afterAdaptive = minThinkingEffort(adaptiveBase, cap);
-      const adaptiveLabel = shape.lastMsgHasToolResult
-        ? "tool_result"
-        : shape.messageCount > 10
-          ? "long_thread"
-          : "none";
       logger.info(
-        `[Thinking] cap=${cap}, adaptive=${afterAdaptive} (${adaptiveLabel}), policy=${decision.policy}, final=${decision.effort}`,
+        `[Thinking] effort=${decision.effort}, policy=${decision.policy}`,
       );
     }
 
