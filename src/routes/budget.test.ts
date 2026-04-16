@@ -1,27 +1,33 @@
 import { describe, expect, mock, test } from "bun:test";
 
-const summary = {
-  periodStart: 1_700_000_000_000,
-  periodEnd: 1_700_000_086_400_000,
-  inputTokens: 1000,
-  outputTokens: 500,
-  cacheReadTokens: 200,
-  cacheCreationTokens: 50,
-  thinkingTokens: 42,
-  estimatedUsd: 1.23,
-};
+const SKIP = !!process.env.SKIP_MOCK_MODULE_TESTS;
 
-mock.module("../db", () => ({
-  getBudgetDaySummary: () => summary,
-}));
+if (!SKIP) {
+  const summary = {
+    periodStart: 1_700_000_000_000,
+    periodEnd: 1_700_000_086_400_000,
+    inputTokens: 1000,
+    outputTokens: 500,
+    cacheReadTokens: 200,
+    cacheCreationTokens: 50,
+    thinkingTokens: 42,
+    estimatedUsd: 1.23,
+  };
 
-const { handleBudget } = await import("./budget");
+  mock.module("../db", () => ({
+    getBudgetDaySummary: () => summary,
+  }));
 
-describe("handleBudget", () => {
-  test("returns JSON from getBudgetDaySummary", async () => {
-    const res = handleBudget();
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as typeof summary;
-    expect(body).toEqual(summary);
+  const { handleBudget } = await import("./budget");
+
+  describe("handleBudget", () => {
+    test("returns JSON from getBudgetDaySummary", async () => {
+      const res = handleBudget();
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as typeof summary;
+      expect(body).toEqual(summary);
+    });
   });
-});
+} else {
+  test.skip("handleBudget (skipped: SKIP_MOCK_MODULE_TESTS)", () => {});
+}

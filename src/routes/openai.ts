@@ -110,9 +110,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     const decision = pickRoute({ settings: modelSettings, clientEffort });
 
     if (modelSettings.thinkingEnabled) {
-      logger.info(
-        `[Thinking] effort=${decision.effort}, policy=${decision.policy}`,
-      );
+      logger.info(`[Thinking] effort=${decision.effort}, policy=${decision.policy}`);
     }
 
     const anthropicBody = applyThinkingToBody(

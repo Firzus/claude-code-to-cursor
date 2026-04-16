@@ -1,20 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  AlertCircle,
-  Check,
-  Cpu,
-  CreditCard,
-  Loader2,
-  RotateCcw,
-  Sparkles,
-  Zap,
-} from "lucide-react";
+import { Cpu, CreditCard, RotateCcw, Sparkles, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { Badge } from "~/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { Skeleton } from "~/components/ui/skeleton";
+import { EffortStrip } from "~/components/settings/effort-strip";
+import { Panel, PanelRow } from "~/components/settings/panel";
+import { SelectorRow } from "~/components/settings/selector-row";
+import { ToggleAscii } from "~/components/settings/toggle-ascii";
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
 import { cn } from "~/lib/utils";
 import {
@@ -29,7 +21,13 @@ import {
   thinkingEfforts,
 } from "~/schemas/settings";
 
-type ModelMeta = { context: string; icon: typeof Sparkles; accentClass: string };
+type ModelMeta = {
+  id: string;
+  context: string;
+  capability: string;
+  icon: typeof Sparkles;
+  accentClass: string;
+};
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -45,26 +43,40 @@ const effortDescriptions: Record<(typeof thinkingEfforts)[number], string> = {
 
 const modelMeta: Record<(typeof supportedModels)[number], ModelMeta> = {
   "claude-opus-4-7": {
-    context: "1M context · Most capable",
+    id: "opus_4_7",
+    context: "1M ctx",
+    capability: "most capable",
     icon: Sparkles,
-    accentClass: "model-opus",
+    accentClass: "selector-opus",
   },
   "claude-sonnet-4-6": {
-    context: "200K context · Balanced",
+    id: "sonnet_4_6",
+    context: "200K ctx",
+    capability: "balanced",
     icon: Zap,
-    accentClass: "model-sonnet",
+    accentClass: "selector-sonnet",
   },
   "claude-haiku-4-5": {
-    context: "200K context · Fastest",
+    id: "haiku_4_5",
+    context: "200K ctx",
+    capability: "fastest",
     icon: Cpu,
-    accentClass: "model-haiku",
+    accentClass: "selector-haiku",
   },
 };
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return n.toString();
+}
 
 function SettingsPage() {
   const { data, isLoading, isError, refetch } = useSettings();
   const update = useUpdateSettings();
   const [showSuccess, setShowSuccess] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [savedAgo, setSavedAgo] = useState(0);
 
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
@@ -74,15 +86,25 @@ function SettingsPage() {
   const thinkingEnabled = form.watch("thinkingEnabled");
   const selectedModel = form.watch("selectedModel");
   const selectedPlan = form.watch("subscriptionPlan");
+  const selectedEffort = form.watch("thinkingEffort");
   const isDirty = form.formState.isDirty;
 
   useEffect(() => {
     if (update.isSuccess) {
       setShowSuccess(true);
+      setSavedAt(Date.now());
       const t = setTimeout(() => setShowSuccess(false), 3000);
       return () => clearTimeout(t);
     }
   }, [update.isSuccess]);
+
+  useEffect(() => {
+    if (savedAt === null) return;
+    const id = setInterval(() => {
+      setSavedAgo(Math.max(0, Math.floor((Date.now() - savedAt) / 1000)));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [savedAt]);
 
   const onBeforeUnload = useCallback(
     (e: BeforeUnloadEvent) => {
@@ -98,289 +120,267 @@ function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-lg space-y-6 animate-fade-in">
-        <Skeleton className="h-5 w-20" />
-        <Card>
-          <CardContent className="p-5 space-y-4">
-            {["skel-1", "skel-2", "skel-3"].map((id) => (
-              <Skeleton key={id} className="h-16 w-full" />
-            ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 space-y-3">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-8 w-40" />
-          </CardContent>
-        </Card>
+      <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
+        <PageHeader status="loading" />
+        {[
+          { id: "skel-01", index: "01", title: "model" },
+          { id: "skel-02", index: "02", title: "subscription" },
+          { id: "skel-03", index: "03", title: "thinking" },
+        ].map((p, i) => (
+          <Panel key={p.id} index={`${p.index} ·`} title={p.title} hint="loading" delay={i * 60}>
+            <div className="flex items-center gap-2 py-6 font-mono text-[12px] text-muted-foreground">
+              <span aria-hidden="true" className="animate-pulse">
+                ···
+              </span>
+              <span className="uppercase tracking-[0.18em] text-[10.5px]">fetching</span>
+            </div>
+          </Panel>
+        ))}
       </div>
     );
   }
 
   if (isError) {
     return (
-      <div className="mx-auto max-w-lg animate-fade-in">
-        <Card className="border-destructive/40">
-          <CardContent className="flex flex-col items-center gap-3 py-10">
-            <AlertCircle className="h-5 w-5 text-destructive" />
-            <span className="text-[13px] text-destructive">Failed to load settings.</span>
+      <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
+        <PageHeader status="error" />
+        <Panel
+          index="ERR ·"
+          title="settings.unreachable"
+          hint="api offline"
+          footer={
+            <>
+              <span>$ retry</span>
+              <span className="text-destructive">exit 1</span>
+            </>
+          }
+        >
+          <div className="flex flex-col items-start gap-4 py-3">
+            <p className="text-[12.5px] text-destructive font-mono">Failed to load settings.</p>
             <button
               type="button"
               onClick={() => refetch()}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-border px-3 text-[13px] text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-border/70 bg-card/40 px-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
+              <RotateCcw className="h-3 w-3" />
               Try again
             </button>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 animate-fade-in">
-      <div className="flex items-center gap-3">
-        <h1 className="text-sm font-medium">Settings</h1>
-        {isDirty && (
-          <Badge variant="warning" className="text-[11px] animate-slide-up">
-            Unsaved changes
-          </Badge>
-        )}
-      </div>
+    <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
+      <PageHeader
+        status={showSuccess ? "saved" : isDirty ? "dirty" : "clean"}
+        savedAgo={savedAgo}
+      />
 
-      {showSuccess && (
-        <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-[13px] text-success animate-slide-up">
-          <Check className="h-3.5 w-3.5" />
-          Saved.
-        </div>
-      )}
+      <span className="sr-only" aria-live="polite">
+        Settings
+      </span>
 
-      <form onSubmit={form.handleSubmit((v) => update.mutate(v))} className="space-y-5">
-        {/* Model */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-[13px]">Model</CardTitle>
-            <CardDescription className="text-[12px]">
-              Select the Claude model used for all requests
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-2">
+      <form onSubmit={form.handleSubmit((v) => update.mutate(v))} className="space-y-6">
+        {/* Model panel */}
+        <Panel
+          index="01 ·"
+          title="model"
+          hint="ctx · capability"
+          footer={
+            <>
+              <span>$ select model</span>
+              <span className="text-muted-foreground/70">{modelMeta[selectedModel]?.id}</span>
+            </>
+          }
+        >
+          <div role="radiogroup" aria-label="Claude model" className="-mx-1 space-y-0.5">
             {supportedModels.map((model) => {
-              const meta = modelMeta[model] as ModelMeta;
-              const Icon = meta.icon;
-              const isSelected = selectedModel === model;
+              const meta = modelMeta[model];
               return (
-                <button
+                <SelectorRow
                   key={model}
-                  type="button"
-                  onClick={() => form.setValue("selectedModel", model, { shouldDirty: true })}
-                  className={cn(
-                    "model-card group relative flex w-full items-center gap-3.5 rounded-lg px-4 py-3.5 text-left transition-all duration-200 cursor-pointer",
-                    "border",
-                    isSelected
-                      ? "bg-card border-accent/50 shadow-[0_0_12px_-3px_var(--color-accent)] ring-1 ring-accent/20"
-                      : "border-border/60 hover:border-border hover:bg-card/60",
-                    meta.accentClass,
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
-                      isSelected
-                        ? "bg-accent/15 text-accent"
-                        : "bg-muted/60 text-muted-foreground group-hover:bg-muted group-hover:text-foreground/70",
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className={cn(
-                        "text-[13px] font-medium transition-colors",
-                        isSelected
-                          ? "text-foreground"
-                          : "text-foreground/80 group-hover:text-foreground",
-                      )}
-                    >
-                      {modelLabels[model]}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                      {meta.context}
-                    </div>
-                  </div>
-                  <div
-                    className={cn(
-                      "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200",
-                      isSelected
-                        ? "border-accent bg-accent"
-                        : "border-muted-foreground/40 group-hover:border-muted-foreground/70",
-                    )}
-                  >
-                    {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-background" />}
-                  </div>
-                </button>
+                  id={meta.id}
+                  name={modelLabels[model]}
+                  meta={`${meta.context} · ${meta.capability}`}
+                  selected={selectedModel === model}
+                  onSelect={() => form.setValue("selectedModel", model, { shouldDirty: true })}
+                  icon={meta.icon}
+                  accentClass={meta.accentClass}
+                  ariaLabel={modelLabels[model]}
+                />
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
 
-        {/* Subscription plan */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-[13px]">Subscription plan</CardTitle>
-            <CardDescription className="text-[12px]">
-              Used to estimate plan consumption on Analytics. Anthropic does not expose this via
-              OAuth, set it manually.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-2">
+        {/* Subscription panel */}
+        <Panel
+          index="02 ·"
+          title="subscription"
+          hint="window · weekly"
+          footer={
+            <>
+              <span>$ select plan</span>
+              <span className="text-muted-foreground/70">{selectedPlan ?? "—"}</span>
+            </>
+          }
+        >
+          <p className="mb-3 px-1 text-[11.5px] text-muted-foreground leading-relaxed">
+            Used to estimate plan consumption on Analytics. Anthropic does not expose this via OAuth
+            — set it manually.
+          </p>
+          <div role="radiogroup" aria-label="Subscription plan" className="-mx-1 space-y-0.5">
             {supportedPlans.map((plan) => {
-              const isSelected = selectedPlan === plan;
               const q = planQuotas[plan];
+              const meta = `${planPrices[plan]} · ${formatTokens(q.fiveHourTokens)}/5h · ${formatTokens(q.weeklyTokens)}/wk`;
               return (
-                <button
+                <SelectorRow
                   key={plan}
-                  type="button"
-                  onClick={() => form.setValue("subscriptionPlan", plan, { shouldDirty: true })}
-                  className={cn(
-                    "group relative flex w-full items-center gap-3.5 rounded-lg px-4 py-3 text-left transition-all duration-200 cursor-pointer border",
-                    isSelected
-                      ? "bg-card border-accent/50 shadow-[0_0_12px_-3px_var(--color-accent)] ring-1 ring-accent/20"
-                      : "border-border/60 hover:border-border hover:bg-card/60",
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
-                      isSelected
-                        ? "bg-accent/15 text-accent"
-                        : "bg-muted/60 text-muted-foreground group-hover:bg-muted group-hover:text-foreground/70",
-                    )}
-                  >
-                    <CreditCard className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          "text-[13px] font-medium transition-colors",
-                          isSelected
-                            ? "text-foreground"
-                            : "text-foreground/80 group-hover:text-foreground",
-                        )}
-                      >
-                        {planLabels[plan]}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground font-mono">
-                        {planPrices[plan]}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                      ~{(q.fiveHourTokens / 1000).toFixed(0)}K tokens / 5h window
-                    </div>
-                  </div>
-                  <div
-                    className={cn(
-                      "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200",
-                      isSelected
-                        ? "border-accent bg-accent"
-                        : "border-muted-foreground/40 group-hover:border-muted-foreground/70",
-                    )}
-                  >
-                    {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-background" />}
-                  </div>
-                </button>
+                  id={plan}
+                  name={planLabels[plan]}
+                  meta={meta}
+                  selected={selectedPlan === plan}
+                  onSelect={() => form.setValue("subscriptionPlan", plan, { shouldDirty: true })}
+                  icon={CreditCard}
+                  ariaLabel={planLabels[plan]}
+                />
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
 
-        {/* Thinking */}
-        <Card>
-          <CardHeader className="p-4 pb-3">
-            <CardTitle className="text-[13px]">Extended Thinking</CardTitle>
-            <CardDescription className="text-[12px]">
-              Enable Claude's chain-of-thought reasoning
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0 space-y-4">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={thinkingEnabled}
-                aria-label="Toggle extended thinking"
-                onClick={() =>
-                  form.setValue("thinkingEnabled", !thinkingEnabled, { shouldDirty: true })
-                }
+        {/* Thinking panel */}
+        <Panel
+          index="03 ·"
+          title="thinking"
+          hint="chain-of-thought · effort"
+          footer={
+            <>
+              <span>$ effort {thinkingEnabled ? selectedEffort : "—"}</span>
+              <span
                 className={cn(
-                  "relative h-5 w-9 rounded-full transition-colors cursor-pointer",
-                  thinkingEnabled ? "bg-foreground" : "bg-muted",
+                  "uppercase tracking-[0.2em]",
+                  thinkingEnabled ? "text-accent" : "text-muted-foreground/60",
                 )}
               >
-                <span
-                  className={cn(
-                    "absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform bg-background",
-                    thinkingEnabled && "translate-x-4",
-                  )}
-                />
-              </button>
-              <span className="text-[13px]">{thinkingEnabled ? "On" : "Off"}</span>
+                {thinkingEnabled ? "engaged" : "off"}
+              </span>
+            </>
+          }
+        >
+          <span className="sr-only">Extended Thinking</span>
+          <PanelRow label="status">
+            <ToggleAscii
+              checked={thinkingEnabled}
+              onChange={(next) => form.setValue("thinkingEnabled", next, { shouldDirty: true })}
+              ariaLabel="Toggle extended thinking"
+            />
+          </PanelRow>
+          <PanelRow label="effort">
+            <div className="w-full max-w-[420px]">
+              <EffortStrip
+                options={thinkingEfforts}
+                value={selectedEffort ?? "high"}
+                onChange={(next) => form.setValue("thinkingEffort", next, { shouldDirty: true })}
+                disabled={!thinkingEnabled}
+              />
             </div>
+          </PanelRow>
+          <div
+            className={cn(
+              "mt-3 flex items-start gap-2 rounded-md border border-border/40 bg-background/40 px-3 py-2 font-mono text-[11px] leading-relaxed transition-opacity",
+              !thinkingEnabled && "opacity-40",
+            )}
+          >
+            <span aria-hidden="true" className="text-accent select-none">
+              {">"}
+            </span>
+            <span className="text-muted-foreground">
+              {effortDescriptions[selectedEffort ?? "high"]}
+            </span>
+          </div>
+        </Panel>
 
-            {/* Effort */}
-            <div
+        {/* Footer actions */}
+        <div className="flex items-center justify-between border-t border-border/60 pt-5">
+          <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+            {update.isPending ? "$ saving···" : "$ save"}
+          </span>
+          <div className="flex items-center gap-3">
+            {isDirty && (
+              <button
+                type="button"
+                onClick={() => form.reset()}
+                className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+              >
+                discard
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={update.isPending || !isDirty}
               className={cn(
-                "space-y-2 transition-opacity",
-                !thinkingEnabled && "opacity-30 pointer-events-none",
+                "group inline-flex h-9 items-center gap-2 rounded-md border border-foreground/80 bg-foreground px-5 font-mono text-[12px] font-medium text-background transition-all",
+                "hover:bg-foreground/95 hover:shadow-[0_0_0_4px_oklch(from_var(--color-foreground)_l_c_h/0.12)]",
+                "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none",
+                !update.isPending && isDirty && "cursor-pointer",
               )}
             >
-              <div className="text-[12px] text-muted-foreground">Effort</div>
-              <div className="grid grid-cols-5 rounded-lg border border-border text-[12px] overflow-hidden">
-                {thinkingEfforts.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => form.setValue("thinkingEffort", e, { shouldDirty: true })}
-                    className={cn(
-                      "px-2 py-1.5 font-mono transition-all duration-200 cursor-pointer text-center",
-                      form.watch("thinkingEffort") === e
-                        ? "bg-foreground text-background font-medium"
-                        : "text-muted-foreground hover:text-foreground hover:bg-card/60",
-                    )}
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-              <div className="text-[11px] text-muted-foreground/70 leading-relaxed">
-                {effortDescriptions[form.watch("thinkingEffort") ?? "high"]}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={update.isPending}
-            className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
-          >
-            {update.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Save
-          </button>
-          {isDirty && (
-            <button
-              type="button"
-              onClick={() => form.reset()}
-              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              Discard
+              <span aria-hidden="true">{update.isPending ? "▒" : "█"}</span>
+              Save
             </button>
-          )}
+          </div>
         </div>
       </form>
     </div>
+  );
+}
+
+function PageHeader({
+  status,
+  savedAgo = 0,
+}: {
+  status: "loading" | "error" | "saved" | "dirty" | "clean";
+  savedAgo?: number;
+}) {
+  const badge = (() => {
+    switch (status) {
+      case "loading":
+        return { text: "loading", dot: "bg-muted-foreground/40" };
+      case "error":
+        return { text: "error", dot: "bg-destructive" };
+      case "saved":
+        return {
+          text: savedAgo === 0 ? "saved · just now" : `saved · ${savedAgo}s ago`,
+          dot: "bg-success",
+        };
+      case "dirty":
+        return { text: "unsaved changes", dot: "bg-warning animate-pulse" };
+      default:
+        return { text: "synced", dot: "bg-success/60" };
+    }
+  })();
+
+  return (
+    <header className="flex items-baseline justify-between gap-4 border-b border-border/60 pb-4 font-mono">
+      <div className="flex items-baseline gap-3 min-w-0">
+        <span aria-hidden="true" className="text-muted-foreground/50">
+          ↳
+        </span>
+        <h1 className="text-[18px] sm:text-[22px] font-semibold tracking-[-0.02em] text-foreground">
+          settings
+          <span className="text-muted-foreground">.control</span>
+        </h1>
+        <span className="hidden sm:inline text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground/60">
+          v1
+        </span>
+      </div>
+      <span className="flex items-center gap-2 text-[10.5px] uppercase tracking-[0.18em]">
+        <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", badge.dot)} />
+        <span className="text-muted-foreground">{badge.text}</span>
+      </span>
+    </header>
   );
 }

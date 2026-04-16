@@ -30,6 +30,7 @@ const mockSettings = {
     selectedModel: "claude-opus-4-7" as const,
     thinkingEnabled: true,
     thinkingEffort: "high" as const,
+    subscriptionPlan: "max20x" as const,
   },
 };
 
