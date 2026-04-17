@@ -21,8 +21,8 @@ describe("PlanUsageCard", () => {
     } as never);
 
     renderWithQuery(<PlanUsageCard />);
-    expect(screen.queryByText("Plan usage")).not.toBeInTheDocument();
-    expect(screen.queryByText("Current session")).not.toBeInTheDocument();
+    expect(screen.queryByText("plan usage")).not.toBeInTheDocument();
+    expect(screen.queryByText("current session")).not.toBeInTheDocument();
   });
 
   it('renders the "estimated" badge and token figures when source is estimated', () => {
@@ -55,12 +55,12 @@ describe("PlanUsageCard", () => {
 
     renderWithQuery(<PlanUsageCard />);
 
-    expect(screen.getByText("Plan usage")).toBeInTheDocument();
+    expect(screen.getByText("plan usage")).toBeInTheDocument();
     expect(screen.getByText("Max (20x)")).toBeInTheDocument();
-    expect(screen.getByText("Current session")).toBeInTheDocument();
-    expect(screen.getByText("Weekly · All models")).toBeInTheDocument();
+    expect(screen.getByText("current session")).toBeInTheDocument();
+    expect(screen.getByText("weekly · all models")).toBeInTheDocument();
     expect(screen.getAllByText("20% used")).toHaveLength(2);
-    expect(screen.getByText("Estimated")).toBeInTheDocument();
+    expect(screen.getByText("estimated")).toBeInTheDocument();
     // Estimated mode still shows token figures in the subtext
     expect(screen.getByText(/44.0K \/ 220.0K/)).toBeInTheDocument();
   });
@@ -94,9 +94,8 @@ describe("PlanUsageCard", () => {
 
     renderWithQuery(<PlanUsageCard />);
 
-    expect(screen.getByText(/Live · 2min ago/)).toBeInTheDocument();
-    expect(screen.getByText("Binding")).toBeInTheDocument();
-    // Anthropic percentages without token figures
+    expect(screen.getByText(/live · 2min ago/i)).toBeInTheDocument();
+    expect(screen.getByText(/binding/i)).toBeInTheDocument();
     expect(screen.getByText(/1.8% used/)).toBeInTheDocument();
     expect(screen.getByText(/48% used/)).toBeInTheDocument();
     expect(screen.queryByText(/220.0K/)).not.toBeInTheDocument();
@@ -123,7 +122,7 @@ describe("PlanUsageCard", () => {
     renderWithQuery(<PlanUsageCard />);
 
     expect(screen.getByText("Pro")).toBeInTheDocument();
-    expect(screen.getByText("No data yet")).toBeInTheDocument();
+    expect(screen.getByText(/no data yet/i)).toBeInTheDocument();
   });
 
   it("shows an error state when the query fails", () => {
@@ -136,7 +135,7 @@ describe("PlanUsageCard", () => {
 
     renderWithQuery(<PlanUsageCard />);
 
-    expect(screen.getByText("Failed to load plan usage.")).toBeInTheDocument();
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByText(/failed to load plan usage/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 });

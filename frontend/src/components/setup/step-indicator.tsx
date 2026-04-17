@@ -14,15 +14,14 @@ interface StepItemProps {
 
 function StepItem({ step, index, done, active }: StepItemProps) {
   const indexColor = active ? "text-foreground" : done ? "text-accent" : "text-muted-foreground/60";
-
   const stateColor = done ? "text-accent" : "text-muted-foreground/40";
-  const stateLabel = done ? "ok" : active ? "··" : "—";
+  const stateLabel = done ? "✓" : active ? "··" : "—";
 
   return (
     <li
       className={cn(
         "relative flex flex-1 min-w-[110px] flex-col gap-2 px-3 py-2.5",
-        "border-t transition-colors duration-300",
+        "border-t transition-colors duration-[var(--duration-slow)] ease-[var(--ease-out-quart)]",
         active && "border-foreground",
         done && "border-accent",
         !active && !done && "border-border",
@@ -32,7 +31,7 @@ function StepItem({ step, index, done, active }: StepItemProps) {
         <span className={cn("transition-colors", indexColor)}>
           {String(index + 1).padStart(2, "0")}
         </span>
-        <span className={cn("transition-colors text-[9px]", stateColor)}>{stateLabel}</span>
+        <span className={cn("transition-colors text-[9px] tabular", stateColor)}>{stateLabel}</span>
       </div>
       <span
         className={cn(

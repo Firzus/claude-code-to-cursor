@@ -26,8 +26,7 @@ describe("OAuthFlow", () => {
 
   it("shows Initialize button initially", () => {
     render(<OAuthFlow />);
-
-    expect(screen.getByText("Initialize")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /initialize/i })).toBeInTheDocument();
   });
 
   it("calls initLogin on click and shows auth link", async () => {
@@ -39,13 +38,13 @@ describe("OAuthFlow", () => {
 
     render(<OAuthFlow />);
 
-    await user.click(screen.getByText("Initialize"));
+    await user.click(screen.getByRole("button", { name: /initialize/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Open Anthropic/)).toBeInTheDocument();
+      expect(screen.getByText(/open anthropic/i)).toBeInTheDocument();
     });
 
-    const link = screen.getByText(/Open Anthropic/).closest("a");
+    const link = screen.getByText(/open anthropic/i).closest("a");
     expect(link).toHaveAttribute("href", "https://anthropic.com/auth?code=test");
   });
 
@@ -55,7 +54,7 @@ describe("OAuthFlow", () => {
 
     render(<OAuthFlow />);
 
-    await user.click(screen.getByText("Initialize"));
+    await user.click(screen.getByRole("button", { name: /initialize/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Failed to initialize/)).toBeInTheDocument();
@@ -65,14 +64,13 @@ describe("OAuthFlow", () => {
   it("code input is disabled before login initialization", () => {
     render(<OAuthFlow />);
 
-    const input = screen.getByPlaceholderText("Paste code...");
+    const input = screen.getByPlaceholderText(/paste code/i);
     expect(input).toBeDisabled();
   });
 
   it("submit button is disabled before login initialization", () => {
     render(<OAuthFlow />);
-
-    expect(screen.getByText("Submit")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /submit/i })).toBeDisabled();
   });
 
   it("calls onSuccess callback after successful code submission", async () => {
@@ -91,14 +89,14 @@ describe("OAuthFlow", () => {
 
     render(<OAuthFlow onSuccess={onSuccess} />);
 
-    await user.click(screen.getByText("Initialize"));
+    await user.click(screen.getByRole("button", { name: /initialize/i }));
     await waitFor(() => {
-      expect(screen.getByText(/Open Anthropic/)).toBeInTheDocument();
+      expect(screen.getByText(/open anthropic/i)).toBeInTheDocument();
     });
 
-    const input = screen.getByPlaceholderText("Paste code...");
+    const input = screen.getByPlaceholderText(/paste code/i);
     await user.type(input, "auth-code-123");
-    await user.click(screen.getByText("Submit"));
+    await user.click(screen.getByRole("button", { name: /submit/i }));
 
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalled();

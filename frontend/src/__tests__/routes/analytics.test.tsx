@@ -174,7 +174,7 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("Analytics")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /analytics/i })).toBeInTheDocument();
   });
 
   it("no longer shows the removed stat cards (Requests, Est. cost saved, Avg output)", async () => {
@@ -229,9 +229,9 @@ describe("AnalyticsPage", () => {
 
     expect(screen.queryByText("Estimated cost")).not.toBeInTheDocument();
     expect(screen.queryByText("$1.25")).not.toBeInTheDocument();
-    expect(screen.getByText("Tokens in")).toBeInTheDocument();
-    expect(screen.getByText("Tokens out")).toBeInTheDocument();
-    expect(screen.getByText("Cache hit rate")).toBeInTheDocument();
+    expect(screen.getByText("tokens in")).toBeInTheDocument();
+    expect(screen.getByText("tokens out")).toBeInTheDocument();
+    expect(screen.getByText("cache hit rate")).toBeInTheDocument();
   });
 
   it("renders plan usage card", async () => {
@@ -256,10 +256,10 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("Plan usage")).toBeInTheDocument();
+    expect(screen.getByText("plan usage")).toBeInTheDocument();
     expect(screen.getByText("Max (20x)")).toBeInTheDocument();
-    expect(screen.getByText("Current session")).toBeInTheDocument();
-    expect(screen.getByText(/Weekly/)).toBeInTheDocument();
+    expect(screen.getByText("current session")).toBeInTheDocument();
+    expect(screen.getByText(/weekly/i)).toBeInTheDocument();
   });
 
   it("shows error state", async () => {
@@ -290,7 +290,7 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("Failed to load analytics.")).toBeInTheDocument();
+    expect(screen.getByText(/failed to load analytics/i)).toBeInTheDocument();
   });
 
   it("shows empty state when no requests", async () => {
@@ -315,7 +315,7 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("No requests yet")).toBeInTheDocument();
+    expect(screen.getByText(/no requests yet/i)).toBeInTheDocument();
   });
 
   it("renders period buttons", async () => {
@@ -340,11 +340,11 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("5H")).toBeInTheDocument();
-    expect(screen.getByText("24H")).toBeInTheDocument();
-    expect(screen.getByText("7J")).toBeInTheDocument();
-    expect(screen.getByText("30J")).toBeInTheDocument();
-    expect(screen.getByText("All")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /5h/i })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /24h/i })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /7d/i })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /30d/i })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /^all$/i })).toBeInTheDocument();
   });
 
   it("has refresh, reset, and export buttons", async () => {
@@ -371,7 +371,7 @@ describe("AnalyticsPage", () => {
 
     expect(screen.getByLabelText("Refresh analytics data")).toBeInTheDocument();
     expect(screen.getByLabelText("Reset analytics data")).toBeInTheDocument();
-    expect(screen.getByLabelText("Export CSV")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /export csv/i })).toBeInTheDocument();
   });
 
   it("renders request table with expandable rows", async () => {
@@ -396,7 +396,7 @@ describe("AnalyticsPage", () => {
 
     await renderAnalyticsPage();
 
-    expect(screen.getByText("Request History")).toBeInTheDocument();
+    expect(screen.getAllByText(/request history/i).length).toBeGreaterThan(0);
     expect(screen.getByText("opus-4-7")).toBeInTheDocument();
     expect(screen.getByText("$0.03")).toBeInTheDocument();
   });

@@ -3,10 +3,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Cpu, CreditCard, RotateCcw, Sparkles, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { PageHeader, type PageHeaderStatus } from "~/components/page-header";
 import { EffortStrip } from "~/components/settings/effort-strip";
 import { Panel, PanelRow } from "~/components/settings/panel";
 import { SelectorRow } from "~/components/settings/selector-row";
 import { ToggleAscii } from "~/components/settings/toggle-ascii";
+import { Alert } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
 import { cn } from "~/lib/utils";
 import {
@@ -26,7 +29,7 @@ type ModelMeta = {
   context: string;
   capability: string;
   icon: typeof Sparkles;
-  accentClass: string;
+  dataModel: "opus" | "sonnet" | "haiku";
 };
 
 export const Route = createFileRoute("/settings")({
@@ -47,21 +50,21 @@ const modelMeta: Record<(typeof supportedModels)[number], ModelMeta> = {
     context: "1M ctx",
     capability: "most capable",
     icon: Sparkles,
-    accentClass: "selector-opus",
+    dataModel: "opus",
   },
   "claude-sonnet-4-6": {
     id: "sonnet_4_6",
     context: "200K ctx",
     capability: "balanced",
     icon: Zap,
-    accentClass: "selector-sonnet",
+    dataModel: "sonnet",
   },
   "claude-haiku-4-5": {
     id: "haiku_4_5",
     context: "200K ctx",
     capability: "fastest",
     icon: Cpu,
-    accentClass: "selector-haiku",
+    dataModel: "haiku",
   },
 };
 
@@ -69,6 +72,27 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 ? 1 : 0)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
   return n.toString();
+}
+
+function statusFromState(
+  state: "loading" | "error" | "saved" | "dirty" | "clean",
+  savedAgo: number,
+): PageHeaderStatus {
+  switch (state) {
+    case "loading":
+      return { tone: "muted", label: "loading", pulse: true };
+    case "error":
+      return { tone: "destructive", label: "error" };
+    case "saved":
+      return {
+        tone: "success",
+        label: savedAgo === 0 ? "saved · just now" : `saved · ${savedAgo}s ago`,
+      };
+    case "dirty":
+      return { tone: "warning", label: "unsaved changes", pulse: true };
+    default:
+      return { tone: "success", label: "synced" };
+  }
 }
 
 function SettingsPage() {
@@ -118,10 +142,21 @@ function SettingsPage() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [onBeforeUnload]);
 
+  const headerTitle = (
+    <>
+      settings<span className="text-muted-foreground">.control</span>
+    </>
+  );
+
   if (isLoading) {
     return (
       <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
-        <PageHeader status="loading" />
+        <PageHeader
+          eyebrow="~/settings"
+          title={headerTitle}
+          version="v1"
+          status={statusFromState("loading", 0)}
+        />
         {[
           { id: "skel-01", index: "01", title: "model" },
           { id: "skel-02", index: "02", title: "subscription" },
@@ -143,40 +178,36 @@ function SettingsPage() {
   if (isError) {
     return (
       <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
-        <PageHeader status="error" />
-        <Panel
-          index="ERR ·"
+        <PageHeader
+          eyebrow="~/settings"
+          title={headerTitle}
+          version="v1"
+          status={statusFromState("error", 0)}
+        />
+        <Alert
+          variant="error"
           title="settings.unreachable"
-          hint="api offline"
-          footer={
-            <>
-              <span>$ retry</span>
-              <span className="text-destructive">exit 1</span>
-            </>
-          }
-        >
-          <div className="flex flex-col items-start gap-4 py-3">
-            <p className="text-[12.5px] text-destructive font-mono">Failed to load settings.</p>
-            <button
-              type="button"
+          description="Failed to load settings. The settings API is offline or returned an error."
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              leading={<RotateCcw className="h-3 w-3" aria-hidden="true" />}
               onClick={() => refetch()}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-border/70 bg-card/40 px-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground cursor-pointer"
             >
-              <RotateCcw className="h-3 w-3" />
-              Try again
-            </button>
-          </div>
-        </Panel>
+              try again
+            </Button>
+          }
+        />
       </div>
     );
   }
 
+  const status = statusFromState(showSuccess ? "saved" : isDirty ? "dirty" : "clean", savedAgo);
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-in">
-      <PageHeader
-        status={showSuccess ? "saved" : isDirty ? "dirty" : "clean"}
-        savedAgo={savedAgo}
-      />
+      <PageHeader eyebrow="~/settings" title={headerTitle} version="v1" status={status} />
 
       <span className="sr-only" aria-live="polite">
         Settings
@@ -207,7 +238,7 @@ function SettingsPage() {
                   selected={selectedModel === model}
                   onSelect={() => form.setValue("selectedModel", model, { shouldDirty: true })}
                   icon={meta.icon}
-                  accentClass={meta.accentClass}
+                  dataModel={meta.dataModel}
                   ariaLabel={modelLabels[model]}
                 />
               );
@@ -290,12 +321,12 @@ function SettingsPage() {
           </PanelRow>
           <div
             className={cn(
-              "mt-3 flex items-start gap-2 rounded-md border border-border/40 bg-background/40 px-3 py-2 font-mono text-[11px] leading-relaxed transition-opacity",
+              "mt-3 flex items-start gap-2 rounded-md border border-border/50 bg-background/40 px-3 py-2 font-mono text-[11px] leading-relaxed transition-opacity",
               !thinkingEnabled && "opacity-40",
             )}
           >
             <span aria-hidden="true" className="text-accent select-none">
-              {">"}
+              &gt;
             </span>
             <span className="text-muted-foreground">
               {effortDescriptions[selectedEffort ?? "high"]}
@@ -304,83 +335,36 @@ function SettingsPage() {
         </Panel>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-between border-t border-border/60 pt-5">
+        <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-5">
           <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
             {update.isPending ? "$ saving···" : "$ save"}
           </span>
           <div className="flex items-center gap-3">
             {isDirty && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => form.reset()}
-                className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+                className="uppercase tracking-[0.18em] text-[11px]"
               >
                 discard
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               type="submit"
+              variant="terminal"
+              size="md"
               disabled={update.isPending || !isDirty}
-              className={cn(
-                "group inline-flex h-9 items-center gap-2 rounded-md border border-foreground/80 bg-foreground px-5 font-mono text-[12px] font-medium text-background transition-all",
-                "hover:bg-foreground/95 hover:shadow-[0_0_0_4px_oklch(from_var(--color-foreground)_l_c_h/0.12)]",
-                "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:shadow-none",
-                !update.isPending && isDirty && "cursor-pointer",
-              )}
+              isLoading={update.isPending}
+              loadingText="saving"
+              leading={<span aria-hidden="true">█</span>}
             >
-              <span aria-hidden="true">{update.isPending ? "▒" : "█"}</span>
-              Save
-            </button>
+              save
+            </Button>
           </div>
         </div>
       </form>
     </div>
-  );
-}
-
-function PageHeader({
-  status,
-  savedAgo = 0,
-}: {
-  status: "loading" | "error" | "saved" | "dirty" | "clean";
-  savedAgo?: number;
-}) {
-  const badge = (() => {
-    switch (status) {
-      case "loading":
-        return { text: "loading", dot: "bg-muted-foreground/40" };
-      case "error":
-        return { text: "error", dot: "bg-destructive" };
-      case "saved":
-        return {
-          text: savedAgo === 0 ? "saved · just now" : `saved · ${savedAgo}s ago`,
-          dot: "bg-success",
-        };
-      case "dirty":
-        return { text: "unsaved changes", dot: "bg-warning animate-pulse" };
-      default:
-        return { text: "synced", dot: "bg-success/60" };
-    }
-  })();
-
-  return (
-    <header className="flex items-baseline justify-between gap-4 border-b border-border/60 pb-4 font-mono">
-      <div className="flex items-baseline gap-3 min-w-0">
-        <span aria-hidden="true" className="text-muted-foreground/50">
-          ↳
-        </span>
-        <h1 className="text-[18px] sm:text-[22px] font-semibold tracking-[-0.02em] text-foreground">
-          settings
-          <span className="text-muted-foreground">.control</span>
-        </h1>
-        <span className="hidden sm:inline text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground/60">
-          v1
-        </span>
-      </div>
-      <span className="flex items-center gap-2 text-[10.5px] uppercase tracking-[0.18em]">
-        <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", badge.dot)} />
-        <span className="text-muted-foreground">{badge.text}</span>
-      </span>
-    </header>
   );
 }

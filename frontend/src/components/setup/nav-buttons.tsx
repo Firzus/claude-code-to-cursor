@@ -1,4 +1,4 @@
-import { cn } from "~/lib/utils";
+import { Button } from "~/components/ui/button";
 
 interface NavButtonsProps {
   onPrev?: () => void;
@@ -14,38 +14,39 @@ export function NavButtons({
   nextDisabled = false,
 }: NavButtonsProps) {
   return (
-    <div className="flex items-center justify-between font-mono text-[12px]">
+    <div className="flex items-center justify-between gap-3 font-mono text-[12px]">
       {onPrev ? (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="md"
           onClick={onPrev}
-          className="group inline-flex h-9 items-center gap-2 rounded-md border border-border/60 bg-card/30 px-4 text-muted-foreground transition-colors hover:border-border hover:bg-card/60 hover:text-foreground cursor-pointer"
+          leading={
+            <span aria-hidden="true" className="transition-transform group-hover:-translate-x-0.5">
+              ←
+            </span>
+          }
         >
-          <span aria-hidden="true" className="transition-transform group-hover:-translate-x-0.5">
-            ←
-          </span>
           back
-        </button>
+        </Button>
       ) : (
         <div />
       )}
       {onNext && (
-        <button
+        <Button
           type="button"
+          variant="terminal"
+          size="md"
           onClick={onNext}
           disabled={nextDisabled}
-          className={cn(
-            "group inline-flex h-9 items-center gap-2 rounded-md border border-foreground/80 bg-foreground px-5 font-medium text-background transition-all",
-            "hover:bg-foreground/95 hover:shadow-[0_0_0_4px_oklch(from_var(--color-foreground)_l_c_h/0.12)]",
-            "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-none",
-            !nextDisabled && "cursor-pointer",
-          )}
+          trailing={
+            <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
+              →
+            </span>
+          }
         >
           {nextLabel}
-          <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">
-            →
-          </span>
-        </button>
+        </Button>
       )}
     </div>
   );

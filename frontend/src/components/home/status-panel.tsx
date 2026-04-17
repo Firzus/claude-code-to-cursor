@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Card, CardFooter, CardHeader } from "~/components/ui/card";
 import { useAnalyticsSummary } from "~/hooks/use-analytics";
 import { useBudgetDay } from "~/hooks/use-budget";
 import { useHealth } from "~/hooks/use-health";
@@ -145,28 +146,26 @@ export function StatusPanel() {
   const timestamp = new Date().toISOString().replace("T", " ").slice(0, 19);
 
   return (
-    <section
+    <Card
+      variant="terminal"
+      padding="none"
+      delay={120}
+      className="font-mono text-[12px]"
       role="status"
       aria-live="polite"
       aria-label="Live proxy status"
-      className={cn(
-        "relative w-full rounded-lg border border-border bg-card/40 backdrop-blur-sm",
-        "font-mono text-[12px] shadow-[0_0_0_1px_oklch(from_var(--color-border)_l_c_h/0.4)]",
-        "animate-fade-in",
-      )}
-      style={{ animationDelay: "120ms" }}
     >
-      <header className="flex items-center justify-between border-b border-border/60 px-3 py-1.5 text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
+      <CardHeader className="px-3 py-1.5 text-[10.5px] tracking-[0.14em]">
         <div className="flex items-center gap-1.5">
-          <span className="flex gap-1">
+          <span className="flex gap-1" aria-hidden="true">
             <span className="h-1.5 w-1.5 rounded-full bg-destructive/70" />
             <span className="h-1.5 w-1.5 rounded-full bg-warning/70" />
             <span className="h-1.5 w-1.5 rounded-full bg-success/70" />
           </span>
           <span className="ml-2">proxy.status</span>
         </div>
-        <span className="hidden sm:inline text-[10px]">{timestamp} UTC</span>
-      </header>
+        <span className="hidden sm:inline text-[10px] tabular">{timestamp} UTC</span>
+      </CardHeader>
 
       <div className="divide-y divide-border/40 px-3 py-2">
         <Row label="Proxy" status={proxyStatus}>
@@ -189,13 +188,13 @@ export function StatusPanel() {
         </Row>
       </div>
 
-      <footer className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+      <CardFooter className="px-3 py-1.5 text-[10px] tracking-[0.14em]">
         <span>$ tail -f proxy</span>
         <span className="flex items-center gap-1.5">
-          <span className="h-1 w-1 rounded-full bg-success animate-pulse" />
+          <span aria-hidden="true" className="h-1 w-1 rounded-full bg-success animate-pulse" />
           live
         </span>
-      </footer>
-    </section>
+      </CardFooter>
+    </Card>
   );
 }

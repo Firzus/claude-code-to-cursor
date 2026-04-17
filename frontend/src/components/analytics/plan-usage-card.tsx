@@ -1,5 +1,8 @@
-import { AlertCircle, Gauge } from "lucide-react";
-import { Card, CardContent } from "~/components/ui/card";
+import { Gauge } from "lucide-react";
+import { Alert } from "~/components/ui/alert";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { usePlanUsage } from "~/hooks/use-plan-usage";
 import { cn } from "~/lib/utils";
@@ -8,16 +11,16 @@ import { planLabels, type supportedPlans } from "~/schemas/settings";
 
 function formatRelative(resetAt: number): string {
   const delta = resetAt - Date.now();
-  if (delta <= 0) return "Reset imminent";
+  if (delta <= 0) return "reset imminent";
   const hours = Math.floor(delta / (60 * 60 * 1000));
   const minutes = Math.floor((delta % (60 * 60 * 1000)) / (60 * 1000));
   if (hours >= 24) {
     const days = Math.floor(hours / 24);
     const remHours = hours % 24;
-    return remHours > 0 ? `Resets in ${days}d ${remHours}h` : `Resets in ${days}d`;
+    return remHours > 0 ? `resets in ${days}d ${remHours}h` : `resets in ${days}d`;
   }
-  if (hours > 0) return `Resets in ${hours}h ${minutes}min`;
-  return `Resets in ${minutes}min`;
+  if (hours > 0) return `resets in ${hours}h ${minutes}min`;
+  return `resets in ${minutes}min`;
 }
 
 function formatAge(capturedAt: number): string {
@@ -62,27 +65,34 @@ function UsageBar({ label, window: w, binding }: UsageBarProps) {
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[13px] font-medium">{label}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[12.5px] font-medium text-foreground">{label}</span>
             {binding && (
-              <span className="rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
-                Binding
-              </span>
+              <Badge variant="outline" size="xs">
+                binding
+              </Badge>
             )}
           </div>
-          <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+          <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
             {formatRelative(w.resetAt)}
             {sub ? ` · ${sub}` : null}
           </div>
         </div>
-        <span className="text-[12px] text-muted-foreground font-mono tabular-nums shrink-0">
+        <span className="font-mono text-[11.5px] text-muted-foreground tabular shrink-0">
           {displayPercent.toFixed(displayPercent > 0 && displayPercent < 10 ? 1 : 0)}% used
         </span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
+      <div
+        role="progressbar"
+        aria-valuenow={Math.round(displayPercent)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-muted/70"
+      >
         <div
           className={cn(
-            "h-full rounded-full transition-[width] duration-500",
+            "h-full rounded-full transition-[width] duration-[var(--duration-slow)] ease-[var(--ease-out-quart)]",
             barColor(w.percent, w.status),
           )}
           style={{ width: `${displayPercent}%` }}
@@ -100,29 +110,29 @@ interface SourceBadgeProps {
 function SourceBadge({ source, capturedAt }: SourceBadgeProps) {
   const config = {
     anthropic: {
-      dot: "bg-success",
-      label: capturedAt !== null ? `Live · ${formatAge(capturedAt)}` : "Live",
+      tone: "bg-success" as const,
+      label: capturedAt !== null ? `live · ${formatAge(capturedAt)}` : "live",
       title: "Read from Anthropic's unified rate-limit headers on the last response.",
     },
     estimated: {
-      dot: "bg-warning",
-      label: "Estimated",
+      tone: "bg-warning" as const,
+      label: "estimated",
       title:
         "No recent Anthropic header snapshot — showing a local estimate based on stored tokens and public plan quotas.",
     },
     none: {
-      dot: "bg-muted-foreground/50",
-      label: "No data yet",
+      tone: "bg-muted-foreground/50" as const,
+      label: "no data yet",
       title: "Send a request through the proxy to populate usage metrics.",
     },
   }[source];
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground"
       title={config.title}
+      className="inline-flex items-center gap-1.5 rounded-sm border border-border/70 bg-card/40 px-2 h-[22px] font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground"
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
+      <span aria-hidden="true" className={cn("h-1.5 w-1.5 rounded-full", config.tone)} />
       {config.label}
     </span>
   );
@@ -133,31 +143,27 @@ export function PlanUsageCard() {
 
   if (query.isLoading) {
     return (
-      <Card>
-        <CardContent className="p-5 space-y-4">
+      <Card variant="flat" padding="lg">
+        <div className="space-y-4">
           <Skeleton className="h-4 w-40" />
           <Skeleton className="h-14 w-full" />
           <Skeleton className="h-14 w-full" />
-        </CardContent>
+        </div>
       </Card>
     );
   }
 
   if (query.isError || !query.data) {
     return (
-      <Card className="border-destructive/40">
-        <CardContent className="flex items-center gap-2 py-3 text-[12px] text-destructive">
-          <AlertCircle className="h-4 w-4" />
-          Failed to load plan usage.
-          <button
-            type="button"
-            onClick={() => query.refetch()}
-            className="underline underline-offset-2 cursor-pointer"
-          >
-            Retry
-          </button>
-        </CardContent>
-      </Card>
+      <Alert
+        variant="error"
+        title="failed to load plan usage"
+        action={
+          <Button variant="ghost" size="sm" onClick={() => query.refetch()}>
+            retry
+          </Button>
+        }
+      />
     );
   }
 
@@ -172,29 +178,28 @@ export function PlanUsageCard() {
         : "No traffic yet. Metrics will update after the first request through the proxy.";
 
   return (
-    <Card className="border-border/80">
-      <CardContent className="p-5 space-y-5">
-        <div className="flex items-center justify-between gap-2">
+    <Card variant="flat" padding="none">
+      <CardHeader
+        index={<Gauge className="h-3 w-3" aria-hidden="true" />}
+        title="plan usage"
+        action={
           <div className="flex items-center gap-2">
-            <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-[12px] text-muted-foreground font-medium">Plan usage</span>
             <SourceBadge source={source} capturedAt={capturedAt} />
+            <span className="font-mono text-[11px] text-muted-foreground">{planLabel}</span>
           </div>
-          <span className="text-[12px] font-mono text-muted-foreground">{planLabel}</span>
-        </div>
-
+        }
+      />
+      <CardContent className="space-y-5 px-4 py-4">
         <UsageBar
-          label="Current session"
+          label="current session"
           window={usage.fiveHour}
           binding={representativeClaim === "five_hour"}
         />
-
         <UsageBar
-          label="Weekly · All models"
+          label="weekly · all models"
           window={usage.weekly}
           binding={representativeClaim === "seven_day"}
         />
-
         <p className="text-[11px] text-muted-foreground/70 leading-relaxed">{footnote}</p>
       </CardContent>
     </Card>

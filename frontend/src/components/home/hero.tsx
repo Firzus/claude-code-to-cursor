@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight, Rocket } from "lucide-react";
+import { Button } from "~/components/ui/button";
 import { StatusPanel } from "./status-panel";
 
 export function Hero() {
@@ -7,7 +8,7 @@ export function Hero() {
     <section className="relative grid gap-10 lg:grid-cols-[1.15fr_1fr] lg:gap-16 lg:items-end pt-4 sm:pt-10">
       <div className="relative flex flex-col">
         <div
-          className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground animate-fade-in"
+          className="flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground animate-fade-in"
           style={{ animationDelay: "40ms" }}
         >
           <span
@@ -18,7 +19,7 @@ export function Hero() {
         </div>
 
         <h1
-          className="mt-5 font-mono font-semibold leading-[0.92] tracking-[-0.04em] text-[clamp(2.5rem,7vw,5.25rem)] animate-slide-up"
+          className="mt-5 font-mono font-semibold leading-[0.92] tracking-[-0.04em] text-[clamp(2.5rem,7vw,5.25rem)] animate-slide-up [text-wrap:balance]"
           style={{ animationDelay: "80ms" }}
         >
           <span className="block text-foreground">claude_code</span>
@@ -35,8 +36,9 @@ export function Hero() {
         </h1>
 
         <p
-          className="mt-7 max-w-xl text-[15px] leading-relaxed text-muted-foreground animate-fade-in"
+          className="mt-7 max-w-xl text-[14px] leading-relaxed text-muted-foreground animate-fade-in [text-wrap:pretty]"
           style={{ animationDelay: "160ms" }}
+          data-prose
         >
           An OAuth-authenticated proxy that routes any OpenAI- or Anthropic-compatible client
           through Claude Code. Token refresh, cache-optimised prompts, and request analytics —
@@ -47,35 +49,38 @@ export function Hero() {
           className="mt-9 flex flex-wrap items-center gap-3 animate-fade-in"
           style={{ animationDelay: "220ms" }}
         >
-          <Link
-            to="/setup"
-            className="group inline-flex h-10 items-center gap-2 rounded-md bg-foreground px-5 text-[13px] font-medium text-background transition-all hover:shadow-[0_0_0_4px_oklch(from_var(--color-foreground)_l_c_h/0.15)]"
+          <Button
+            asChild
+            variant="default"
+            size="lg"
+            leading={<Rocket className="h-4 w-4" aria-hidden="true" />}
+            trailing={
+              <span
+                aria-hidden="true"
+                className="text-[16px] leading-none transition-transform group-hover:translate-x-0.5"
+              >
+                →
+              </span>
+            }
           >
-            <Rocket className="h-4 w-4" aria-hidden="true" />
-            Start setup
-            <span
-              aria-hidden="true"
-              className="ml-1 text-[16px] leading-none transition-transform group-hover:translate-x-0.5"
-            >
-              →
-            </span>
-          </Link>
-          <Link
-            to="/analytics"
-            className="group inline-flex h-10 items-center gap-2 rounded-md border border-border px-5 text-[13px] font-medium text-foreground transition-colors hover:bg-card"
+            <Link to="/setup">start setup</Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            size="lg"
+            trailing={
+              <ArrowUpRight
+                className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground"
+                aria-hidden="true"
+              />
+            }
           >
-            Open analytics
-            <ArrowUpRight
-              className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground"
-              aria-hidden="true"
-            />
-          </Link>
-          <Link
-            to="/settings"
-            className="inline-flex h-10 items-center px-3 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Model settings
-          </Link>
+            <Link to="/analytics">open analytics</Link>
+          </Button>
+          <Button asChild variant="ghost" size="lg">
+            <Link to="/settings">model settings</Link>
+          </Button>
         </div>
 
         <dl

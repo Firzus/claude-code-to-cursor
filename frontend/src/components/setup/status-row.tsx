@@ -1,3 +1,4 @@
+import { Spinner } from "~/components/ui/spinner";
 import { cn } from "~/lib/utils";
 
 interface StatusRowProps {
@@ -13,7 +14,6 @@ export function StatusRow({ ok, loading, label, sub }: StatusRowProps) {
     : loading
       ? "bg-warning animate-pulse"
       : "bg-muted-foreground/40";
-  const stateLabel = ok ? "ok" : loading ? "wait" : "—";
   return (
     <div className="flex items-start gap-3 px-3 py-2.5 font-mono">
       <span
@@ -25,11 +25,12 @@ export function StatusRow({ ok, loading, label, sub }: StatusRowProps) {
           <span className="text-[12px] text-foreground">{label}</span>
           <span
             className={cn(
-              "text-[10px] uppercase tracking-[0.2em]",
+              "inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.2em] tabular",
               ok ? "text-success" : loading ? "text-warning" : "text-muted-foreground/60",
             )}
           >
-            {stateLabel}
+            {loading ? <Spinner variant="braille" className="h-3 w-3" /> : null}
+            {ok ? "ok" : loading ? "wait" : "—"}
           </span>
         </div>
         <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>

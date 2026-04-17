@@ -1,33 +1,52 @@
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent } from "~/components/ui/card";
+import { Card } from "~/components/ui/card";
+import { cn } from "~/lib/utils";
 
 interface StatCardProps {
   icon: LucideIcon;
   label: string;
   value: string;
-  sub: string;
-  accent: string;
+  sub?: string;
+  /** Colour key pulled from `--color-*` (success, warning, accent, chart-1…). */
+  accent?: string;
+  className?: string;
 }
 
-export function StatCard({ icon: Icon, label, value, sub, accent }: StatCardProps) {
+/**
+ * Compact metric tile used on Analytics. Unified version — the previous local
+ * `BudgetStat` copy in `analytics.tsx` has been removed.
+ */
+export function StatCard({ icon: Icon, label, value, sub, accent, className }: StatCardProps) {
   return (
-    <Card className="group transition-colors hover:border-border/80">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <div
-            className="flex h-6 w-6 items-center justify-center rounded-md"
-            style={{
-              backgroundColor: `color-mix(in oklch, var(--color-${accent}) 15%, transparent)`,
-              color: `var(--color-${accent})`,
-            }}
-          >
-            <Icon className="h-3 w-3" />
-          </div>
-          <span className="text-[12px] text-muted-foreground">{label}</span>
+    <Card variant="flat" padding="default" className={cn("group", className)}>
+      <div className="flex items-center gap-2 mb-2">
+        <span
+          aria-hidden="true"
+          className="flex h-6 w-6 items-center justify-center rounded-sm border border-border/70"
+          style={
+            accent
+              ? {
+                  backgroundColor: `color-mix(in oklch, var(--color-${accent}) 14%, transparent)`,
+                  color: `var(--color-${accent})`,
+                  borderColor: `color-mix(in oklch, var(--color-${accent}) 30%, transparent)`,
+                }
+              : { color: "var(--color-muted-foreground)" }
+          }
+        >
+          <Icon className="h-3 w-3" />
+        </span>
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground truncate">
+          {label}
+        </span>
+      </div>
+      <div className="font-mono text-[22px] leading-none font-semibold tabular tracking-tight">
+        {value}
+      </div>
+      {sub && (
+        <div className="mt-1 font-mono text-[11px] text-muted-foreground/80 tracking-tight">
+          {sub}
         </div>
-        <div className="font-mono text-xl font-semibold tabular">{value}</div>
-        <div className="mt-0.5 text-[12px] text-muted-foreground font-mono">{sub}</div>
-      </CardContent>
+      )}
     </Card>
   );
 }

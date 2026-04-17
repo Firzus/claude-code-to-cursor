@@ -1,5 +1,7 @@
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { EmptyState } from "./empty-state";
+import { Button } from "./ui/button";
 
 interface Props {
   children: ReactNode;
@@ -25,34 +27,27 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error("ErrorBoundary caught:", error, info);
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
 
       return (
-        <div
-          role="alert"
-          className="flex flex-col items-center justify-center py-20 px-6 text-center animate-fade-in"
-        >
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive mb-4"
-            aria-hidden="true"
-          >
-            <AlertTriangle className="h-6 w-6" />
-          </div>
-          <h2 className="text-sm font-semibold mb-1">Something went wrong</h2>
-          <p className="text-[13px] text-muted-foreground mb-4 max-w-sm">
-            {this.state.error?.message || "An unexpected error occurred."}
-          </p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 cursor-pointer"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Reload page
-          </button>
-        </div>
+        <EmptyState
+          icon={AlertTriangle}
+          tone="destructive"
+          title="Something went wrong"
+          description={this.state.error?.message || "An unexpected error occurred."}
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              leading={<RotateCcw className="h-3 w-3" aria-hidden="true" />}
+              onClick={() => window.location.reload()}
+            >
+              Reload page
+            </Button>
+          }
+        />
       );
     }
 

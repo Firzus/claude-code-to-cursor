@@ -45,23 +45,24 @@ describe("ConfirmDialog", () => {
   it("calls onConfirm when Reset button is clicked", async () => {
     const user = userEvent.setup();
     render(<ConfirmDialog {...defaultProps} />);
-    await user.click(screen.getByText("Reset"));
+    await user.click(screen.getByRole("button", { name: /reset/i }));
     expect(defaultProps.onConfirm).toHaveBeenCalled();
   });
 
   it("calls onCancel when Cancel button is clicked", async () => {
     const user = userEvent.setup();
     render(<ConfirmDialog {...defaultProps} />);
-    await user.click(screen.getByText("Cancel"));
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(defaultProps.onCancel).toHaveBeenCalled();
   });
 
   it("calls onCancel when backdrop overlay is clicked", async () => {
     const user = userEvent.setup();
     render(<ConfirmDialog {...defaultProps} />);
-    const overlay = screen.getByRole("dialog").querySelector("[aria-hidden='true']");
-    if (!overlay) throw new Error("expected dialog overlay");
-    await user.click(overlay);
+    // The new Dialog renders the backdrop as a <button> labelled "Close dialog".
+    const overlays = screen.getAllByRole("button", { name: /close dialog/i });
+    expect(overlays.length).toBeGreaterThan(0);
+    await user.click(overlays[0]);
     expect(defaultProps.onCancel).toHaveBeenCalled();
   });
 });
