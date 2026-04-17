@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  AlertCircle,
   ArrowDownToLine,
   ArrowUpFromLine,
   Calendar,
@@ -18,10 +17,16 @@ import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import { ExpandableRow } from "~/components/analytics/expandable-row";
 import { Pagination } from "~/components/analytics/pagination";
 import { PlanUsageCard } from "~/components/analytics/plan-usage-card";
+import { StatCard } from "~/components/analytics/stat-card";
 import { EmptyState } from "~/components/empty-state";
-import { Card, CardContent } from "~/components/ui/card";
+import { PageHeader } from "~/components/page-header";
+import { Alert } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltipContent } from "~/components/ui/chart";
+import { Segmented } from "~/components/ui/segmented";
 import { Skeleton } from "~/components/ui/skeleton";
+import { Tooltip } from "~/components/ui/tooltip";
 import {
   useAnalyticsRequests,
   useAnalyticsSummary,
@@ -30,20 +35,21 @@ import {
 import { useBudgetDay } from "~/hooks/use-budget";
 import { apiFetch } from "~/lib/api-client";
 import { queryKeys } from "~/lib/query-keys";
-import { cn } from "~/lib/utils";
 import type { RequestRecord } from "~/schemas/api-responses";
 
 export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
 });
 
+type Period = "5hour" | "day" | "week" | "month" | "all";
+
 const periods = [
-  { value: "5hour", label: "5H" },
-  { value: "day", label: "24H" },
-  { value: "week", label: "7J" },
-  { value: "month", label: "30J" },
-  { value: "all", label: "All" },
-] as const;
+  { value: "5hour", label: "5h" },
+  { value: "day", label: "24h" },
+  { value: "week", label: "7d" },
+  { value: "month", label: "30d" },
+  { value: "all", label: "all" },
+] as const satisfies readonly { value: Period; label: string }[];
 
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -116,28 +122,16 @@ function exportCsv(requests: RequestRecord[]) {
 }
 
 const tokenBreakdownConfig = {
-  cacheReadTokens: {
-    label: "Cache Read",
-    color: "var(--color-success)",
-  },
-  inputTokens: {
-    label: "Fresh Input",
-    color: "var(--color-chart-1)",
-  },
-  cacheCreationTokens: {
-    label: "Cache Write",
-    color: "var(--color-chart-3)",
-  },
-  outputTokens: {
-    label: "Output",
-    color: "var(--color-chart-2)",
-  },
+  cacheReadTokens: { label: "Cache Read", color: "var(--color-success)" },
+  inputTokens: { label: "Fresh Input", color: "var(--color-chart-1)" },
+  cacheCreationTokens: { label: "Cache Write", color: "var(--color-chart-3)" },
+  outputTokens: { label: "Output", color: "var(--color-chart-2)" },
 } satisfies ChartConfig;
 
 const PAGE_SIZE = 20;
 
 function AnalyticsPage() {
-  const [period, setPeriod] = useState("day");
+  const [period, setPeriod] = useState<Period>("day");
   const [page, setPage] = useState(1);
   const summary = useAnalyticsSummary(period);
   const requests = useAnalyticsRequests(PAGE_SIZE, period, page);
@@ -152,7 +146,7 @@ function AnalyticsPage() {
     if (summary.dataUpdatedAt) setLastUpdated(summary.dataUpdatedAt);
   }, [summary.dataUpdatedAt]);
 
-  function handlePeriodChange(value: string) {
+  function handlePeriodChange(value: Period) {
     setPeriod(value);
     setPage(1);
   }
@@ -180,73 +174,69 @@ function AnalyticsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-medium">Analytics</h1>
-          <AgoText updatedAt={lastUpdated} />
-        </div>
-        <div className="flex items-center gap-2">
-          <div
-            role="radiogroup"
-            aria-label="Time period"
-            className="flex rounded-md border border-border text-[12px]"
-          >
-            {periods.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={period === value}
-                onClick={() => handlePeriodChange(value)}
-                className={cn(
-                  "px-2.5 py-1 font-mono transition-colors cursor-pointer first:rounded-l-md last:rounded-r-md",
-                  period === value
-                    ? "bg-foreground text-background"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
+      <PageHeader
+        eyebrow="~/analytics"
+        title="analytics"
+        subtitle=".dashboard"
+        actions={
+          <div className="flex items-center gap-3">
+            <AgoText updatedAt={lastUpdated} />
           </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            aria-label="Refresh analytics data"
-            className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmOpen(true)}
-            disabled={resetting}
-            aria-label="Reset analytics data"
-            className="rounded-md border border-border p-1.5 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50 cursor-pointer"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-          {requests.data?.requests.length ? (
-            <button
-              type="button"
-              onClick={() => requests.data && exportCsv(requests.data.requests)}
-              aria-label="Export CSV"
-              className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] font-mono text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+        }
+      />
+
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Segmented<Period>
+          options={periods}
+          value={period}
+          onChange={handlePeriodChange}
+          ariaLabel="Time period"
+          size="default"
+        />
+        <div className="flex items-center gap-2">
+          <Tooltip content="refresh data" side="bottom">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={handleRefresh}
+              aria-label="Refresh analytics data"
             >
-              <Download className="h-3 w-3" />
-              Export CSV
-            </button>
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="reset all analytics" side="bottom">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setConfirmOpen(true)}
+              disabled={resetting}
+              aria-label="Reset analytics data"
+              className="hover:border-destructive/50 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </Button>
+          </Tooltip>
+          {requests.data?.requests.length ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => requests.data && exportCsv(requests.data.requests)}
+              leading={<Download className="h-3 w-3" aria-hidden="true" />}
+            >
+              export csv
+            </Button>
           ) : null}
         </div>
       </div>
 
       <ConfirmDialog
         open={confirmOpen}
-        title="Reset all analytics?"
+        title="reset all analytics?"
         description="This will permanently delete all recorded requests and statistics. This action cannot be undone."
         onConfirm={handleReset}
         onCancel={() => setConfirmOpen(false)}
+        confirmLabel="Reset"
       />
 
       {/* Plan usage */}
@@ -254,18 +244,16 @@ function AnalyticsPage() {
 
       {/* Budget — today (UTC) */}
       {budget.isLoading && (
-        <Card className="border-border/80">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-5">
-              <Skeleton className="h-3.5 w-44" />
-              <Skeleton className="h-4 w-10" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-              <Skeleton className="h-14" />
-            </div>
-          </CardContent>
+        <Card variant="flat" padding="lg">
+          <div className="flex items-center justify-between mb-5">
+            <Skeleton className="h-3.5 w-44" />
+            <Skeleton className="h-4 w-10" />
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
         </Card>
       )}
       {budget.data &&
@@ -279,73 +267,71 @@ function AnalyticsPage() {
             year: "numeric",
           });
           return (
-            <Card className="border-border/80">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] text-muted-foreground font-mono uppercase tracking-wider">
-                      Today &middot; {dateLabel}
-                    </span>
-                  </div>
-                  <span className="rounded-full border border-border/60 bg-muted/40 px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                    UTC
+            <Card variant="flat" padding="none">
+              <CardHeader
+                index={<Calendar className="h-3 w-3" aria-hidden="true" />}
+                title="today"
+                hint={dateLabel}
+                action={
+                  <span className="rounded-sm border border-border/60 bg-muted/40 px-1.5 h-[18px] inline-flex items-center font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    utc
                   </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3 sm:gap-5">
-                  <BudgetStat icon={ArrowDownToLine} label="Tokens in" value={fmt(totalIn)} />
-                  <BudgetStat
-                    icon={ArrowUpFromLine}
-                    label="Tokens out"
-                    value={fmt(budget.data.outputTokens)}
-                  />
-                  <BudgetStat icon={Zap} label="Cache hit rate" value={pct(cacheHitRate)} />
-                </div>
+                }
+              />
+              <CardContent className="grid grid-cols-3 gap-3 sm:gap-4 p-4">
+                <StatCard
+                  icon={ArrowDownToLine}
+                  label="tokens in"
+                  value={fmt(totalIn)}
+                  accent="muted-foreground"
+                />
+                <StatCard
+                  icon={ArrowUpFromLine}
+                  label="tokens out"
+                  value={fmt(budget.data.outputTokens)}
+                  accent="muted-foreground"
+                />
+                <StatCard
+                  icon={Zap}
+                  label="cache hit rate"
+                  value={pct(cacheHitRate)}
+                  accent={cacheHitRate >= 50 ? "success" : "muted-foreground"}
+                />
               </CardContent>
             </Card>
           );
         })()}
       {budget.isError && (
-        <Card className="border-destructive/40">
-          <CardContent className="flex items-center gap-2 py-3 text-[12px] text-destructive">
-            <AlertCircle className="h-4 w-4" />
-            Failed to load daily budget.
-            <button
-              type="button"
-              onClick={() => budget.refetch()}
-              className="underline underline-offset-2 cursor-pointer"
-            >
-              Retry
-            </button>
-          </CardContent>
-        </Card>
+        <Alert
+          variant="error"
+          title="failed to load daily budget"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => budget.refetch()}>
+              retry
+            </Button>
+          }
+        />
       )}
 
       {/* Error state */}
       {summary.isError && (
-        <Card className="border-destructive/40">
-          <CardContent className="flex items-center justify-center gap-3 py-8">
-            <AlertCircle className="h-4 w-4 text-destructive" />
-            <span className="text-[13px] text-destructive">Failed to load analytics.</span>
-            <button
-              type="button"
-              onClick={() => summary.refetch()}
-              className="text-[12px] text-foreground underline underline-offset-2 cursor-pointer"
-            >
-              Retry
-            </button>
-          </CardContent>
-        </Card>
+        <Alert
+          variant="error"
+          title="failed to load analytics"
+          description="The analytics API returned an error."
+          action={
+            <Button variant="ghost" size="sm" onClick={() => summary.refetch()}>
+              retry
+            </Button>
+          }
+        />
       )}
 
       {/* Chart — Token usage over time */}
       {timelineData && timelineData.length > 0 && (
-        <Card>
+        <Card variant="flat" padding="none">
+          <CardHeader index="// chart" title="token usage over time" hint="stacked area" />
           <CardContent className="p-4">
-            <div className="text-[12px] text-muted-foreground mb-3 font-medium">
-              Token usage over time
-            </div>
             <ChartContainer config={tokenBreakdownConfig} className="aspect-auto h-[200px] w-full">
               <AreaChart
                 accessibilityLayer
@@ -455,40 +441,42 @@ function AnalyticsPage() {
       )}
 
       {timeline.isLoading && (
-        <Card>
-          <CardContent className="p-4">
-            <Skeleton className="h-3 w-32 mb-3" />
-            <Skeleton className="h-[200px] w-full" />
-          </CardContent>
+        <Card variant="flat" padding="default">
+          <Skeleton className="h-3 w-32 mb-3" />
+          <Skeleton className="h-[200px] w-full" />
         </Card>
       )}
 
       {/* Requests table */}
-      <Card>
-        <div className="px-4 py-3 text-[13px] font-medium border-b border-border">
-          Request History
-        </div>
+      <Card variant="flat" padding="none">
+        <CardHeader
+          index="// history"
+          title="request history"
+          hint={requests.data ? `${requests.data.total} total` : undefined}
+        />
         {requests.isLoading ? (
           <div className="p-4 space-y-2">
             {[...Array(5)].map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed skeleton count
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
         ) : requests.isError ? (
-          <div className="px-4 py-10 text-center">
-            <span className="text-[13px] text-destructive">Failed to load requests.</span>
-            <button
-              type="button"
-              onClick={() => requests.refetch()}
-              className="ml-2 text-[12px] text-foreground underline underline-offset-2 cursor-pointer"
-            >
-              Retry
-            </button>
+          <div className="p-4">
+            <Alert
+              variant="error"
+              title="failed to load requests"
+              action={
+                <Button variant="ghost" size="sm" onClick={() => requests.refetch()}>
+                  retry
+                </Button>
+              }
+            />
           </div>
         ) : !requests.data?.requests.length ? (
           <EmptyState
             icon={Inbox}
-            title="No requests yet"
+            title="no requests yet"
             description="Send your first request through the proxy to see it appear here."
             className="py-12"
           />
@@ -498,14 +486,14 @@ function AnalyticsPage() {
               <table className="w-full text-[13px]" aria-label="Request history">
                 <caption className="sr-only">API request history with expandable details</caption>
                 <thead>
-                  <tr className="border-b border-border text-left text-[12px] text-muted-foreground">
-                    <th className="px-4 py-2 font-normal whitespace-nowrap">Date</th>
+                  <tr className="border-b border-border/60 text-left font-mono text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
+                    <th className="px-4 py-2 font-normal whitespace-nowrap">date</th>
                     <th className="px-4 py-2 font-normal whitespace-nowrap hidden sm:table-cell">
-                      Type
+                      type
                     </th>
-                    <th className="px-4 py-2 font-normal">Model</th>
-                    <th className="px-4 py-2 font-normal text-right whitespace-nowrap">Tokens</th>
-                    <th className="px-4 py-2 font-normal text-right whitespace-nowrap">Cost</th>
+                    <th className="px-4 py-2 font-normal">model</th>
+                    <th className="px-4 py-2 font-normal text-right whitespace-nowrap">tokens</th>
+                    <th className="px-4 py-2 font-normal text-right whitespace-nowrap">cost</th>
                     <th className="px-4 py-2 font-normal text-right whitespace-nowrap w-8">
                       <span className="sr-only">Status</span>
                     </th>
@@ -537,30 +525,6 @@ function AnalyticsPage() {
           </>
         )}
       </Card>
-    </div>
-  );
-}
-
-function BudgetStat({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: typeof ArrowDownToLine;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5 min-w-0">
-      <div className="flex items-center gap-1.5 min-w-0">
-        <Icon className="h-3 w-3 shrink-0 text-muted-foreground/70" />
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium truncate">
-          {label}
-        </span>
-      </div>
-      <span className="font-mono font-semibold tabular-nums text-lg leading-none text-foreground">
-        {value}
-      </span>
     </div>
   );
 }

@@ -1,31 +1,30 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Menu, Rocket, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/utils";
 import { HealthIndicator } from "./health-indicator";
 
 const navItems = [
-  { to: "/", label: "Home", search: undefined },
-  { to: "/analytics", label: "Analytics", search: undefined },
-  { to: "/settings", label: "Settings", search: undefined },
-  { to: "/setup", label: "Auth", search: { step: "auth" as const } },
+  { to: "/", label: "home", path: "~" },
+  { to: "/analytics", label: "analytics", path: "~/analytics" },
+  { to: "/settings", label: "settings", path: "~/settings" },
+  { to: "/setup", label: "setup", path: "~/setup" },
 ] as const;
+
+type NavItem = (typeof navItems)[number];
 
 export function NavBar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
-  const currentSearch = routerState.location.search as { step?: string };
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
-  function isActive(item: (typeof navItems)[number]) {
-    if (item.to !== "/setup") return currentPath === item.to;
-    return currentPath === "/setup" && currentSearch.step === "auth";
+  function isActive(item: NavItem) {
+    if (item.to === "/") return currentPath === "/";
+    return currentPath === item.to;
   }
-
-  const isSetupWelcome = currentPath === "/setup" && currentSearch.step !== "auth";
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -49,60 +48,50 @@ export function NavBar() {
   }, [mobileOpen, closeMobile]);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-6">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-2 rounded-md">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="7 4 1 12 7 20" />
-              <polyline points="17 4 23 12 17 20" />
-              <line x1="8" y1="12" x2="16" y2="12" opacity="0.4" />
-            </svg>
-            <span className="text-sm font-semibold tracking-tight">claude-code-to-cursor</span>
-          </Link>
-          <span className="text-border hidden sm:inline" aria-hidden="true">
-            /
-          </span>
-          <nav className="hidden sm:flex items-center gap-1" aria-label="Main navigation">
-            {navItems.map((item) => (
-              <Link
-                key={`${item.to}-${item.label}`}
-                to={item.to}
-                search={item.search}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-[13px] transition-colors",
-                  isActive(item)
-                    ? "bg-card text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-card/50",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+    <header className="sticky top-0 z-40 border-b border-border/80 bg-background/80 backdrop-blur-xl">
+      <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-6 font-mono">
+        <div className="flex items-center gap-6 min-w-0">
           <Link
-            to="/setup"
-            className={cn(
-              "hidden sm:flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] transition-colors",
-              isSetupWelcome
-                ? "text-accent bg-accent/10"
-                : "text-muted-foreground hover:text-accent",
-            )}
-            title="Setup wizard"
+            to="/"
+            aria-label="claude-code-to-cursor home"
+            className="flex shrink-0 items-center gap-2 rounded-sm text-foreground transition-colors hover:text-foreground/80"
           >
-            <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Setup</span>
+            <span
+              aria-hidden="true"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-border/80 bg-card/60 text-[11px] leading-none tracking-[-0.04em]"
+            >
+              cc
+            </span>
+            <span className="text-[12.5px] font-medium tracking-tight">
+              claude<span className="text-muted-foreground">_</span>code
+              <span className="text-muted-foreground/50 mx-1">↪</span>
+              cursor
+            </span>
           </Link>
+
+          <nav className="hidden sm:flex items-center gap-0.5" aria-label="Main navigation">
+            {navItems.map((item) => {
+              const active = isActive(item);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "relative flex h-7 items-center rounded-sm px-2.5 text-[12px] transition-colors",
+                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {active && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-0 right-0 -bottom-[13px] h-px bg-foreground"
+                    />
+                  )}
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         <div className="flex items-center gap-3">
@@ -110,7 +99,7 @@ export function NavBar() {
           <button
             type="button"
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="sm:hidden rounded-md p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="sm:hidden rounded-sm p-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileOpen}
           >
@@ -122,38 +111,30 @@ export function NavBar() {
       {mobileOpen && (
         <div
           ref={mobileMenuRef}
-          className="sm:hidden border-t border-border bg-background/95 backdrop-blur-xl animate-slide-up"
+          className="sm:hidden border-t border-border/70 bg-background/95 backdrop-blur-xl animate-slide-up font-mono"
         >
-          <nav className="flex flex-col p-3 gap-1" aria-label="Mobile navigation">
-            {navItems.map((item) => (
-              <Link
-                key={`${item.to}-${item.label}-m`}
-                to={item.to}
-                search={item.search}
-                onClick={closeMobile}
-                className={cn(
-                  "rounded-md px-3 py-2 text-[13px] transition-colors",
-                  isActive(item)
-                    ? "bg-card text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-card/50",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <Link
-              to="/setup"
-              onClick={closeMobile}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-2 text-[12px] transition-colors",
-                isSetupWelcome
-                  ? "text-accent bg-accent/10"
-                  : "text-muted-foreground hover:text-accent",
-              )}
-            >
-              <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-              Setup
-            </Link>
+          <nav className="flex flex-col p-3 gap-0.5" aria-label="Mobile navigation">
+            {navItems.map((item) => {
+              const active = isActive(item);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={closeMobile}
+                  className={cn(
+                    "flex items-center justify-between rounded-sm px-3 py-2 text-[12px] transition-colors min-h-[44px]",
+                    active
+                      ? "bg-card/60 text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-card/40",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-[10px] text-muted-foreground/60 tracking-[0.14em]">
+                    {item.path}
+                  </span>
+                </Link>
+              );
+            })}
           </nav>
         </div>
       )}

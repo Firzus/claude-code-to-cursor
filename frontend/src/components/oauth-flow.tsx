@@ -1,7 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Check, ExternalLink, Loader2, X } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { Alert } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
 import { apiFetch } from "~/lib/api-client";
 import { cn } from "~/lib/utils";
 import type { LoginResponse } from "~/schemas/api-responses";
@@ -63,30 +66,12 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
   return (
     <div className="space-y-4">
       {result && (
-        <div
-          role="alert"
-          aria-live="polite"
-          className={cn(
-            "flex items-center gap-2 rounded-lg border px-3 py-2 text-[13px] animate-slide-up",
-            result.success
-              ? "border-success/30 bg-success/5 text-success"
-              : "border-destructive/30 bg-destructive/5 text-destructive",
-          )}
-        >
-          {result.success ? (
-            <Check className="h-3.5 w-3.5 shrink-0" />
-          ) : (
-            <X className="h-3.5 w-3.5 shrink-0" />
-          )}
-          {result.message}
-        </div>
+        <Alert variant={result.success ? "success" : "error"} description={result.message} />
       )}
 
       <div
-        className={cn(
-          "rounded-lg border border-border divide-y divide-border",
-          compact && "text-[13px]",
-        )}
+        data-surface="terminal"
+        className={cn("rounded-md divide-y divide-border/60 font-mono", compact && "text-[13px]")}
       >
         {/* Step 1 */}
         <div className="p-4 space-y-3">
@@ -96,25 +81,33 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
           </div>
           <div className="pl-7">
             {!loginData ? (
-              <button
+              <Button
                 type="button"
+                variant="default"
+                size="default"
                 onClick={initLogin}
                 disabled={loadingAuth}
-                className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                isLoading={loadingAuth}
+                loadingText="initialising"
               >
-                {loadingAuth && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Initialize
-              </button>
+                initialize
+              </Button>
             ) : (
-              <a
-                href={loginData.authURL}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Open Anthropic authorization page (opens in new tab)"
-                className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90"
+              <Button
+                asChild
+                variant="default"
+                size="default"
+                trailing={<ExternalLink className="h-3 w-3" aria-hidden="true" />}
               >
-                Open Anthropic <ExternalLink className="h-3 w-3" />
-              </a>
+                <a
+                  href={loginData.authURL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Open Anthropic authorization page (opens in new tab)"
+                >
+                  open anthropic
+                </a>
+              </Button>
             )}
           </div>
         </div>
@@ -140,26 +133,30 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
             <label htmlFor="auth-code" className="sr-only">
               Authorization code
             </label>
-            <input
+            <Input
               id="auth-code"
-              placeholder="Paste code..."
+              placeholder="paste code..."
               disabled={!loginData}
               aria-label="Authorization code"
-              className="h-8 flex-1 rounded-md border border-border bg-background px-3 font-mono text-[13px] placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-40 transition-all"
+              aria-invalid={Boolean(form.formState.errors.code)}
+              className="flex-1"
               {...form.register("code")}
             />
-            <button
+            <Button
               type="submit"
+              variant="default"
+              size="default"
               disabled={!loginData || form.formState.isSubmitting}
-              className="inline-flex h-8 items-center gap-2 rounded-md bg-foreground px-4 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+              isLoading={form.formState.isSubmitting}
+              loadingText="submitting"
             >
-              {form.formState.isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Submit
-            </button>
+              submit
+            </Button>
           </form>
           {form.formState.errors.code && (
-            <p className="pl-7 text-[12px] text-destructive">
-              {form.formState.errors.code.message}
+            <p className="pl-7 font-mono text-[11px] text-destructive flex items-start gap-1.5">
+              <span aria-hidden="true">↳</span>
+              <span>{form.formState.errors.code.message}</span>
             </p>
           )}
         </div>
@@ -174,7 +171,10 @@ export function OAuthFlow({ onSuccess, compact }: OAuthFlowProps) {
 
 function StepNumber({ n }: { n: number }) {
   return (
-    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[11px] font-mono">
+    <span
+      aria-hidden="true"
+      className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-border/70 bg-background/60 text-[11px] font-mono tabular text-muted-foreground"
+    >
       {n}
     </span>
   );

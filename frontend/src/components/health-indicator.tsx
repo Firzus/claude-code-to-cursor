@@ -1,51 +1,49 @@
 import { useHealth } from "~/hooks/use-health";
 import { cn } from "~/lib/utils";
-import { Badge } from "./ui/badge";
 
-export function HealthIndicator() {
-  const { data, isLoading, isError } = useHealth();
+type Tone = "success" | "warning" | "destructive" | "muted";
 
-  if (isLoading) return <Dot color="muted" label="Loading" />;
-
-  if (isError || !data)
-    return (
-      <Badge variant="destructive" className="gap-1.5 text-[11px] font-normal">
-        <span className="h-1.5 w-1.5 rounded-full bg-destructive-foreground animate-pulse" />
-        Offline
-      </Badge>
-    );
-
-  if (!data.claudeCode.authenticated)
-    return (
-      <Badge variant="destructive" className="gap-1.5 text-[11px] font-normal">
-        <span className="h-1.5 w-1.5 rounded-full bg-destructive-foreground animate-pulse" />
-        Unauthenticated
-      </Badge>
-    );
-
-  if (data.rateLimit.isLimited)
-    return (
-      <Badge variant="warning" className="gap-1.5 text-[11px] font-normal">
-        <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-        Rate limited
-      </Badge>
-    );
-
-  return <Dot color="green" label="Online" />;
+interface HealthState {
+  label: string;
+  tone: Tone;
+  pulse?: boolean;
 }
 
-function Dot({ color, label }: { color: "green" | "red" | "amber" | "muted"; label?: string }) {
-  const c = {
-    green: "bg-success",
-    red: "bg-destructive",
-    amber: "bg-warning",
-    muted: "bg-muted-foreground",
-  }[color];
+function resolveState({ isLoading, isError, data }: ReturnType<typeof useHealth>): HealthState {
+  if (isLoading) return { label: "loading", tone: "muted", pulse: true };
+  if (isError || !data) return { label: "offline", tone: "destructive", pulse: true };
+  if (!data.claudeCode.authenticated) return { label: "unauth", tone: "destructive", pulse: true };
+  if (data.rateLimit.isLimited) return { label: "limited", tone: "warning", pulse: true };
+  return { label: "online", tone: "success" };
+}
+
+const toneDot: Record<Tone, string> = {
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+  muted: "bg-muted-foreground/40",
+};
+
+export function HealthIndicator() {
+  const query = useHealth();
+  const state = resolveState(query);
 
   return (
-    <div className="flex items-center gap-2 text-[13px] text-muted-foreground" role="status">
-      {label && <span>{label}</span>}
-      <span className={cn("h-2 w-2 rounded-full", c)} aria-hidden="true" />
-    </div>
+    <span
+      role="status"
+      aria-live="polite"
+      aria-label={`Proxy status: ${state.label}`}
+      className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground"
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-block h-1.5 w-1.5 rounded-full",
+          toneDot[state.tone],
+          state.pulse && "animate-pulse",
+        )}
+      />
+      <span className="hidden sm:inline">{state.label}</span>
+    </span>
   );
 }

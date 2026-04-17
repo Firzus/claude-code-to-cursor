@@ -152,7 +152,7 @@ describe("HomePage", () => {
   it("renders CTAs pointing to setup and analytics", async () => {
     await renderHomePage();
 
-    expect(screen.getAllByRole("link", { name: /setup/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: /start setup/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /open analytics/i })).toBeInTheDocument();
   });
 
@@ -201,8 +201,12 @@ describe("HomePage", () => {
   it("renders the three feature cards", async () => {
     await renderHomePage();
 
-    expect(screen.getByText("OpenAI ↔ Anthropic")).toBeInTheDocument();
-    expect(screen.getByText("Four breakpoints, optimised")).toBeInTheDocument();
-    expect(screen.getByText("Every request, every token")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /openai ↔ anthropic/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /four breakpoints, optimised/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /every request, every token/i }),
+    ).toBeInTheDocument();
   });
 });

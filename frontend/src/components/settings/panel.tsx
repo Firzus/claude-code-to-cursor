@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Card, CardFooter, CardHeader } from "~/components/ui/card";
 import { cn } from "~/lib/utils";
 
 interface PanelProps {
@@ -12,6 +13,11 @@ interface PanelProps {
   status?: "idle" | "active" | "error";
 }
 
+/**
+ * Settings / setup "panel" — terminal-flavoured surface with header + footer.
+ * Thin wrapper over the unified Card primitive; kept as a named export so
+ * callers use semantically meaningful names.
+ */
 export function Panel({
   index,
   title,
@@ -19,46 +25,26 @@ export function Panel({
   footer,
   children,
   className,
-  delay = 0,
+  delay,
   status = "idle",
 }: PanelProps) {
   return (
-    <section
-      className={cn(
-        "relative w-full rounded-lg border border-border bg-card/40 backdrop-blur-sm font-mono",
-        "shadow-[0_0_0_1px_oklch(from_var(--color-border)_l_c_h/0.4)]",
-        "animate-fade-in",
-        className,
-      )}
-      style={{ animationDelay: `${delay}ms` }}
+    <Card
+      variant="panel"
+      padding="none"
+      delay={delay}
+      className={cn("relative font-mono", className)}
     >
-      <header className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2 text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground">
-        <div className="flex items-baseline gap-2 min-w-0">
-          {index && <span className="text-muted-foreground/60 tabular">{index}</span>}
-          <span className="text-foreground/90 truncate">{title}</span>
-        </div>
-        {hint && (
-          <span className="hidden sm:inline text-[10px] text-muted-foreground/70 tracking-[0.14em] truncate">
-            {hint}
-          </span>
-        )}
-      </header>
-
+      <CardHeader index={index} title={title} hint={hint} />
       <div className="px-4 py-3">{children}</div>
-
-      {footer && (
-        <footer className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-          {footer}
-        </footer>
-      )}
-
+      {footer && <CardFooter>{footer}</CardFooter>}
       {status === "active" && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-lg ring-1 ring-accent/15"
+          className="pointer-events-none absolute inset-0 rounded-lg ring-1 ring-accent/20"
         />
       )}
-    </section>
+    </Card>
   );
 }
 

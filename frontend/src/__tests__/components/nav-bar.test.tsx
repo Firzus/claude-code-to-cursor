@@ -18,7 +18,7 @@ vi.mock("@tanstack/react-router", () => ({
     </a>
   ),
   useRouterState: () => ({
-    location: { pathname: "/analytics" },
+    location: { pathname: "/analytics", search: {} },
   }),
 }));
 
@@ -29,16 +29,16 @@ vi.mock("~/components/health-indicator", () => ({
 describe("NavBar", () => {
   it("renders the brand name", () => {
     render(<NavBar />);
-
-    expect(screen.getByText("claude-code-to-cursor")).toBeInTheDocument();
+    // The new brand splits across multiple spans, use a flexible matcher.
+    expect(screen.getByLabelText("claude-code-to-cursor home")).toBeInTheDocument();
   });
 
   it("renders navigation links", () => {
     render(<NavBar />);
 
-    expect(screen.getAllByText("Analytics").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Settings").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Auth").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("analytics").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("settings").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("setup").length).toBeGreaterThan(0);
   });
 
   it("renders health indicator", () => {
@@ -60,7 +60,6 @@ describe("NavBar", () => {
 
   it("renders Setup link", () => {
     render(<NavBar />);
-
-    expect(screen.getAllByText("Setup").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("setup").length).toBeGreaterThan(0);
   });
 });
