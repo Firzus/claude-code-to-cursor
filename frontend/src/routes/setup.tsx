@@ -258,7 +258,11 @@ function ConfigureStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => v
         </p>
         <div className="space-y-2">
           <ConfigField label="base_url" value={baseUrl} sub="override the OpenAI Base URL" />
-          <ConfigField label="api_key" value="sk-cctc" sub="any non-empty string" />
+          <ConfigField
+            label="api_key"
+            value="sk-proj-T3wVn8KqR5mXBjZc2hLpWY9aEgUsFbNdMvHxQ4rTyUiOpAkJhGfDsCvBnMqWeRtYuIoPaSdFgHjKlZxCvBnMqWeRtYuIoP1234567890abcdefghijklmnop"
+            sub="any non-empty string — OpenAI-style key keeps Cursor happy"
+          />
           <ConfigField label="model" value="Claude Code" sub="add as a custom model" />
         </div>
       </Panel>

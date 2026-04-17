@@ -64,7 +64,7 @@ Tokens auto-refresh. You only need to do this once (or when tokens expire).
 
 ## Configure Your Client
 
-Point your client to your Cloudflare Tunnel URL. The API key can be any non-empty string (e.g. `sk-cctc`) — authentication is handled by OAuth.
+Point your client to your Cloudflare Tunnel URL. The API key can be any non-empty string — authentication is actually handled by OAuth under the hood. Cursor, however, validates the *shape* of the key before sending it, so use an OpenAI-style `sk-proj-...` value (example below).
 
 ### Cursor
 
@@ -74,7 +74,7 @@ Open Cursor settings and configure a custom model:
 | Setting      | Value                                            |
 | ------------ | ------------------------------------------------ |
 | **Base URL** | `https://<your-tunnel>.cfargotunnel.com/v1`      |
-| **API Key**  | `sk-cctc` (any non-empty string)                 |
+| **API Key**  | `sk-proj-T3wVn8KqR5mXBjZc2hLpWY9aEgUsFbNdMvHxQ4rTyUiOpAkJhGfDsCvBnMqWeRtYuIoPaSdFgHjKlZxCvBnMqWeRtYuIoP1234567890abcdefghijklmnop` (any non-empty string — OpenAI-style shape keeps Cursor happy) |
 | **Model**    | `claude-sonnet-4-20250514` (or any Claude model) |
 
 
@@ -96,7 +96,7 @@ Send a test request through your tunnel:
 ```bash
 curl https://<your-tunnel>.cfargotunnel.com/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-cctc" \
+  -H "Authorization: Bearer sk-proj-T3wVn8KqR5mXBjZc2hLpWY9aEgUsFbNdMvHxQ4rTyUiOpAkJhGfDsCvBnMqWeRtYuIoPaSdFgHjKlZxCvBnMqWeRtYuIoP1234567890abcdefghijklmnop" \
   -d '{
     "model": "claude-sonnet-4-20250514",
     "messages": [{"role": "user", "content": "Hello!"}]
