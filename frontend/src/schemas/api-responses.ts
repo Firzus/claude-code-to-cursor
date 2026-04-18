@@ -88,6 +88,25 @@ export const timelineResponseSchema = z.object({
 
 export type TimelineResponse = z.infer<typeof timelineResponseSchema>;
 
+export const errorRecordSchema = z.object({
+  id: z.number(),
+  timestamp: z.number(),
+  model: z.string(),
+  error: z.string().nullable(),
+  latencyMs: z.number().nullable(),
+  route: z.enum(["anthropic", "openai"]).nullable().optional(),
+});
+
+export type ErrorRecord = z.infer<typeof errorRecordSchema>;
+
+export const analyticsErrorsResponseSchema = z.object({
+  errors: z.array(errorRecordSchema),
+  total: z.number(),
+  totalAllTime: z.number(),
+});
+
+export type AnalyticsErrorsResponse = z.infer<typeof analyticsErrorsResponseSchema>;
+
 export const loginResponseSchema = z.object({
   authURL: z.string(),
   state: z.string(),

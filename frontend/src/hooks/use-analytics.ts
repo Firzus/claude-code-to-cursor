@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "~/lib/api-client";
 import { queryKeys } from "~/lib/query-keys";
 import type {
+  AnalyticsErrorsResponse,
   AnalyticsResponse,
   RequestsResponse,
   TimelineResponse,
 } from "~/schemas/api-responses";
 import {
+  analyticsErrorsResponseSchema,
   analyticsResponseSchema,
   requestsResponseSchema,
   timelineResponseSchema,
@@ -43,6 +45,18 @@ export function useAnalyticsTimeline(period: string) {
     queryKey: queryKeys.analyticsTimeline(period),
     queryFn: () =>
       apiFetch<TimelineResponse>(`/analytics/timeline?period=${period}`, timelineResponseSchema),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAnalyticsErrors(period: string, limit: number = 10) {
+  return useQuery({
+    queryKey: queryKeys.analyticsErrors(period),
+    queryFn: () =>
+      apiFetch<AnalyticsErrorsResponse>(
+        `/analytics/errors?period=${period}&limit=${limit}`,
+        analyticsErrorsResponseSchema,
+      ),
     refetchInterval: 30_000,
   });
 }

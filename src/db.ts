@@ -550,6 +550,69 @@ export function saveModelSettings(settings: ModelSettings): void {
   saveModelSettingsToDb(getDb(), settings);
 }
 
+interface ErrorRecord {
+  id: number;
+  timestamp: number;
+  model: string;
+  error: string | null;
+  latencyMs: number | null;
+  route: string | null;
+}
+
+/**
+ * Get recent failed requests (`source='error'`) for the errors card.
+ * Returns the latest errors in the window, plus the total in the window and
+ * the all-time total so the UI can hide the card on brand-new installs.
+ */
+export function getRecentErrors(
+  limit: number = 10,
+  since: number = 0,
+  until: number = Date.now(),
+): { errors: ErrorRecord[]; total: number; totalAllTime: number } {
+  const database = getDb();
+
+  const totalRow = database
+    .query(
+      `SELECT COUNT(*) as count FROM requests
+       WHERE source = 'error' AND timestamp >= ? AND timestamp <= ?`,
+    )
+    .get(since, until) as { count: number };
+
+  const totalAllTimeRow = database
+    .query(`SELECT COUNT(*) as count FROM requests WHERE source = 'error'`)
+    .get() as { count: number };
+
+  const rows = database
+    .query(
+      `SELECT id, timestamp, model, error, latency_ms, route
+       FROM requests
+       WHERE source = 'error' AND timestamp >= ? AND timestamp <= ?
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    )
+    .all(since, until, limit) as Array<{
+    id: number;
+    timestamp: number;
+    model: string;
+    error: string | null;
+    latency_ms: number | null;
+    route: string | null;
+  }>;
+
+  return {
+    total: totalRow.count,
+    totalAllTime: totalAllTimeRow.count,
+    errors: rows.map((row) => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      model: row.model,
+      error: row.error,
+      latencyMs: row.latency_ms,
+      route: row.route,
+    })),
+  };
+}
+
 /**
  * Aggregate token usage for plan-tracking over a rolling window.
  *

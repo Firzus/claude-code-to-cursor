@@ -17,6 +17,7 @@ import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import { ExpandableRow } from "~/components/analytics/expandable-row";
 import { Pagination } from "~/components/analytics/pagination";
 import { PlanUsageCard } from "~/components/analytics/plan-usage-card";
+import { RecentErrorsCard } from "~/components/analytics/recent-errors-card";
 import { StatCard } from "~/components/analytics/stat-card";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
@@ -312,6 +313,9 @@ function AnalyticsPage() {
           }
         />
       )}
+
+      {/* Recent errors */}
+      <RecentErrorsCard period={period} />
 
       {/* Error state */}
       {summary.isError && (
