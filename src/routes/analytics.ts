@@ -1,4 +1,10 @@
-import { getAnalytics, getAnalyticsTimeline, getRecentRequests, resetAnalytics } from "../db";
+import {
+  getAnalytics,
+  getAnalyticsTimeline,
+  getRecentErrors,
+  getRecentRequests,
+  resetAnalytics,
+} from "../db";
 
 function validatePaginationParams(
   limit: number,
@@ -68,6 +74,16 @@ export function handleAnalyticsTimeline(url: URL): Response {
   const timeline = getAnalyticsTimeline(since, Date.now(), buckets);
 
   return Response.json({ period, buckets: timeline });
+}
+
+export function handleAnalyticsErrors(url: URL): Response {
+  const rawLimit = parseInt(url.searchParams.get("limit") || "10", 10);
+  const limit = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 100 ? rawLimit : 10;
+  const period = url.searchParams.get("period") || "day";
+  const since = calculateSince(period);
+
+  const { errors, total, totalAllTime } = getRecentErrors(limit, since, Date.now());
+  return Response.json({ errors, total, totalAllTime });
 }
 
 export function handleAnalyticsReset(): Response {
