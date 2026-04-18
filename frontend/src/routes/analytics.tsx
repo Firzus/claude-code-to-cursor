@@ -17,6 +17,7 @@ import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
 import { ExpandableRow } from "~/components/analytics/expandable-row";
 import { Pagination } from "~/components/analytics/pagination";
 import { PlanUsageCard } from "~/components/analytics/plan-usage-card";
+import { RecentErrorsCard } from "~/components/analytics/recent-errors-card";
 import { StatCard } from "~/components/analytics/stat-card";
 import { EmptyState } from "~/components/empty-state";
 import { PageHeader } from "~/components/page-header";
@@ -88,11 +89,9 @@ function exportCsv(requests: RequestRecord[]) {
     "Output Tokens",
     "Cache Read",
     "Cache Write",
-    "Thinking",
     "Latency (ms)",
     "Estimated USD",
     "Route",
-    "Effort",
     "Error",
   ];
   const rows = requests.map((r) => [
@@ -103,11 +102,9 @@ function exportCsv(requests: RequestRecord[]) {
     r.outputTokens,
     r.cacheReadTokens ?? 0,
     r.cacheCreationTokens ?? 0,
-    r.thinkingTokens ?? 0,
     r.latencyMs ?? "",
     r.estimatedUsd?.toFixed(4) ?? "",
     r.route ?? "",
-    r.appliedThinkingEffort ?? "",
     r.error ?? "",
   ]);
 
@@ -312,6 +309,9 @@ function AnalyticsPage() {
           }
         />
       )}
+
+      {/* Recent errors */}
+      <RecentErrorsCard period={period} />
 
       {/* Error state */}
       {summary.isError && (

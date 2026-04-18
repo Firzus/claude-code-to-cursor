@@ -13,6 +13,7 @@ vi.mock("~/hooks/use-analytics", () => ({
   useAnalyticsSummary: vi.fn(),
   useAnalyticsRequests: vi.fn(),
   useAnalyticsTimeline: vi.fn(),
+  useAnalyticsErrors: vi.fn(),
 }));
 
 vi.mock("~/hooks/use-budget", () => ({
@@ -41,6 +42,7 @@ vi.mock("recharts", () => ({
 }));
 
 import {
+  useAnalyticsErrors,
   useAnalyticsRequests,
   useAnalyticsSummary,
   useAnalyticsTimeline,
@@ -51,6 +53,7 @@ import { usePlanUsage } from "~/hooks/use-plan-usage";
 const mockSummary = vi.mocked(useAnalyticsSummary);
 const mockRequests = vi.mocked(useAnalyticsRequests);
 const mockTimeline = vi.mocked(useAnalyticsTimeline);
+const mockErrors = vi.mocked(useAnalyticsErrors);
 const mockBudget = vi.mocked(useBudgetDay);
 const mockPlanUsage = vi.mocked(usePlanUsage);
 
@@ -83,7 +86,6 @@ const budgetData = {
   outputTokens: 50,
   cacheReadTokens: 20,
   cacheCreationTokens: 5,
-  thinkingTokens: 10,
   estimatedUsd: 1.25,
 };
 
@@ -102,7 +104,6 @@ const summaryData = {
   totalOutputTokens: 5_000,
   totalCacheReadTokens: 3_000,
   totalCacheCreationTokens: 1_000,
-  totalThinkingTokens: 400,
   cacheHitRate: 0.75,
   cacheSavingsUsdEstimate: 0.33,
   periodStart: Date.now() - 86_400_000,
@@ -139,6 +140,12 @@ beforeEach(() => {
   } as never);
   mockPlanUsage.mockReturnValue({
     data: planUsageData,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  } as never);
+  mockErrors.mockReturnValue({
+    data: { errors: [], total: 0, totalAllTime: 0 },
     isLoading: false,
     isError: false,
     refetch: vi.fn(),

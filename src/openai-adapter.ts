@@ -9,11 +9,8 @@ import {
   getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
-  isValidThinkingEffort,
   type ModelSettings,
-  type ThinkingEffort,
 } from "./model-settings";
-import { applyThinkingToBody, pickRoute } from "./routing-policy";
 import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
@@ -69,8 +66,6 @@ export interface OpenAIChatRequest {
   tools?: OpenAITool[];
   tool_choice?: "none" | "auto" | "required" | { type: "function"; function: { name: string } };
   stream_options?: { include_usage?: boolean };
-  /** OpenAI reasoning_effort field — Cursor sends this when thinking is toggled */
-  reasoning_effort?: ThinkingEffort;
 }
 
 interface OpenAIChatResponse {
@@ -93,12 +88,6 @@ interface OpenAIChatResponse {
     total_tokens: number;
     prompt_tokens_details?: {
       cached_tokens?: number;
-      audio_tokens?: number;
-    };
-    completion_tokens_details?: {
-      reasoning_tokens?: number;
-      accepted_prediction_tokens?: number;
-      rejected_prediction_tokens?: number;
       audio_tokens?: number;
     };
   };
@@ -136,12 +125,6 @@ interface OpenAIStreamChunk {
       cached_tokens?: number;
       audio_tokens?: number;
     };
-    completion_tokens_details?: {
-      reasoning_tokens?: number;
-      accepted_prediction_tokens?: number;
-      rejected_prediction_tokens?: number;
-      audio_tokens?: number;
-    };
   } | null;
 }
 
@@ -154,7 +137,6 @@ export function computeOpenAIUsage(
   promptTokens: number,
   completionTokens: number,
   cacheReadTokens: number = 0,
-  reasoningTokens: number = 0,
 ) {
   return {
     prompt_tokens: promptTokens,
@@ -162,9 +144,6 @@ export function computeOpenAIUsage(
     total_tokens: promptTokens + completionTokens,
     prompt_tokens_details: {
       cached_tokens: cacheReadTokens,
-    },
-    completion_tokens_details: {
-      reasoning_tokens: reasoningTokens,
     },
   };
 }
@@ -243,8 +222,6 @@ function convertContent(
 
 /**
  * Convert an OpenAI chat request to Anthropic format.
- * This base version does NOT apply thinking or model routing — those are
- * handled separately via applyThinkingToBody() from routing-policy.ts.
  *
  * @param originalRequest  The incoming OpenAI-format request
  * @param targetApiModel   The raw Anthropic model ID string to set on the body
@@ -428,7 +405,6 @@ export function openaiToAnthropicBase(
 
   console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
 
-  // Note: thinking block and temperature are applied later via applyThinkingToBody()
   const result: AnthropicRequest = {
     model: targetApiModel,
     messages,
@@ -478,26 +454,15 @@ export function openaiToAnthropicBase(
 }
 
 /**
- * @deprecated Use openaiToAnthropicBase + pickRoute + applyThinkingToBody instead.
- * Kept for backward-compatibility; internally applies the routing policy.
+ * @deprecated Use openaiToAnthropicBase directly with getApiModelId instead.
+ * Kept for backward-compatibility with older call sites.
  */
 export function openaiToAnthropic(
   originalRequest: OpenAIChatRequest,
   modelSettings: ModelSettings,
 ): AnthropicRequest {
   const apiModelId = getApiModelId(modelSettings.selectedModel);
-  const base = openaiToAnthropicBase(originalRequest, apiModelId);
-  const clientEffort = isValidThinkingEffort(originalRequest.reasoning_effort)
-    ? (originalRequest.reasoning_effort as ThinkingEffort)
-    : null;
-  const decision = pickRoute({ settings: modelSettings, clientEffort });
-  return applyThinkingToBody(
-    base,
-    decision,
-    originalRequest.max_tokens ?? originalRequest.max_completion_tokens,
-    originalRequest.temperature,
-    apiModelId,
-  );
+  return openaiToAnthropicBase(originalRequest, apiModelId);
 }
 
 export function anthropicToOpenai(
@@ -549,7 +514,6 @@ export function anthropicToOpenai(
         (anthropicResponse.usage?.cache_creation_input_tokens || 0),
       anthropicResponse.usage?.output_tokens || 0,
       anthropicResponse.usage?.cache_read_input_tokens || 0,
-      anthropicResponse.usage?.thinking_tokens ?? 0,
     ),
   };
 }
@@ -665,7 +629,6 @@ export function createOpenAIStreamUsageChunk(
   completionTokens: number,
   cacheReadTokens: number = 0,
   _cacheCreationTokens: number = 0,
-  reasoningTokens: number = 0,
 ): string {
   const chunk: OpenAIStreamChunk = {
     id: `chatcmpl-${id}`,
@@ -673,7 +636,7 @@ export function createOpenAIStreamUsageChunk(
     created: Math.floor(Date.now() / 1000),
     model,
     choices: [],
-    usage: computeOpenAIUsage(promptTokens, completionTokens, cacheReadTokens, reasoningTokens),
+    usage: computeOpenAIUsage(promptTokens, completionTokens, cacheReadTokens),
   };
 
   return `data: ${JSON.stringify(chunk)}\n\n`;

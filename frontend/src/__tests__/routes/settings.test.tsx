@@ -28,8 +28,6 @@ async function renderSettingsPage() {
 const mockSettings = {
   settings: {
     selectedModel: "claude-opus-4-7" as const,
-    thinkingEnabled: true,
-    thinkingEffort: "high" as const,
     subscriptionPlan: "max20x" as const,
   },
 };
@@ -89,7 +87,7 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Claude Haiku 4.5")).toBeInTheDocument();
   });
 
-  it("renders thinking toggle and effort buttons", async () => {
+  it("renders subscription plan cards", async () => {
     mockUseSettings.mockReturnValue({
       data: mockSettings,
       isLoading: false,
@@ -99,13 +97,9 @@ describe("SettingsPage", () => {
 
     await renderSettingsPage();
 
-    expect(screen.getByText("Extended Thinking")).toBeInTheDocument();
-    expect(screen.getAllByRole("switch")).toHaveLength(1);
-    expect(screen.getByRole("radio", { name: /^low$/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /^medium$/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /^high$/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /^xhigh$/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /^max$/i })).toBeInTheDocument();
+    expect(screen.getByText("Pro")).toBeInTheDocument();
+    expect(screen.getByText("Max (5x)")).toBeInTheDocument();
+    expect(screen.getByText("Max (20x)")).toBeInTheDocument();
   });
 
   it("shows save and discard buttons", async () => {

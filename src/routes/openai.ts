@@ -2,14 +2,13 @@ import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
-import { getApiModelId, isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
+import { getApiModelId } from "../model-settings";
 import {
   anthropicToOpenai,
   type OpenAIChatRequest,
   openaiToAnthropicBase,
 } from "../openai-adapter";
 import { computeRequestShape } from "../request-metrics";
-import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
 
@@ -37,10 +36,6 @@ function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
     `\n📋 [Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
   );
 
-  if (openaiBody.reasoning_effort) {
-    console.log(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
-  }
-
   logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
   logger.verbose(JSON.stringify(openaiBody, null, 2));
 
@@ -58,9 +53,7 @@ function logAnthropicConversion(
   openaiBody: OpenAIChatRequest,
   anthropicBody: AnthropicRequest,
 ): void {
-  const thinkingEnabled = !!anthropicBody.thinking;
-  const effort = anthropicBody.output_config?.effort ?? null;
-  const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (effort=${effort})` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
+  const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
   console.log(`\n→ ${routeSummary}`);
   logger.info(routeSummary);
 
@@ -98,28 +91,10 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     logOpenAIRequest(openaiBody);
 
-    const clientEffort: ThinkingEffort | null = isValidThinkingEffort(openaiBody.reasoning_effort)
-      ? openaiBody.reasoning_effort
-      : null;
-
     const apiModelId = getApiModelId(modelSettings.selectedModel);
-    const converted = openaiToAnthropicBase(openaiBody, apiModelId);
+    const anthropicBody = openaiToAnthropicBase(openaiBody, apiModelId);
 
-    const shape = computeRequestShape(converted, "openai", clientEffort);
-
-    const decision = pickRoute({ settings: modelSettings, clientEffort });
-
-    if (modelSettings.thinkingEnabled) {
-      logger.info(`[Thinking] effort=${decision.effort}, policy=${decision.policy}`);
-    }
-
-    const anthropicBody = applyThinkingToBody(
-      converted,
-      decision,
-      openaiBody.max_tokens ?? openaiBody.max_completion_tokens,
-      openaiBody.temperature,
-      apiModelId,
-    );
+    const shape = computeRequestShape(anthropicBody, "openai");
 
     logAnthropicConversion(openaiBody, anthropicBody);
 
@@ -175,6 +150,15 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         openaiBody.stream_options,
         userToolNames,
         (usage) => {
+          // [CONTEXT-CHECK] temporary instrumentation — remove once verified.
+          // Real "context used" = input + cache_read + cache_creation (cached
+          // tokens are invisible in `input_tokens` alone).
+          const totalContext =
+            usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens;
+          console.log(
+            `[CONTEXT-CHECK] route=openai cursor_model="${openaiBody.model}" api_model="${anthropicBody.model}" input=${usage.inputTokens} cache_read=${usage.cacheReadTokens} cache_creation=${usage.cacheCreationTokens} total_context=${totalContext} output=${usage.outputTokens} max_tokens=${anthropicBody.max_tokens}`,
+          );
+
           recordRequest({
             model: anthropicBody.model,
             source: "claude_code",
@@ -182,11 +166,9 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
             outputTokens: usage.outputTokens,
             cacheReadTokens: usage.cacheReadTokens,
             cacheCreationTokens: usage.cacheCreationTokens,
-            thinkingTokens: usage.thinkingTokens,
             stream: true,
             latencyMs: Date.now() - streamStartTime,
             shape,
-            decision,
             appliedModel: anthropicBody.model,
           });
         },

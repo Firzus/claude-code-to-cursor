@@ -28,7 +28,6 @@ function blocksOf(content: ContentBlock[] | string | undefined): ContentBlock[] 
 export function computeRequestShape(
   body: AnthropicRequest,
   route: "anthropic" | "openai",
-  clientReasoningEffort: string | null,
 ): RequestShapeMetrics {
   const messages = body.messages ?? [];
   const messageCount = messages.length;
@@ -74,6 +73,5 @@ export function computeRequestShape(
     toolDefsCount,
     toolDefsHash,
     clientSystemHash,
-    clientReasoningEffort,
   };
 }

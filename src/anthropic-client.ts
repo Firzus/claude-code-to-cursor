@@ -6,7 +6,6 @@ import {
 } from "./config";
 import { recordRequest } from "./db";
 import { logger } from "./logger";
-import { getSuggestedMaxTokens, isValidThinkingEffort } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
 import { parseRateLimitHeaders, saveSnapshot } from "./plan-usage-snapshot";
 import { normalizeAnthropicToolIds } from "./request-normalization";
@@ -209,25 +208,6 @@ export function getRateLimitStatus(): {
  */
 const TOOL_PREFIX = "mcp_";
 
-function convertReasoningBudget(prepared: AnthropicRequest): void {
-  if (!("reasoning_budget" in prepared)) return;
-  if (!prepared.thinking) {
-    const val = prepared.reasoning_budget;
-    const effort = isValidThinkingEffort(val) ? val : "medium";
-    prepared.thinking = { type: "adaptive" };
-    prepared.output_config = { effort };
-    prepared.temperature = 1;
-    const suggested = getSuggestedMaxTokens(effort);
-    if (prepared.max_tokens < suggested) {
-      prepared.max_tokens = suggested;
-    }
-    logger.verbose(
-      `   [Debug] Converted reasoning_budget (${val}) → output_config.effort=${effort}`,
-    );
-  }
-  delete prepared.reasoning_budget;
-}
-
 function prefixToolNames(prepared: AnthropicRequest): void {
   if (prepared.tools && Array.isArray(prepared.tools)) {
     prepared.tools = [...prepared.tools].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -364,7 +344,6 @@ function trimMessageToolResults(messages: AnthropicRequest["messages"]): void {
 function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   let prepared = { ...body };
 
-  convertReasoningBudget(prepared);
   prefixToolNames(prepared);
 
   const systemPrompts = buildSystemPrompt(prepared.system);
@@ -586,10 +565,18 @@ async function extractUsageFromResponse(
         output_tokens?: number;
         cache_read_input_tokens?: number;
         cache_creation_input_tokens?: number;
-        thinking_tokens?: number;
       };
     };
     const usage = data.usage || {};
+
+    // [CONTEXT-CHECK] temporary instrumentation — remove once verified.
+    const inputTokens = usage.input_tokens || 0;
+    const cacheReadTokens = usage.cache_read_input_tokens || 0;
+    const cacheCreationTokens = usage.cache_creation_input_tokens || 0;
+    const totalContext = inputTokens + cacheReadTokens + cacheCreationTokens;
+    console.log(
+      `[CONTEXT-CHECK] route=sync api_model="${model}" input=${inputTokens} cache_read=${cacheReadTokens} cache_creation=${cacheCreationTokens} total_context=${totalContext} output=${usage.output_tokens || 0}`,
+    );
 
     recordRequest({
       model,
@@ -598,7 +585,6 @@ async function extractUsageFromResponse(
       outputTokens: usage.output_tokens || 0,
       cacheReadTokens: usage.cache_read_input_tokens || 0,
       cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-      thinkingTokens: usage.thinking_tokens ?? 0,
       stream: false,
       latencyMs: Date.now() - startTime,
     });
@@ -609,7 +595,6 @@ async function extractUsageFromResponse(
       source: "claude_code",
       inputTokens: 0,
       outputTokens: 0,
-      thinkingTokens: 0,
       stream: false,
       latencyMs: Date.now() - startTime,
     });

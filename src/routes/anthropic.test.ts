@@ -6,12 +6,10 @@ const SKIP = !!process.env.SKIP_MOCK_MODULE_TESTS;
 if (!SKIP) {
   let currentModelSettings: {
     selectedModel: string;
-    thinkingEnabled: boolean;
-    thinkingEffort: string;
+    subscriptionPlan: string;
   } = {
     selectedModel: "claude-opus-4-7",
-    thinkingEnabled: false,
-    thinkingEffort: "high",
+    subscriptionPlan: "max20x",
   };
 
   let proxiedBody: AnthropicRequest | undefined;
@@ -48,12 +46,11 @@ if (!SKIP) {
   const { handleAnthropicMessages } = await import("./anthropic");
 
   describe("handleAnthropicMessages", () => {
-    test("removes client thinking controls when saved settings disable thinking", async () => {
+    test("forwards the request with the configured API model id", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-opus-4-7",
-        thinkingEnabled: false,
-        thinkingEffort: "high",
+        subscriptionPlan: "max20x",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -67,8 +64,6 @@ if (!SKIP) {
           model: "Claude Code",
           max_tokens: 512,
           messages: [{ role: "user", content: "Hello" }],
-          reasoning_budget: "high",
-          thinking: { type: "enabled", budget_tokens: 16384 },
         } satisfies AnthropicRequest),
       });
 
@@ -78,16 +73,14 @@ if (!SKIP) {
       expect(proxiedBody).toBeDefined();
       const body1 = proxiedBody as unknown as AnthropicRequest;
       expect(body1.model).toBe("claude-opus-4-7");
-      expect(body1.thinking).toBeUndefined();
-      expect("reasoning_budget" in body1).toBe(false);
+      expect(body1.max_tokens).toBe(512);
     });
 
     test("rewrites the native sync response model back to Claude Code", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-sonnet-4-6",
-        thinkingEnabled: true,
-        thinkingEffort: "medium",
+        subscriptionPlan: "max20x",
       };
       proxyResponse = new Response(
         JSON.stringify({
@@ -127,8 +120,7 @@ if (!SKIP) {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-haiku-4-5",
-        thinkingEnabled: true,
-        thinkingEffort: "low",
+        subscriptionPlan: "max20x",
       };
       proxyResponse = new Response(
         [
@@ -162,12 +154,11 @@ if (!SKIP) {
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
-    test("continuation turn after tool_result uses stored adaptive thinking + effort", async () => {
+    test("preserves client max_tokens when provided", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-opus-4-7",
-        thinkingEnabled: true,
-        thinkingEffort: "high",
+        subscriptionPlan: "max20x",
       };
       proxyResponse = new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -197,41 +188,9 @@ if (!SKIP) {
 
       expect(response.status).toBe(200);
       expect(proxiedBody).toBeDefined();
-      const body4 = proxiedBody as unknown as AnthropicRequest;
-      expect(body4.model).toBe("claude-opus-4-7");
-      expect(body4.thinking).toEqual({ type: "adaptive" });
-      expect(body4.output_config).toEqual({ effort: "high" });
-    });
-
-    test("respects xhigh from client reasoning_budget when stored cap allows it", async () => {
-      proxiedBody = undefined;
-      currentModelSettings = {
-        selectedModel: "claude-opus-4-7",
-        thinkingEnabled: true,
-        thinkingEffort: "max",
-      };
-      proxyResponse = new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const request = new Request("http://localhost/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "Claude Code",
-          max_tokens: 1024,
-          messages: [{ role: "user", content: "Hello" }],
-          reasoning_budget: "xhigh",
-        } satisfies AnthropicRequest),
-      });
-
-      const response = await handleAnthropicMessages(request);
-
-      expect(response.status).toBe(200);
-      const body5 = proxiedBody as unknown as AnthropicRequest;
-      expect(body5.thinking).toEqual({ type: "adaptive" });
-      expect(body5.output_config).toEqual({ effort: "xhigh" });
+      const body = proxiedBody as unknown as AnthropicRequest;
+      expect(body.model).toBe("claude-opus-4-7");
+      expect(body.max_tokens).toBe(1024);
     });
   });
 } else {

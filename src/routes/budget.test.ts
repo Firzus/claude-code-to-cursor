@@ -10,7 +10,6 @@ if (!SKIP) {
     outputTokens: 500,
     cacheReadTokens: 200,
     cacheCreationTokens: 50,
-    thinkingTokens: 42,
     estimatedUsd: 1.23,
   };
 

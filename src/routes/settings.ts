@@ -38,11 +38,6 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
     const body = (await req.json()) as Record<string, unknown>;
     const settings = validateModelSettings({
       selectedModel: (body.selectedModel as string) ?? "",
-      thinkingEnabled:
-        typeof body.thinkingEnabled === "boolean"
-          ? body.thinkingEnabled
-          : body.thinkingEnabled === "true",
-      thinkingEffort: (body.thinkingEffort as string) ?? "",
       subscriptionPlan: body.subscriptionPlan,
     });
 
