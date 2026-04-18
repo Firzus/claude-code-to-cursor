@@ -13,7 +13,12 @@ describe("settingsFormSchema", () => {
   });
 
   it("accepts all supported models", () => {
-    for (const model of ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"]) {
+    for (const model of [
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5",
+    ]) {
       const result = settingsFormSchema.safeParse({
         selectedModel: model,
         thinkingEnabled: false,

@@ -12,7 +12,7 @@ Three services orchestrated via Docker Compose:
 - **Frontend Dashboard** (React + Vite, port 3111) — authentication UI, onboarding wizard, analytics dashboard, settings management
 - **Cloudflare Tunnel** (cloudflared) — secure external access to the API
 
-The API converts between OpenAI chat completion format and Anthropic messages format, allowing any OpenAI-compatible client to talk to Claude. It exposes a single public model ID (`Claude Code`) and maps it to a user-configured backend model (Opus 4.7, Sonnet 4.6, or Haiku 4.5).
+The API converts between OpenAI chat completion format and Anthropic messages format, allowing any OpenAI-compatible client to talk to Claude. It exposes a single public model ID (`Claude Code`) and maps it to a user-configured backend model (Opus 4.7, Opus 4.6, Sonnet 4.6, or Haiku 4.5).
 
 ### Key Technologies
 
@@ -402,14 +402,14 @@ Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache k
 
 ### Model Settings & Thinking Effort
 
-- Supported models: `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`
+- Supported models: `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`
 - Supported effort levels (ranked low → max): `low`, `medium`, `high`, `xhigh`, `max`
   - `xhigh` is only officially supported by Opus 4.7 (see Anthropic docs)
   - `max` is available on Opus 4.6/4.7 and Sonnet 4.6
 - Supported subscription plans: `pro`, `max5x`, `max20x` (used only for plan-usage approximations on Analytics; does not affect request routing)
 - Default: Opus 4.7, thinking enabled, effort `high`, plan `max20x`
 - Settings persisted in SQLite (`model_settings` table, key-value rows)
-- Context window: 1M tokens for Opus 4.7, 200K for Sonnet 4.6 and Haiku 4.5
+- Context window: 1M tokens for Opus 4.7 and Opus 4.6, 200K for Sonnet 4.6 and Haiku 4.5
 
 **Effort → request format** (see `src/routing-policy.ts`):
 
