@@ -17,6 +17,8 @@ interface SettingsUpdateResponse {
 if (!SKIP) {
   const currentSettings: ModelSettings = {
     selectedModel: "claude-sonnet-4-6",
+    thinkingEnabled: true,
+    thinkingEffort: "medium",
     subscriptionPlan: "max20x",
   };
 
@@ -42,7 +44,8 @@ if (!SKIP) {
 
       expect(response.status).toBe(200);
       expect(body.settings.selectedModel).toBe("claude-sonnet-4-6");
-      expect(body.settings.subscriptionPlan).toBe("max20x");
+      expect(body.settings.thinkingEnabled).toBe(true);
+      expect(body.settings.thinkingEffort).toBe("medium");
     });
 
     test("rejects invalid model in JSON body", async () => {
@@ -53,7 +56,8 @@ if (!SKIP) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedModel: "claude-unknown",
-          subscriptionPlan: "max20x",
+          thinkingEnabled: true,
+          thinkingEffort: "medium",
         }),
       });
 
@@ -74,6 +78,8 @@ if (!SKIP) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedModel: "claude-haiku-4-5",
+          thinkingEnabled: false,
+          thinkingEffort: "low",
           subscriptionPlan: "pro",
         }),
       });
@@ -88,6 +94,8 @@ if (!SKIP) {
       expect(savedSettingsCalls).toEqual([
         {
           selectedModel: "claude-haiku-4-5",
+          thinkingEnabled: false,
+          thinkingEffort: "low",
           subscriptionPlan: "pro",
         },
       ]);
@@ -101,6 +109,8 @@ if (!SKIP) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedModel: "claude-haiku-4-5",
+          thinkingEnabled: false,
+          thinkingEffort: "low",
           subscriptionPlan: "enterprise",
         }),
       });

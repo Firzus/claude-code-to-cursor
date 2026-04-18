@@ -21,6 +21,8 @@ export interface StreamUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /** Estimated from streamed thinking deltas when API does not split usage. */
+  thinkingTokens: number;
 }
 
 export function createOpenAIStreamFromAnthropic(
@@ -72,6 +74,7 @@ export function createOpenAIStreamFromAnthropic(
       let inInternalToolCall = false;
       let internalToolCallJson = "";
       let internalToolCallName = "";
+      let inThinkingBlock = false;
       // State machine for filtering <thinking>...</thinking> tags in text deltas.
       // Claude can emit these in plain text even when thinking is not enabled via the API.
       let inTextThinkingTag = false; // true while inside <thinking>...</thinking> in text
@@ -82,6 +85,8 @@ export function createOpenAIStreamFromAnthropic(
       let usageCacheCreationTokens = 0;
       let freshInputTokens = 0;
       let messageStopped = false;
+      /** Raw characters received in thinking_delta chunks (approximate token estimate). */
+      let thinkingCharsAccum = 0;
 
       // Helper to safely enqueue data, automatically injecting
       // "usage": null on SSE JSON chunks when include_usage is set
@@ -132,6 +137,7 @@ export function createOpenAIStreamFromAnthropic(
               console.log(
                 `   [Debug] Stream ended without message_stop, sending fallback usage chunk`,
               );
+              const reasoningFromStream = Math.ceil(thinkingCharsAccum / 4);
               safeEnqueue(
                 new TextEncoder().encode(
                   createOpenAIStreamUsageChunk(
@@ -141,6 +147,7 @@ export function createOpenAIStreamFromAnthropic(
                     usageOutputTokens,
                     usageCacheReadTokens,
                     usageCacheCreationTokens,
+                    reasoningFromStream,
                   ),
                 ),
               );
@@ -150,6 +157,7 @@ export function createOpenAIStreamFromAnthropic(
                 outputTokens: usageOutputTokens,
                 cacheReadTokens: usageCacheReadTokens,
                 cacheCreationTokens: usageCacheCreationTokens,
+                thinkingTokens: reasoningFromStream,
               });
             }
             break;
@@ -255,12 +263,12 @@ export function createOpenAIStreamFromAnthropic(
                 currentBlockIndex = event.index ?? currentBlockIndex;
                 blockTextSent = false;
 
-                // Skip thinking blocks entirely — the proxy no longer requests
-                // extended thinking, but older cached responses or the model's
-                // own fallback may still include one.
+                // Skip thinking blocks
                 if (block?.type === "thinking") {
+                  inThinkingBlock = true;
                   continue;
                 }
+                inThinkingBlock = false;
 
                 if (block?.type === "text" && block.text) {
                   logger.verbose(
@@ -317,6 +325,12 @@ export function createOpenAIStreamFromAnthropic(
 
               // Handle content_block_stop
               if (event.type === "content_block_stop") {
+                if (inThinkingBlock) {
+                  inThinkingBlock = false;
+                  logger.verbose(`   [Debug] Thinking block ended`);
+                  continue;
+                }
+
                 if (inInternalToolCall) {
                   inInternalToolCall = false;
                   logger.verbose(
@@ -392,11 +406,12 @@ export function createOpenAIStreamFromAnthropic(
                 currentBlockIndex = -1;
               }
 
-              // Skip thinking deltas (not forwarded to OpenAI text stream)
-              if (
-                event.type === "content_block_delta" &&
-                (event.delta as { type?: string } | undefined)?.type === "thinking_delta"
-              ) {
+              // Accumulate thinking deltas (not forwarded to OpenAI text stream)
+              if (event.type === "content_block_delta" && inThinkingBlock) {
+                const d = event.delta as { type?: string; thinking?: string } | undefined;
+                if (d?.type === "thinking_delta" && typeof d.thinking === "string") {
+                  thinkingCharsAccum += d.thinking.length;
+                }
                 continue;
               }
 
@@ -525,6 +540,7 @@ export function createOpenAIStreamFromAnthropic(
                 messageStopped = true;
 
                 const finishReason = toolCallIndex > 0 ? "tool_calls" : "stop";
+                const reasoningFromStream = Math.ceil(thinkingCharsAccum / 4);
 
                 safeEnqueue(
                   new TextEncoder().encode(
@@ -533,7 +549,12 @@ export function createOpenAIStreamFromAnthropic(
                       model,
                       undefined,
                       finishReason as "stop" | "length",
-                      computeOpenAIUsage(usageInputTokens, usageOutputTokens, usageCacheReadTokens),
+                      computeOpenAIUsage(
+                        usageInputTokens,
+                        usageOutputTokens,
+                        usageCacheReadTokens,
+                        reasoningFromStream,
+                      ),
                     ),
                   ),
                 );
@@ -546,11 +567,12 @@ export function createOpenAIStreamFromAnthropic(
                       usageOutputTokens,
                       usageCacheReadTokens,
                       usageCacheCreationTokens,
+                      reasoningFromStream,
                     ),
                   ),
                 );
                 console.log(
-                  `   [Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, total=${usageInputTokens + usageOutputTokens}`,
+                  `   [Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, reasoning≈${reasoningFromStream}, total=${usageInputTokens + usageOutputTokens}`,
                 );
                 safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
                 logger.verbose(`   [Debug] Sent [DONE] chunk with finish_reason: ${finishReason}`);
@@ -559,6 +581,7 @@ export function createOpenAIStreamFromAnthropic(
                   outputTokens: usageOutputTokens,
                   cacheReadTokens: usageCacheReadTokens,
                   cacheCreationTokens: usageCacheCreationTokens,
+                  thinkingTokens: reasoningFromStream,
                 });
               }
             } catch (parseError) {

@@ -68,9 +68,9 @@ function HomePage() {
             <FeatureTile
               index="03 · observe"
               title="every request, every token"
-              description="A local SQLite ledger records latency and cache tokens per request. A daily budget endpoint estimates spend in USD — no external analytics, no leakage."
+              description="A local SQLite ledger records latency, effort, and cache tokens per request. A daily budget endpoint estimates spend in USD — no external analytics, no leakage."
               icon={Activity}
-              items={["UTC-day budget", "Cache hit audit", "Rate-limit cache"]}
+              items={["UTC-day budget", "Thinking effort audit", "Rate-limit cache"]}
               delay={180}
             />
           </div>

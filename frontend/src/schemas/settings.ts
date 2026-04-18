@@ -12,6 +12,8 @@ export const modelLabels: Record<(typeof supportedModels)[number], string> = {
   "claude-haiku-4-5": "Claude Haiku 4.5",
 };
 
+export const thinkingEfforts = ["low", "medium", "high", "xhigh", "max"] as const;
+
 export const supportedPlans = ["pro", "max5x", "max20x"] as const;
 
 export const planLabels: Record<(typeof supportedPlans)[number], string> = {
@@ -41,6 +43,8 @@ export const planQuotas: Record<
 
 export const settingsFormSchema = z.object({
   selectedModel: z.enum(supportedModels),
+  thinkingEnabled: z.boolean(),
+  thinkingEffort: z.enum(thinkingEfforts),
   subscriptionPlan: z.enum(supportedPlans),
 });
 

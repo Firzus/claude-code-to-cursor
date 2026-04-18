@@ -27,6 +27,8 @@ interface PlanUsageBody {
 if (!SKIP) {
   let currentSettings: ModelSettings = {
     selectedModel: "claude-opus-4-7",
+    thinkingEnabled: true,
+    thinkingEffort: "high",
     subscriptionPlan: "max20x",
   };
 
@@ -54,6 +56,8 @@ if (!SKIP) {
     currentSnapshot = null;
     currentSettings = {
       selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
       subscriptionPlan: "max20x",
     };
   });

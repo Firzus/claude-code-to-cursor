@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  analyticsErrorsResponseSchema,
   analyticsResponseSchema,
   authStatusResponseSchema,
   budgetResponseSchema,
-  errorRecordSchema,
   healthResponseSchema,
   loginResponseSchema,
   requestRecordSchema,
@@ -87,6 +85,7 @@ describe("analyticsResponseSchema", () => {
     totalOutputTokens: 500,
     totalCacheReadTokens: 200,
     totalCacheCreationTokens: 100,
+    totalThinkingTokens: 300,
     cacheHitRate: 0.65,
     cacheSavingsUsdEstimate: 0.45,
     periodStart: 1000,
@@ -153,7 +152,7 @@ describe("requestRecordSchema", () => {
     expect(requestRecordSchema.parse(data).stream).toBe(1);
   });
 
-  it("accepts optional route and messageCount fields", () => {
+  it("accepts thinking tokens field", () => {
     const data = {
       id: 4,
       timestamp: Date.now(),
@@ -161,15 +160,15 @@ describe("requestRecordSchema", () => {
       source: "claude_code" as const,
       inputTokens: 10,
       outputTokens: 1,
+      thinkingTokens: 42,
       stream: false,
       latencyMs: 400,
       error: null,
-      route: "anthropic" as const,
-      messageCount: 3,
+      routingPolicy: "native",
+      appliedThinkingEffort: "low",
     };
     const parsed = requestRecordSchema.parse(data);
-    expect(parsed.route).toBe("anthropic");
-    expect(parsed.messageCount).toBe(3);
+    expect(parsed.thinkingTokens).toBe(42);
   });
 });
 
@@ -267,6 +266,8 @@ describe("settingsResponseSchema", () => {
     const data = {
       settings: {
         selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
         subscriptionPlan: "max20x",
       },
     };
@@ -277,6 +278,20 @@ describe("settingsResponseSchema", () => {
     const data = {
       settings: {
         selectedModel: "claude-invalid",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
+        subscriptionPlan: "max20x",
+      },
+    };
+    expect(() => settingsResponseSchema.parse(data)).toThrow();
+  });
+
+  it("rejects invalid effort", () => {
+    const data = {
+      settings: {
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "ultra",
         subscriptionPlan: "max20x",
       },
     };
@@ -287,82 +302,26 @@ describe("settingsResponseSchema", () => {
     const data = {
       settings: {
         selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
         subscriptionPlan: "enterprise",
       },
     };
     expect(() => settingsResponseSchema.parse(data)).toThrow();
   });
-});
 
-describe("errorRecordSchema", () => {
-  it("accepts a valid error record", () => {
-    const data = {
-      id: 1,
-      timestamp: Date.now(),
-      model: "claude-opus-4-7",
-      error: "upstream timeout",
-      latencyMs: 1234,
-      route: "anthropic",
-    };
-    expect(errorRecordSchema.parse(data)).toEqual(data);
-  });
-
-  it("accepts null error message and latency", () => {
-    const data = {
-      id: 2,
-      timestamp: Date.now(),
-      model: "claude-haiku-4-5",
-      error: null,
-      latencyMs: null,
-    };
-    const parsed = errorRecordSchema.parse(data);
-    expect(parsed.error).toBeNull();
-    expect(parsed.latencyMs).toBeNull();
-  });
-
-  it("rejects invalid route enum value", () => {
-    const data = {
-      id: 3,
-      timestamp: Date.now(),
-      model: "claude-opus-4-7",
-      error: "boom",
-      latencyMs: null,
-      route: "gemini",
-    };
-    expect(() => errorRecordSchema.parse(data)).toThrow();
-  });
-});
-
-describe("analyticsErrorsResponseSchema", () => {
-  it("accepts valid response", () => {
-    const data = {
-      errors: [
-        {
-          id: 1,
-          timestamp: Date.now(),
-          model: "claude-opus-4-7",
-          error: "timeout",
-          latencyMs: 500,
-          route: "anthropic",
+  it("accepts xhigh and max effort levels", () => {
+    for (const effort of ["xhigh", "max"]) {
+      const data = {
+        settings: {
+          selectedModel: "claude-opus-4-7",
+          thinkingEnabled: true,
+          thinkingEffort: effort,
+          subscriptionPlan: "max20x",
         },
-      ],
-      total: 1,
-      totalAllTime: 3,
-    };
-    const parsed = analyticsErrorsResponseSchema.parse(data);
-    expect(parsed.errors).toHaveLength(1);
-    expect(parsed.total).toBe(1);
-    expect(parsed.totalAllTime).toBe(3);
-  });
-
-  it("accepts empty errors array", () => {
-    const data = { errors: [], total: 0, totalAllTime: 0 };
-    expect(analyticsErrorsResponseSchema.parse(data).errors).toEqual([]);
-  });
-
-  it("rejects missing totalAllTime", () => {
-    const data = { errors: [], total: 0 };
-    expect(() => analyticsErrorsResponseSchema.parse(data)).toThrow();
+      };
+      expect(settingsResponseSchema.parse(data)).toEqual(data);
+    }
   });
 });
 
@@ -375,6 +334,7 @@ describe("budgetResponseSchema", () => {
       outputTokens: 50,
       cacheReadTokens: 20,
       cacheCreationTokens: 5,
+      thinkingTokens: 12,
       estimatedUsd: 0.42,
     };
     expect(budgetResponseSchema.parse(data)).toEqual(data);

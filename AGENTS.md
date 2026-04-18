@@ -124,26 +124,23 @@ All settings via `.env` (see `.env.example`):
 bun test                                    # Run all backend tests
 bun test src/openai-adapter.test.ts         # Run a specific test file
 bun test --grep "pattern"                   # Run tests matching pattern
-SKIP_MOCK_MODULE_TESTS=1 bun test           # Skip tests that use bun's mock.module (useful under some runners)
 ```
 
 - Test runner: Bun built-in test runner
 - Test root: `./src` (configured in `bunfig.toml`)
 - Test files live alongside source: `src/*.test.ts` and `src/routes/*.test.ts`
-- Tests that rely on `mock.module(...)` (currently `src/plan-usage-snapshot.test.ts`, `src/routes/anthropic.test.ts`, `src/routes/plan-usage.test.ts`, `src/routes/budget.test.ts`, `src/routes/settings.test.ts`) can be gated behind `SKIP_MOCK_MODULE_TESTS=1`
 - Key test files:
   - `src/openai-adapter.test.ts` — OpenAI-to-Anthropic format conversion
+  - `src/routing-policy.test.ts` — thinking effort resolution + adaptive body shaping
   - `src/request-normalization.test.ts` — request preprocessing
-  - `src/model-settings.test.ts` — model configuration validation (models, plans, quotas)
+  - `src/model-settings.test.ts` — model configuration validation
   - `src/model-settings-store.test.ts` — SQLite persistence for settings
   - `src/middleware.test.ts` — CORS, IP whitelist, logging
   - `src/anthropic-client.test.ts` — rate limit cache + Anthropic client helpers
-  - `src/plan-usage-snapshot.test.ts` — persistence of unified rate-limit snapshots
   - `src/routes/anthropic.test.ts` — Anthropic route handler
   - `src/routes/settings.test.ts` — Settings API endpoint
   - `src/routes/auth.test.ts` — PKCE store eviction
   - `src/routes/budget.test.ts` — Budget summary endpoint
-  - `src/routes/plan-usage.test.ts` — `/api/plan-usage` (live-vs-fallback source selection)
 
 ### Frontend Tests
 
@@ -158,9 +155,9 @@ npm run test:watch                          # Watch mode
 - Shared utilities: `src/__tests__/test-utils.tsx` (QueryClient wrappers, `renderWithQuery`, `renderHookWithQuery`, `setupRouteComponentCapture`, `requireCapturedRouteComponent`)
 - Test directory: `frontend/src/__tests__/` organized by category:
   - `schemas/` — api-responses, login, settings schema validation
-  - `hooks/` — use-analytics, use-budget, use-health, use-onboarding, use-plan-usage, use-settings
-  - `components/` — confirm-dialog, empty-state, error-boundary, nav-bar, oauth-flow, plan-usage-card, settings-panel, ui-primitives
-  - `routes/` — analytics, home (`/` landing page), settings page rendering
+  - `hooks/` — use-analytics, use-budget, use-health, use-onboarding, use-settings
+  - `components/` — confirm-dialog, empty-state, error-boundary, nav-bar, oauth-flow
+  - `routes/` — analytics, login, settings page rendering
   - `lib/` — api-client fetch wrapper, pricing
 
 ### Before Submitting Code
@@ -196,7 +193,7 @@ cd frontend && npm run typecheck && npm run test
 - API response validation: Zod schemas centralized in `src/schemas/api-responses.ts`
 - Styling: Tailwind CSS v4, utility merging via `clsx` + `tailwind-merge` (in `src/lib/utils.ts`)
 - Variants: `class-variance-authority` for components with style variants (e.g. `badge.tsx`)
-- UI primitives in `src/components/ui/`: `alert`, `badge`, `button`, `card`, `chart`, `code`, `dialog`, `field`, `input`, `label`, `segmented`, `separator`, `skeleton`, `slot`, `spinner`, `switch`, `tooltip`. These are hand-rolled (no Radix / shadcn generator) — keep them small and headless-ish.
+- UI primitives: native HTML elements styled with Tailwind plus a few light wrappers in `src/components/ui/` (badge, button, card, chart, skeleton, tooltip)
 - Icons: `lucide-react`
 - Charts: `recharts`
 - Custom hooks in `src/hooks/` for data fetching (analytics, budget, health, settings, onboarding)
@@ -230,7 +227,8 @@ claude-code-to-cursor/
 │   ├── anthropic-client.ts        # Anthropic API interaction + rate limit cache
 │   ├── openai-adapter.ts          # OpenAI ↔ Anthropic format conversion
 │   ├── stream-handler.ts          # SSE stream processing and format conversion
-│   ├── model-settings.ts          # Model configuration types, validation
+│   ├── routing-policy.ts          # Picks thinking effort + applies adaptive thinking/output_config
+│   ├── model-settings.ts          # Model configuration types, effort levels, validation
 │   ├── model-settings-store.ts    # SQLite persistence for model settings
 │   ├── plan-usage-snapshot.ts     # Captures Anthropic unified rate-limit headers (source of truth)
 │   ├── request-metrics.ts         # Request shape metrics (messageCount, tool counts, hashes)
@@ -258,20 +256,18 @@ claude-code-to-cursor/
 │   │   ├── styles/
 │   │   │   └── app.css            # Tailwind v4 theme (dark mode, oklch colors)
 │   │   ├── routes/
-│   │   │   ├── __root.tsx         # Root layout (NavBar, ErrorBoundary, Suspense, 404 page)
-│   │   │   ├── index.tsx          # Home / landing page (redirects to /setup until onboarding is complete)
+│   │   │   ├── __root.tsx         # Root layout (NavBar, ErrorBoundary, Suspense)
+│   │   │   ├── index.tsx          # Redirect → /analytics or /setup
 │   │   │   ├── analytics.tsx      # Analytics dashboard (stats, charts, request history)
-│   │   │   ├── settings.tsx      # Model selection, thinking toggle, effort control, plan selector
-│   │   │   └── setup.tsx          # Onboarding + OAuth wizard (the old /login route was merged in here)
+│   │   │   ├── login.tsx          # OAuth authentication page
+│   │   │   ├── settings.tsx       # Model selection, thinking toggle, effort control
+│   │   │   └── setup.tsx          # Onboarding wizard (4 steps)
 │   │   ├── components/
 │   │   │   ├── empty-state.tsx           # Empty state placeholder
 │   │   │   ├── error-boundary.tsx        # React error boundary
-│   │   │   ├── feature-tile.tsx          # Home-page feature tile
 │   │   │   ├── health-indicator.tsx      # Health status badge
 │   │   │   ├── nav-bar.tsx               # Navigation bar
-│   │   │   ├── oauth-flow.tsx            # OAuth login flow component (used inside /setup)
-│   │   │   ├── page-header.tsx           # Shared page header (title / subtitle / actions)
-│   │   │   ├── page-shell.tsx            # Shared page shell (consistent margins / spacing)
+│   │   │   ├── oauth-flow.tsx            # OAuth login flow component
 │   │   │   ├── analytics/
 │   │   │   │   ├── ago-text.tsx          # Relative time display
 │   │   │   │   ├── confirm-dialog.tsx    # Confirmation dialog
@@ -279,37 +275,17 @@ claude-code-to-cursor/
 │   │   │   │   ├── pagination.tsx        # Table pagination
 │   │   │   │   ├── plan-usage-card.tsx   # Subscription plan consumption (session + weekly bars)
 │   │   │   │   └── stat-card.tsx         # Statistics card
-│   │   │   ├── home/
-│   │   │   │   ├── hero.tsx              # Landing-page hero
-│   │   │   │   ├── status-panel.tsx      # Live status/health panel on /
-│   │   │   │   └── ticker.tsx            # Animated CLI-style ticker
-│   │   │   ├── settings/
-│   │   │   │   ├── effort-strip.tsx      # Effort segmented control
-│   │   │   │   ├── panel.tsx             # Top-level settings panel
-│   │   │   │   ├── selector-row.tsx      # Model / plan selector row
-│   │   │   │   └── toggle-ascii.tsx      # Thinking toggle (ASCII-styled)
 │   │   │   ├── setup/
 │   │   │   │   ├── copy-block.tsx        # Copy-to-clipboard code block
 │   │   │   │   ├── nav-buttons.tsx       # Wizard navigation buttons
 │   │   │   │   ├── status-row.tsx        # Status check row
 │   │   │   │   └── step-indicator.tsx    # Step progress indicator
 │   │   │   └── ui/
-│   │   │       ├── alert.tsx             # Inline alerts / callouts
 │   │   │       ├── badge.tsx             # Badge with variants (cva)
-│   │   │       ├── button.tsx            # Button wrapper (variants + asChild via slot)
+│   │   │       ├── button.tsx            # Button wrapper
 │   │   │       ├── card.tsx              # Card components
 │   │   │       ├── chart.tsx             # Recharts wrapper
-│   │   │       ├── code.tsx              # Inline / block code styling
-│   │   │       ├── dialog.tsx            # Modal dialog primitive
-│   │   │       ├── field.tsx             # Form field wrapper (label + help + error)
-│   │   │       ├── input.tsx             # Styled text input
-│   │   │       ├── label.tsx             # Form label
-│   │   │       ├── segmented.tsx         # Segmented control
-│   │   │       ├── separator.tsx         # Divider
 │   │   │       ├── skeleton.tsx          # Loading skeleton
-│   │   │       ├── slot.tsx              # Minimal asChild slot primitive
-│   │   │       ├── spinner.tsx           # Braille / dot spinners
-│   │   │       ├── switch.tsx            # Toggle switch
 │   │   │       └── tooltip.tsx           # Tooltip component
 │   │   ├── hooks/
 │   │   │   ├── use-analytics.ts          # Analytics data hooks (summary, requests, timeline)
@@ -400,7 +376,7 @@ claude-code-to-cursor/
 - Uses OAuth 2.0 PKCE (Claude Code client ID: `9d1c250a-e61b-44d9-88ed-5944d1962f5e`)
 - Credentials stored as JSON in `CCTC_AUTH_DIR/auth.json`
 - Tokens auto-refresh on expiry
-- Required beta headers: `oauth-2025-04-20`, `interleaved-thinking-2025-05-14` (the thinking beta header is still advertised for OAuth compatibility, even though the proxy no longer requests thinking)
+- Required beta headers: `oauth-2025-04-20`, `interleaved-thinking-2025-05-14`
 - User-Agent must match: `claude-cli/2.1.97 (external, cli)`
 - System prompt must start with: `"You are Claude Code, Anthropic's official CLI for Claude."` (required for OAuth to work)
 - Note: `context-1m` beta header was removed — 1M context is GA for Opus 4.7
@@ -424,15 +400,48 @@ The proxy uses 4 cache breakpoints in `src/anthropic-client.ts` to maximize Anth
 
 Tool names are prefixed with `mcp_` and sorted alphabetically for stable cache keys. TTL-based `cache_control` is stripped (not supported by Claude Code OAuth).
 
-### Model Settings
+### Model Settings & Thinking Effort
 
 - Supported models: `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5`
+- Supported effort levels (ranked low → max): `low`, `medium`, `high`, `xhigh`, `max`
+  - `xhigh` is only officially supported by Opus 4.7 (see Anthropic docs)
+  - `max` is available on Opus 4.6/4.7 and Sonnet 4.6
 - Supported subscription plans: `pro`, `max5x`, `max20x` (used only for plan-usage approximations on Analytics; does not affect request routing)
-- Default: Opus 4.7, plan `max20x`
+- Default: Opus 4.7, thinking enabled, effort `high`, plan `max20x`
 - Settings persisted in SQLite (`model_settings` table, key-value rows)
 - Context window: 1M tokens for Opus 4.7, 200K for Sonnet 4.6 and Haiku 4.5
 
-Extended thinking has been removed from the proxy: requests forwarded to Anthropic no longer include `thinking`, `output_config`, or a forced `temperature=1`. The client's `temperature` and `max_tokens` are passed through unchanged (defaulting to `4096` when absent). The SQLite columns `thinking_tokens`, `applied_thinking_effort`, `client_reasoning_effort`, and `routing_policy` are preserved on the `requests` table for backward compatibility but are always written as `0`/`NULL` by `recordRequest`.
+**Effort → request format** (see `src/routing-policy.ts`):
+
+When thinking is enabled, the proxy emits Anthropic's **adaptive** thinking + `output_config.effort` (the model decides its own reasoning depth). This replaces the deprecated `thinking.budget_tokens` integer — manual thinking is no longer supported on Opus 4.7.
+
+```jsonc
+{
+  "thinking": { "type": "adaptive" },
+  "output_config": { "effort": "xhigh" },
+  "max_tokens": 65536
+}
+```
+
+**Suggested `max_tokens`** per effort (used as the floor when the client doesn't provide a larger value) — see `getSuggestedMaxTokens` in `src/model-settings.ts`:
+
+| Effort | Suggested `max_tokens` |
+| ------ | ---------------------- |
+| low    | 8 192                  |
+| medium | 16 384                 |
+| high   | 32 768                 |
+| xhigh  | 65 536                 |
+| max    | 65 536                 |
+
+These are ceilings to guarantee the model has headroom to think + answer — Anthropic's `effort` is a behavioural signal, not a strict token budget.
+
+**Effort routing** (`pickRoute` in `src/routing-policy.ts`):
+
+- `thinkingEnabled: false` → thinking disabled, `policy: "disabled"`
+- Client sends `reasoning_effort` (OpenAI) or `reasoning_budget` (Anthropic) → `min(client, stored)`, `policy: "client"`
+- Otherwise → stored effort, `policy: "stored"`
+
+Clients can override thinking per-request using either `reasoning_effort` (OpenAI) or `reasoning_budget` (Anthropic) with any of the 5 effort strings. The proxy caps the client value to the stored setting.
 
 ### Rate Limiting
 
@@ -475,10 +484,9 @@ The `subscriptionPlan` stored in `model_settings` is still used by the fallback 
 ### Onboarding Flow
 
 - 4-step setup wizard at `/setup`: Welcome → Authenticate → Configure Client → Verify
-- The old `/login` route has been **merged into `/setup`** (the Authenticate step uses the `oauth-flow` component directly) — do not re-add a standalone login route
 - Completion stored in localStorage key `cctc:onboarding-complete`
 - Auto-detects first successful request via analytics polling
-- `/` is the landing/home page; it calls `redirect({ to: "/setup" })` in `beforeLoad` if onboarding is incomplete, otherwise renders the Hero/Ticker/FeatureTile/StatusPanel composition
+- Index route redirects to `/setup` if onboarding is incomplete, otherwise to `/analytics`
 - `use-onboarding.ts` hook syncs state with `useSyncExternalStore` + `StorageEvent`
 
 ### Cache Savings Estimation
@@ -491,7 +499,7 @@ The `subscriptionPlan` stored in `model_settings` is still used by the fallback 
 
 - SQLite via Bun's built-in driver
 - Tables: `requests` (analytics with cache token tracking), `model_settings`
-- `requests` table includes `cache_read_tokens`, `cache_creation_tokens` columns used by analytics, plus legacy `thinking_tokens`, `applied_thinking_effort`, `client_reasoning_effort`, `routing_policy` columns preserved for backward compatibility (always `0`/`NULL` after the thinking feature removal)
+- `requests` table includes `cache_read_tokens`, `cache_creation_tokens`, `applied_thinking_effort`, `client_reasoning_effort` columns (added via migrations)
 - Auto-migrated on startup in `src/db.ts` (see the migrations array)
 - Budget queries aggregate per UTC day in `getBudgetDaySummary()`
 - Docker volume `cctc-data` for persistence
@@ -551,6 +559,14 @@ docker compose -f docker-compose.dev.yml up
 3. Update `getContextLength()` if the new model has a different context window
 4. Update the frontend `supportedModels` / `modelLabels` / `modelMeta` in `frontend/src/schemas/settings.ts` and `frontend/src/routes/settings.tsx`
 
+### Adding a New Effort Level
+
+1. Extend `VALID_EFFORTS` in `src/model-settings.ts` (order matters — it defines rank for `minThinkingEffort`)
+2. Add a suggested `max_tokens` entry in `SUGGESTED_MAX_TOKENS`
+3. Extend `thinkingEfforts` in `frontend/src/schemas/settings.ts`
+4. Add a description in `effortDescriptions` in `frontend/src/routes/settings.tsx`
+5. Update `effortBadge` variant in `frontend/src/components/analytics/expandable-row.tsx` if needed
+
 ### Adding a New Subscription Plan
 
 1. Extend `SUPPORTED_PLANS` and `PLAN_QUOTAS` in `src/model-settings.ts`
@@ -596,6 +612,7 @@ docker compose -f docker-compose.dev.yml up
 | Requests fail with 429         | Rate limited by Anthropic. Dashboard shows reset time                               |
 | Tunnel not connecting          | Verify `CLOUDFLARE_TUNNEL_TOKEN` in `.env`. Check `docker compose logs cloudflared` |
 | Frontend can't reach API       | Ensure API is healthy first. In Docker, frontend uses `API_URL=http://api:8082`     |
+| `xhigh` rejected by API        | Only Opus 4.7 officially supports `xhigh`. Switch model or lower effort to `high`   |
 
 ---
 

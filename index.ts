@@ -11,7 +11,6 @@ import { checkIPWhitelist, corsHeaders } from "./src/middleware";
 import { getValidToken, hasCredentials } from "./src/oauth";
 import {
   handleAnalytics,
-  handleAnalyticsErrors,
   handleAnalyticsRequests,
   handleAnalyticsReset,
   handleAnalyticsTimeline,
@@ -165,13 +164,6 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
     req.method === "GET"
   ) {
     return handleAnalyticsTimeline(url);
-  }
-
-  if (
-    (url.pathname === "/analytics/errors" || url.pathname === "/api/analytics/errors") &&
-    req.method === "GET"
-  ) {
-    return handleAnalyticsErrors(url);
   }
 
   if (

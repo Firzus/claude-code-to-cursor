@@ -57,6 +57,14 @@ export interface AnthropicRequest {
   metadata?: { user_id?: string };
   tools?: Tool[];
   tool_choice?: ToolChoice;
+  reasoning_budget?: number | string;
+  thinking?:
+    | { type: "enabled"; budget_tokens: number }
+    | { type: "adaptive" }
+    | { type: "disabled" };
+  output_config?: {
+    effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  };
 }
 
 export interface Tool {
@@ -84,6 +92,8 @@ export interface AnthropicResponse {
     output_tokens: number;
     cache_read_input_tokens?: number;
     cache_creation_input_tokens?: number;
+    /** When present (extended thinking), reported thinking token usage. */
+    thinking_tokens?: number;
   };
 }
 
@@ -95,7 +105,7 @@ export interface AnthropicError {
   };
 }
 
-/** Shape metrics for a proxied request (analytics). */
+/** Shape metrics for a proxied request (analytics + adaptive thinking). */
 export interface RequestShapeMetrics {
   route: "anthropic" | "openai";
   messageCount: number;
@@ -106,6 +116,7 @@ export interface RequestShapeMetrics {
   toolDefsCount: number;
   toolDefsHash: string | null;
   clientSystemHash: string | null;
+  clientReasoningEffort: string | null;
 }
 
 export interface ProxyConfig {

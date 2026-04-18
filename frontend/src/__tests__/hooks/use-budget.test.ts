@@ -22,6 +22,7 @@ const mockBudget = {
   outputTokens: 100,
   cacheReadTokens: 30,
   cacheCreationTokens: 10,
+  thinkingTokens: 5,
   estimatedUsd: 0.99,
 };
 

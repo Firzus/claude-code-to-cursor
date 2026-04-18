@@ -4,11 +4,14 @@ import { Cpu, CreditCard, RotateCcw, Sparkles, Zap } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { PageHeader, type PageHeaderStatus } from "~/components/page-header";
-import { Panel } from "~/components/settings/panel";
+import { EffortStrip } from "~/components/settings/effort-strip";
+import { Panel, PanelRow } from "~/components/settings/panel";
 import { SelectorRow } from "~/components/settings/selector-row";
+import { ToggleAscii } from "~/components/settings/toggle-ascii";
 import { Alert } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { useSettings, useUpdateSettings } from "~/hooks/use-settings";
+import { cn } from "~/lib/utils";
 import {
   modelLabels,
   planLabels,
@@ -18,6 +21,7 @@ import {
   settingsFormSchema,
   supportedModels,
   supportedPlans,
+  thinkingEfforts,
 } from "~/schemas/settings";
 
 type ModelMeta = {
@@ -31,6 +35,14 @@ type ModelMeta = {
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
+
+const effortDescriptions: Record<(typeof thinkingEfforts)[number], string> = {
+  low: "Efficient. Best for short, scoped tasks.",
+  medium: "Balanced. Good default for general workloads.",
+  high: "Advanced use cases needing a balance of intelligence and token cost.",
+  xhigh: "Coding & long-horizon agentic work. Higher token usage (Opus 4.7 only).",
+  max: "Frontier problems requiring the deepest possible reasoning.",
+};
 
 const modelMeta: Record<(typeof supportedModels)[number], ModelMeta> = {
   "claude-opus-4-7": {
@@ -95,8 +107,10 @@ function SettingsPage() {
     values: data?.settings,
   });
 
+  const thinkingEnabled = form.watch("thinkingEnabled");
   const selectedModel = form.watch("selectedModel");
   const selectedPlan = form.watch("subscriptionPlan");
+  const selectedEffort = form.watch("thinkingEffort");
   const isDirty = form.formState.isDirty;
 
   useEffect(() => {
@@ -146,6 +160,7 @@ function SettingsPage() {
         {[
           { id: "skel-01", index: "01", title: "model" },
           { id: "skel-02", index: "02", title: "subscription" },
+          { id: "skel-03", index: "03", title: "thinking" },
         ].map((p, i) => (
           <Panel key={p.id} index={`${p.index} ·`} title={p.title} hint="loading" delay={i * 60}>
             <div className="flex items-center gap-2 py-6 font-mono text-[12px] text-muted-foreground">
@@ -264,6 +279,58 @@ function SettingsPage() {
                 />
               );
             })}
+          </div>
+        </Panel>
+
+        {/* Thinking panel */}
+        <Panel
+          index="03 ·"
+          title="thinking"
+          hint="chain-of-thought · effort"
+          footer={
+            <>
+              <span>$ effort {thinkingEnabled ? selectedEffort : "—"}</span>
+              <span
+                className={cn(
+                  "uppercase tracking-[0.2em]",
+                  thinkingEnabled ? "text-accent" : "text-muted-foreground/60",
+                )}
+              >
+                {thinkingEnabled ? "engaged" : "off"}
+              </span>
+            </>
+          }
+        >
+          <span className="sr-only">Extended Thinking</span>
+          <PanelRow label="status">
+            <ToggleAscii
+              checked={thinkingEnabled}
+              onChange={(next) => form.setValue("thinkingEnabled", next, { shouldDirty: true })}
+              ariaLabel="Toggle extended thinking"
+            />
+          </PanelRow>
+          <PanelRow label="effort">
+            <div className="w-full max-w-[420px]">
+              <EffortStrip
+                options={thinkingEfforts}
+                value={selectedEffort ?? "high"}
+                onChange={(next) => form.setValue("thinkingEffort", next, { shouldDirty: true })}
+                disabled={!thinkingEnabled}
+              />
+            </div>
+          </PanelRow>
+          <div
+            className={cn(
+              "mt-3 flex items-start gap-2 rounded-md border border-border/50 bg-background/40 px-3 py-2 font-mono text-[11px] leading-relaxed transition-opacity",
+              !thinkingEnabled && "opacity-40",
+            )}
+          >
+            <span aria-hidden="true" className="text-accent select-none">
+              &gt;
+            </span>
+            <span className="text-muted-foreground">
+              {effortDescriptions[selectedEffort ?? "high"]}
+            </span>
           </div>
         </Panel>
 

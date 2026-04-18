@@ -18,6 +18,8 @@ beforeEach(() => {
 const mockSettings = {
   settings: {
     selectedModel: "claude-opus-4-7" as const,
+    thinkingEnabled: true,
+    thinkingEffort: "high" as const,
     subscriptionPlan: "max20x" as const,
   },
 };
@@ -30,7 +32,7 @@ describe("useSettings", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.settings.selectedModel).toBe("claude-opus-4-7");
-    expect(result.current.data?.settings.subscriptionPlan).toBe("max20x");
+    expect(result.current.data?.settings.thinkingEnabled).toBe(true);
   });
 
   it("handles error", async () => {
@@ -55,6 +57,8 @@ describe("useUpdateSettings", () => {
 
     result.current.mutate({
       selectedModel: "claude-sonnet-4-6",
+      thinkingEnabled: false,
+      thinkingEffort: "low",
       subscriptionPlan: "pro",
     });
 

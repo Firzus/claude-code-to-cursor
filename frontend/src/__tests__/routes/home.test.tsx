@@ -69,7 +69,8 @@ const okHealth = {
 const okSettings = {
   settings: {
     selectedModel: "claude-opus-4-7" as const,
-    subscriptionPlan: "max20x" as const,
+    thinkingEnabled: true,
+    thinkingEffort: "xhigh" as const,
   },
 };
 
@@ -82,6 +83,7 @@ const okSummary = {
   totalOutputTokens: 500,
   totalCacheReadTokens: 300,
   totalCacheCreationTokens: 100,
+  totalThinkingTokens: 40,
   cacheHitRate: 72.5,
   cacheSavingsUsdEstimate: 0.33,
   periodStart: Date.now() - 86_400_000,
@@ -95,6 +97,7 @@ const okBudget = {
   outputTokens: 500,
   cacheReadTokens: 300,
   cacheCreationTokens: 100,
+  thinkingTokens: 40,
   estimatedUsd: 2.47,
 };
 
@@ -161,6 +164,7 @@ describe("HomePage", () => {
 
     expect(screen.getByText("ONLINE")).toBeInTheDocument();
     expect(screen.getByText("opus_4_7")).toBeInTheDocument();
+    expect(screen.getByText("xhigh")).toBeInTheDocument();
     expect(screen.getByText("72.5%")).toBeInTheDocument();
     expect(screen.getByText("$2.47")).toBeInTheDocument();
   });

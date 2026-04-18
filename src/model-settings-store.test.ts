@@ -28,6 +28,8 @@ describe("model settings store", () => {
 
       const settings = {
         selectedModel: "claude-opus-4-7",
+        thinkingEnabled: false,
+        thinkingEffort: "medium",
         subscriptionPlan: "pro",
       } as const;
 
@@ -47,11 +49,15 @@ describe("model settings store", () => {
 
       saveModelSettingsToDb(database, {
         selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
         subscriptionPlan: "max20x",
       });
 
       const updatedSettings = {
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: false,
+        thinkingEffort: "low",
         subscriptionPlan: "max5x",
       } as const;
 
@@ -69,38 +75,18 @@ describe("model settings store", () => {
     try {
       initModelSettingsSchema(database);
 
-      // Simulate a legacy database with only the selected_model key
+      // Simulate a legacy database with only the 3 original keys
       database.run(
         `INSERT INTO model_settings (key, value) VALUES
-          ('selected_model', 'claude-sonnet-4-6')`,
+          ('selected_model', 'claude-sonnet-4-6'),
+          ('thinking_enabled', '1'),
+          ('thinking_effort', 'medium')`,
       );
 
       expect(getModelSettingsFromDb(database)).toEqual({
         selectedModel: "claude-sonnet-4-6",
-        subscriptionPlan: "max20x",
-      });
-    } finally {
-      database.close();
-    }
-  });
-
-  test("ignores orphaned thinking_* legacy rows without crashing", () => {
-    const database = new Database(":memory:");
-
-    try {
-      initModelSettingsSchema(database);
-
-      // Simulate a real upgraded DB with both current and legacy orphan keys
-      database.run(
-        `INSERT INTO model_settings (key, value) VALUES
-          ('selected_model', 'claude-opus-4-7'),
-          ('subscription_plan', 'max20x'),
-          ('thinking_enabled', '1'),
-          ('thinking_effort', 'high')`,
-      );
-
-      expect(getModelSettingsFromDb(database)).toEqual({
-        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "medium",
         subscriptionPlan: "max20x",
       });
     } finally {

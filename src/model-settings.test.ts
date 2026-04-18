@@ -5,10 +5,13 @@ import {
   getContextLength,
   getExposedModels,
   getPlanQuotas,
+  getSuggestedMaxTokens,
   isAllowedPublicModel,
   isValidSubscriptionPlan,
+  isValidThinkingEffort,
   PUBLIC_MODEL_ID,
   SUPPORTED_PLANS,
+  VALID_EFFORTS,
   validateModelSettings,
 } from "./model-settings";
 
@@ -25,8 +28,45 @@ describe("model settings contract", () => {
   test("locks the default model settings", () => {
     expect(DEFAULT_MODEL_SETTINGS).toEqual({
       selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
       subscriptionPlan: "max20x",
     });
+  });
+
+  test("exposes the 5 valid effort levels in rank order", () => {
+    expect(VALID_EFFORTS).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  test.each([
+    ["low", 8192],
+    ["medium", 16384],
+    ["high", 32768],
+    ["xhigh", 65536],
+    ["max", 65536],
+  ])("suggests %i max_tokens for %s effort", (effort, suggested) => {
+    expect(getSuggestedMaxTokens(effort as (typeof VALID_EFFORTS)[number])).toBe(suggested);
+  });
+
+  test.each([
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ])("isValidThinkingEffort accepts %s", (effort) => {
+    expect(isValidThinkingEffort(effort)).toBe(true);
+  });
+
+  test.each([
+    "ultra",
+    "",
+    "HIGH",
+    null,
+    undefined,
+    42,
+  ])("isValidThinkingEffort rejects %p", (value) => {
+    expect(isValidThinkingEffort(value)).toBe(false);
   });
 
   test("accepts valid model settings payloads", () => {
@@ -34,20 +74,54 @@ describe("model settings contract", () => {
     expect(
       validateModelSettings({
         selectedModel: "claude-sonnet-4-6",
+        thinkingEnabled: false,
+        thinkingEffort: "low",
         subscriptionPlan: "pro",
       }),
     ).toEqual({
       selectedModel: "claude-sonnet-4-6",
+      thinkingEnabled: false,
+      thinkingEffort: "low",
       subscriptionPlan: "pro",
     });
     expect(
       validateModelSettings({
         selectedModel: "claude-haiku-4-5",
+        thinkingEnabled: true,
+        thinkingEffort: "medium",
         subscriptionPlan: "max5x",
       }),
     ).toEqual({
       selectedModel: "claude-haiku-4-5",
+      thinkingEnabled: true,
+      thinkingEffort: "medium",
       subscriptionPlan: "max5x",
+    });
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "xhigh",
+        subscriptionPlan: "max20x",
+      }),
+    ).toEqual({
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "xhigh",
+      subscriptionPlan: "max20x",
+    });
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "max",
+        subscriptionPlan: "max20x",
+      }),
+    ).toEqual({
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "max",
+      subscriptionPlan: "max20x",
     });
   });
 
@@ -55,9 +129,13 @@ describe("model settings contract", () => {
     expect(
       validateModelSettings({
         selectedModel: "claude-opus-4-7",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
       }),
     ).toEqual({
       selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
       subscriptionPlan: "max20x",
     });
   });
@@ -99,6 +177,15 @@ describe("model settings contract", () => {
       fiveHourTokens: fiveHour,
       weeklyTokens: weekly,
     });
+  });
+
+  test("rejects invalid thinkingEffort values", () => {
+    expect(() =>
+      validateModelSettings({
+        ...DEFAULT_MODEL_SETTINGS,
+        thinkingEffort: "ultra",
+      }),
+    ).toThrow();
   });
 
   test("returns API model ID unchanged", () => {

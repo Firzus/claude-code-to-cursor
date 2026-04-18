@@ -88,8 +88,18 @@ function resolveProxyState(health: QueryShape<HealthResponse>): {
 function ModelCell({ settings }: { settings: QueryShape<SettingsResponse> }) {
   const data = settings.data?.settings;
   if (!data) return settings.isError ? <Dash /> : <Loading />;
-  const { selectedModel } = data;
-  return <span className="text-foreground">{formatModel(selectedModel)}</span>;
+  const { selectedModel, thinkingEnabled, thinkingEffort } = data;
+  return (
+    <>
+      <span className="text-foreground">{formatModel(selectedModel)}</span>
+      <span className="text-muted-foreground">·</span>
+      {thinkingEnabled ? (
+        <span className="text-accent">{thinkingEffort}</span>
+      ) : (
+        <span className="text-muted-foreground">no_think</span>
+      )}
+    </>
+  );
 }
 
 function RequestsCell({ analytics }: { analytics: QueryShape<AnalyticsResponse> }) {

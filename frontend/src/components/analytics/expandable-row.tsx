@@ -19,23 +19,23 @@ function sourceBadgeProps(source: RequestRecord["source"]): {
   return { label: "proxy", variant: "outline" };
 }
 
-/**
- * Returns the context window size (in tokens) for a given API model id.
- * Mirrors `getContextLength` in `src/model-settings.ts` — kept in the
- * frontend to avoid an extra round-trip for a value that is effectively a
- * constant per model.
- */
-function getContextWindowTokens(model: string): number {
-  if (model === "claude-opus-4-7") return 1_000_000;
-  return 200_000;
+function effortBadge(effort: string | null | undefined) {
+  if (!effort) return null;
+  const upper = effort.toUpperCase();
+  const variant =
+    upper === "HIGH" || upper === "XHIGH" || upper === "MAX"
+      ? "accent"
+      : upper === "LOW"
+        ? "secondary"
+        : "outline";
+  return (
+    <Badge variant={variant} size="xs" className="ml-1.5">
+      {upper}
+    </Badge>
+  );
 }
 
-function formatContextWindow(model: string): string {
-  const tokens = getContextWindowTokens(model);
-  if (tokens >= 1_000_000) return `${tokens / 1_000_000}M`;
-  return `${tokens / 1_000}K`;
-}
-
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: render-only component composed of many small cells; splitting it further would hurt readability.
 export function ExpandableRow({
   record: r,
   formatTokens,
@@ -49,8 +49,7 @@ export function ExpandableRow({
   const cacheWrite = r.cacheCreationTokens ?? 0;
   const totalIn = r.inputTokens + cacheRead + cacheWrite;
   const cacheRate = totalIn > 0 ? (cacheRead / totalIn) * 100 : 0;
-  const contextWindow = getContextWindowTokens(r.model);
-  const contextUsagePct = contextWindow > 0 ? (totalIn / contextWindow) * 100 : 0;
+  const think = r.thinkingTokens ?? 0;
 
   return (
     <>
@@ -80,6 +79,7 @@ export function ExpandableRow({
         </td>
         <td className="px-4 py-2.5 font-mono text-[12.5px] truncate max-w-40">
           <span>{r.model.replace("claude-", "")}</span>
+          {effortBadge(r.appliedThinkingEffort)}
         </td>
         <td className="px-4 py-2.5 font-mono text-[12.5px] text-right tabular whitespace-nowrap">
           {formatTokens(r.inputTokens + r.outputTokens + cacheRead)}
@@ -133,22 +133,13 @@ export function ExpandableRow({
                 value={cacheRate > 0 ? `${cacheRate.toFixed(1)}%` : "\u2014"}
                 accent={cacheRate >= 80 ? "success" : cacheRate >= 40 ? "warning" : undefined}
               />
-              <DetailItem
-                label="context"
-                value={`${formatTokens(totalIn)} / ${formatContextWindow(r.model)} (${contextUsagePct.toFixed(1)}%)`}
-                accent={
-                  contextUsagePct >= 90
-                    ? "destructive"
-                    : contextUsagePct >= 70
-                      ? "warning"
-                      : undefined
-                }
-              />
+              <DetailItem label="thinking" value={think > 0 ? formatTokens(think) : "\u2014"} />
               <DetailItem
                 label="latency"
                 value={r.latencyMs ? `${(r.latencyMs / 1000).toFixed(1)}s` : "\u2014"}
               />
               <DetailItem label="route" value={r.route ?? "\u2014"} />
+              {r.routingPolicy && <DetailItem label="policy" value={r.routingPolicy} />}
               {r.error && (
                 <div className="col-span-full">
                   <DetailItem label="error" value={r.error} accent="destructive" />

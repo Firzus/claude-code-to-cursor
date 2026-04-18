@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { supportedModels, supportedPlans } from "./settings";
+import { supportedModels, supportedPlans, thinkingEfforts } from "./settings";
 
 export const healthResponseSchema = z.object({
   status: z.enum(["ok", "rate_limited"]),
@@ -29,6 +29,7 @@ export const analyticsResponseSchema = z.object({
   totalOutputTokens: z.number(),
   totalCacheReadTokens: z.number(),
   totalCacheCreationTokens: z.number(),
+  totalThinkingTokens: z.number(),
   cacheHitRate: z.number(),
   /** Approximate USD saved vs no-cache-read pricing (dashboard heuristic). */
   cacheSavingsUsdEstimate: z.number(),
@@ -47,12 +48,15 @@ export const requestRecordSchema = z.object({
   outputTokens: z.number(),
   cacheReadTokens: z.number().default(0),
   cacheCreationTokens: z.number().default(0),
+  thinkingTokens: z.number().optional(),
   stream: z.union([z.boolean(), z.number()]),
   latencyMs: z.number().nullable(),
   error: z.string().nullable(),
   route: z.enum(["anthropic", "openai"]).nullable().optional(),
   messageCount: z.number().nullable().optional(),
   toolDefsCount: z.number().nullable().optional(),
+  routingPolicy: z.string().nullable().optional(),
+  appliedThinkingEffort: z.string().nullable().optional(),
   estimatedUsd: z.number().optional(),
 });
 
@@ -84,25 +88,6 @@ export const timelineResponseSchema = z.object({
 
 export type TimelineResponse = z.infer<typeof timelineResponseSchema>;
 
-export const errorRecordSchema = z.object({
-  id: z.number(),
-  timestamp: z.number(),
-  model: z.string(),
-  error: z.string().nullable(),
-  latencyMs: z.number().nullable(),
-  route: z.enum(["anthropic", "openai"]).nullable().optional(),
-});
-
-export type ErrorRecord = z.infer<typeof errorRecordSchema>;
-
-export const analyticsErrorsResponseSchema = z.object({
-  errors: z.array(errorRecordSchema),
-  total: z.number(),
-  totalAllTime: z.number(),
-});
-
-export type AnalyticsErrorsResponse = z.infer<typeof analyticsErrorsResponseSchema>;
-
 export const loginResponseSchema = z.object({
   authURL: z.string(),
   state: z.string(),
@@ -120,6 +105,8 @@ export type AuthStatusResponse = z.infer<typeof authStatusResponseSchema>;
 export const settingsResponseSchema = z.object({
   settings: z.object({
     selectedModel: z.enum(supportedModels),
+    thinkingEnabled: z.boolean(),
+    thinkingEffort: z.enum(thinkingEfforts),
     subscriptionPlan: z.enum(supportedPlans),
   }),
 });
@@ -162,6 +149,7 @@ export const budgetResponseSchema = z.object({
   outputTokens: z.number(),
   cacheReadTokens: z.number(),
   cacheCreationTokens: z.number(),
+  thinkingTokens: z.number(),
   estimatedUsd: z.number(),
 });
 

@@ -2,7 +2,11 @@ import type { Database } from "bun:sqlite";
 import type { ModelSettings } from "./model-settings";
 import { DEFAULT_MODEL_SETTINGS, validateModelSettings } from "./model-settings";
 
-type ModelSettingKey = "selected_model" | "subscription_plan";
+type ModelSettingKey =
+  | "selected_model"
+  | "thinking_enabled"
+  | "thinking_effort"
+  | "subscription_plan";
 
 interface ModelSettingsRow {
   key: ModelSettingKey;
@@ -28,6 +32,14 @@ function getSettingMap(database: Database): Map<ModelSettingKey, string> {
   return new Map(rows.map((row) => [row.key, row.value]));
 }
 
+function toStoredBoolean(value: boolean): string {
+  return value ? "1" : "0";
+}
+
+function fromStoredBoolean(value: string | undefined): boolean {
+  return value === "1" || value === "true";
+}
+
 export function initModelSettingsSchema(database: Database): void {
   database.run(`
     CREATE TABLE IF NOT EXISTS ${MODEL_SETTINGS_TABLE} (
@@ -45,11 +57,20 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
   }
 
   const selectedModel = settings.get("selected_model") ?? DEFAULT_MODEL_SETTINGS.selectedModel;
+  const thinkingEnabledValue = settings.get("thinking_enabled");
+  const thinkingEffortValue = settings.get("thinking_effort");
   const subscriptionPlanValue = settings.get("subscription_plan");
 
   try {
     return validateModelSettings({
       selectedModel,
+      thinkingEnabled:
+        thinkingEnabledValue === undefined
+          ? DEFAULT_MODEL_SETTINGS.thinkingEnabled
+          : fromStoredBoolean(thinkingEnabledValue),
+      thinkingEffort:
+        (thinkingEffortValue as ModelSettings["thinkingEffort"] | undefined) ??
+        DEFAULT_MODEL_SETTINGS.thinkingEffort,
       subscriptionPlan:
         (subscriptionPlanValue as ModelSettings["subscriptionPlan"] | undefined) ??
         DEFAULT_MODEL_SETTINGS.subscriptionPlan,
@@ -63,6 +84,8 @@ export function getModelSettingsFromDb(database: Database): ModelSettings {
 export function saveModelSettingsToDb(database: Database, settings: ModelSettings): void {
   const saveSettings = database.transaction((currentSettings: ModelSettings) => {
     upsertSetting(database, "selected_model", currentSettings.selectedModel);
+    upsertSetting(database, "thinking_enabled", toStoredBoolean(currentSettings.thinkingEnabled));
+    upsertSetting(database, "thinking_effort", currentSettings.thinkingEffort);
     upsertSetting(database, "subscription_plan", currentSettings.subscriptionPlan);
   });
 

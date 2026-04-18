@@ -11,6 +11,7 @@ import {
   saveModelSettingsToDb,
 } from "./model-settings-store";
 import { initPlanUsageSnapshotSchema } from "./plan-usage-snapshot";
+import type { RoutingDecision } from "./routing-policy";
 import { checkForStuckLoop } from "./stuck-loop-detector";
 import type { RequestShapeMetrics } from "./types";
 
@@ -148,18 +149,19 @@ interface RequestRecord {
   outputTokens: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Extended thinking tokens (stream estimate or API-reported when available). */
+  thinkingTokens?: number;
   stream: boolean;
   latencyMs?: number;
   error?: string;
   shape?: RequestShapeMetrics;
+  decision?: RoutingDecision;
   appliedModel?: string;
 }
 
 type SQLParam = string | number | null;
 
 function shapeToParams(shape: RequestShapeMetrics | undefined): SQLParam[] {
-  // client_reasoning_effort (10th slot) is always null now — thinking has
-  // been removed. The column is preserved for DB backward compatibility.
   if (!shape) return [null, null, null, null, null, null, null, null, null, null];
   return [
     shape.route,
@@ -171,13 +173,10 @@ function shapeToParams(shape: RequestShapeMetrics | undefined): SQLParam[] {
     shape.toolDefsCount,
     shape.toolDefsHash ?? null,
     shape.clientSystemHash ?? null,
-    null,
+    shape.clientReasoningEffort ?? null,
   ];
 }
 
-// NOTE: thinking_tokens, applied_thinking_effort and routing_policy columns
-// are preserved in the schema (AGENTS.md mandates backward-compatible
-// migrations) but are now always written as 0/NULL.
 const INSERT_SQL = `INSERT INTO requests (
   timestamp, model, source, input_tokens, output_tokens,
   cache_read_tokens, cache_creation_tokens, stream, latency_ms, error,
@@ -205,9 +204,9 @@ export function recordRequest(record: RequestRecord): void {
     record.error ?? null,
     ...shapeToParams(record.shape),
     record.appliedModel ?? null,
-    null,
-    null,
-    0,
+    record.decision?.effort ?? null,
+    record.decision?.policy ?? null,
+    record.thinkingTokens ?? 0,
   ];
 
   getDb().run(INSERT_SQL, params);
@@ -229,6 +228,7 @@ interface AnalyticsSummary {
   totalOutputTokens: number;
   totalCacheReadTokens: number;
   totalCacheCreationTokens: number;
+  totalThinkingTokens: number;
   cacheHitRate: number;
   /** Heuristic: USD not billed thanks to cache reads vs full input price (see CACHE_READ_COST_RATIO). */
   cacheSavingsUsdEstimate: number;
@@ -251,7 +251,8 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
         SUM(input_tokens) as total_input_tokens,
         SUM(output_tokens) as total_output_tokens,
         SUM(cache_read_tokens) as total_cache_read_tokens,
-        SUM(cache_creation_tokens) as total_cache_creation_tokens
+        SUM(cache_creation_tokens) as total_cache_creation_tokens,
+        SUM(thinking_tokens) as total_thinking_tokens
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?`,
     )
@@ -263,12 +264,14 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
     total_output_tokens: number;
     total_cache_read_tokens: number;
     total_cache_creation_tokens: number;
+    total_thinking_tokens: number;
   };
 
   const cacheRead = totals.total_cache_read_tokens || 0;
   const cacheCreation = totals.total_cache_creation_tokens || 0;
   const totalInput = totals.total_input_tokens || 0;
   const allInput = totalInput + cacheRead + cacheCreation;
+  const totalThinking = totals.total_thinking_tokens || 0;
 
   // Blended heuristic (USD per 1M tokens) for dashboard only — not billing truth.
   const INPUT_USD_PER_M = 15;
@@ -284,6 +287,7 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
     totalOutputTokens: totals.total_output_tokens || 0,
     totalCacheReadTokens: cacheRead,
     totalCacheCreationTokens: cacheCreation,
+    totalThinkingTokens: totalThinking,
     cacheHitRate: allInput > 0 ? cacheRead / allInput : 0,
     cacheSavingsUsdEstimate,
     periodStart: since,
@@ -308,12 +312,15 @@ export function getRecentRequests(
     outputTokens: number;
     cacheReadTokens: number;
     cacheCreationTokens: number;
+    thinkingTokens: number;
     stream: boolean;
     latencyMs: number | null;
     error: string | null;
     route: string | null;
     messageCount: number | null;
     toolDefsCount: number | null;
+    routingPolicy: string | null;
+    appliedThinkingEffort: string | null;
     estimatedUsd: number;
   }>;
   total: number;
@@ -327,8 +334,8 @@ export function getRecentRequests(
   const rows = database
     .query(
       `SELECT id, timestamp, model, source, input_tokens, output_tokens,
-              cache_read_tokens, cache_creation_tokens, stream, latency_ms, error,
-              route, message_count, tool_defs_count
+              cache_read_tokens, cache_creation_tokens, thinking_tokens, stream, latency_ms, error,
+              route, message_count, tool_defs_count, routing_policy, applied_thinking_effort
        FROM requests WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ? OFFSET ?`,
     )
     .all(since, limit, offset) as Array<{
@@ -340,12 +347,15 @@ export function getRecentRequests(
     output_tokens: number;
     cache_read_tokens: number;
     cache_creation_tokens: number;
+    thinking_tokens: number;
     stream: number;
     latency_ms: number | null;
     error: string | null;
     route: string | null;
     message_count: number | null;
     tool_defs_count: number | null;
+    routing_policy: string | null;
+    applied_thinking_effort: string | null;
   }>;
 
   const INPUT_USD_PER_M = 15;
@@ -364,12 +374,15 @@ export function getRecentRequests(
       outputTokens: row.output_tokens,
       cacheReadTokens: row.cache_read_tokens,
       cacheCreationTokens: row.cache_creation_tokens,
+      thinkingTokens: row.thinking_tokens,
       stream: row.stream === 1,
       latencyMs: row.latency_ms,
       error: row.error,
       route: row.route,
       messageCount: row.message_count,
       toolDefsCount: row.tool_defs_count,
+      routingPolicy: row.routing_policy,
+      appliedThinkingEffort: row.applied_thinking_effort,
       estimatedUsd:
         (row.input_tokens * INPUT_USD_PER_M +
           row.output_tokens * OUTPUT_USD_PER_M +
@@ -476,6 +489,7 @@ export function getBudgetDaySummary(): {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  thinkingTokens: number;
   estimatedUsd: number;
 } {
   const start = new Date();
@@ -490,7 +504,8 @@ export function getBudgetDaySummary(): {
         COALESCE(SUM(input_tokens), 0) as input_tokens,
         COALESCE(SUM(output_tokens), 0) as output_tokens,
         COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-        COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens
+        COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
+        COALESCE(SUM(thinking_tokens), 0) as thinking_tokens
        FROM requests
        WHERE timestamp >= ? AND timestamp <= ?`,
     )
@@ -499,12 +514,14 @@ export function getBudgetDaySummary(): {
     output_tokens: number;
     cache_read_tokens: number;
     cache_creation_tokens: number;
+    thinking_tokens: number;
   };
 
   const inputTokens = row.input_tokens;
   const outputTokens = row.output_tokens;
   const cacheReadTokens = row.cache_read_tokens;
   const cacheCreationTokens = row.cache_creation_tokens;
+  const thinkingTokens = row.thinking_tokens;
 
   const INPUT_USD_PER_M = 15;
   const OUTPUT_USD_PER_M = 75;
@@ -524,75 +541,13 @@ export function getBudgetDaySummary(): {
     outputTokens,
     cacheReadTokens,
     cacheCreationTokens,
+    thinkingTokens,
     estimatedUsd,
   };
 }
 
 export function saveModelSettings(settings: ModelSettings): void {
   saveModelSettingsToDb(getDb(), settings);
-}
-
-interface ErrorRecord {
-  id: number;
-  timestamp: number;
-  model: string;
-  error: string | null;
-  latencyMs: number | null;
-  route: string | null;
-}
-
-/**
- * Get recent failed requests (`source='error'`) for the errors card.
- * Returns the latest errors in the window, plus the total in the window and
- * the all-time total so the UI can hide the card on brand-new installs.
- */
-export function getRecentErrors(
-  limit: number = 10,
-  since: number = 0,
-  until: number = Date.now(),
-): { errors: ErrorRecord[]; total: number; totalAllTime: number } {
-  const database = getDb();
-
-  const totalRow = database
-    .query(
-      `SELECT COUNT(*) as count FROM requests
-       WHERE source = 'error' AND timestamp >= ? AND timestamp <= ?`,
-    )
-    .get(since, until) as { count: number };
-
-  const totalAllTimeRow = database
-    .query(`SELECT COUNT(*) as count FROM requests WHERE source = 'error'`)
-    .get() as { count: number };
-
-  const rows = database
-    .query(
-      `SELECT id, timestamp, model, error, latency_ms, route
-       FROM requests
-       WHERE source = 'error' AND timestamp >= ? AND timestamp <= ?
-       ORDER BY timestamp DESC
-       LIMIT ?`,
-    )
-    .all(since, until, limit) as Array<{
-    id: number;
-    timestamp: number;
-    model: string;
-    error: string | null;
-    latency_ms: number | null;
-    route: string | null;
-  }>;
-
-  return {
-    total: totalRow.count,
-    totalAllTime: totalAllTimeRow.count,
-    errors: rows.map((row) => ({
-      id: row.id,
-      timestamp: row.timestamp,
-      model: row.model,
-      error: row.error,
-      latencyMs: row.latency_ms,
-      route: row.route,
-    })),
-  };
 }
 
 /**
