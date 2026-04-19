@@ -1,7 +1,11 @@
 export const VALID_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingEffort = (typeof VALID_EFFORTS)[number];
 
-export type SupportedSelectedModel = "claude-opus-4-7" | "claude-sonnet-4-6" | "claude-haiku-4-5";
+export type SupportedSelectedModel =
+  | "claude-opus-4-7"
+  | "claude-opus-4-6"
+  | "claude-sonnet-4-6"
+  | "claude-haiku-4-5";
 
 export const SUPPORTED_PLANS = ["pro", "max5x", "max20x"] as const;
 export type SubscriptionPlan = (typeof SUPPORTED_PLANS)[number];
@@ -73,6 +77,7 @@ const SUGGESTED_MAX_TOKENS: Record<ThinkingEffort, number> = {
 
 export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
   "claude-opus-4-7",
+  "claude-opus-4-6",
   "claude-sonnet-4-6",
   "claude-haiku-4-5",
 ];
@@ -104,7 +109,7 @@ export function getApiModelId(model: SupportedSelectedModel): string {
 
 /** Returns the context window size for a given selected model */
 export function getContextLength(model: SupportedSelectedModel): number {
-  if (model === "claude-opus-4-7") return 1000000;
+  if (model === "claude-opus-4-7" || model === "claude-opus-4-6") return 1000000;
   return 200000;
 }
 

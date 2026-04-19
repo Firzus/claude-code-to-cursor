@@ -52,6 +52,13 @@ const modelMeta: Record<(typeof supportedModels)[number], ModelMeta> = {
     icon: Sparkles,
     dataModel: "opus",
   },
+  "claude-opus-4-6": {
+    id: "opus_4_6",
+    context: "1M ctx",
+    capability: "previous flagship",
+    icon: Sparkles,
+    dataModel: "opus",
+  },
   "claude-sonnet-4-6": {
     id: "sonnet_4_6",
     context: "200K ctx",

@@ -21,6 +21,7 @@ describe("model settings contract", () => {
     expect(getExposedModels()).toEqual(["Claude Code"]);
     expect(isAllowedPublicModel("Claude Code")).toBe(true);
     expect(isAllowedPublicModel("claude-opus-4-7")).toBe(false);
+    expect(isAllowedPublicModel("claude-opus-4-6")).toBe(false);
     expect(isAllowedPublicModel("claude-sonnet-4-6")).toBe(false);
     expect(isAllowedPublicModel("claude-haiku-4-5")).toBe(false);
   });
@@ -83,6 +84,19 @@ describe("model settings contract", () => {
       thinkingEnabled: false,
       thinkingEffort: "low",
       subscriptionPlan: "pro",
+    });
+    expect(
+      validateModelSettings({
+        selectedModel: "claude-opus-4-6",
+        thinkingEnabled: true,
+        thinkingEffort: "high",
+        subscriptionPlan: "max20x",
+      }),
+    ).toEqual({
+      selectedModel: "claude-opus-4-6",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
+      subscriptionPlan: "max20x",
     });
     expect(
       validateModelSettings({
@@ -190,12 +204,14 @@ describe("model settings contract", () => {
 
   test("returns API model ID unchanged", () => {
     expect(getApiModelId("claude-opus-4-7")).toBe("claude-opus-4-7");
+    expect(getApiModelId("claude-opus-4-6")).toBe("claude-opus-4-6");
     expect(getApiModelId("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
     expect(getApiModelId("claude-haiku-4-5")).toBe("claude-haiku-4-5");
   });
 
   test("returns correct context length per model", () => {
     expect(getContextLength("claude-opus-4-7")).toBe(1000000);
+    expect(getContextLength("claude-opus-4-6")).toBe(1000000);
     expect(getContextLength("claude-sonnet-4-6")).toBe(200000);
     expect(getContextLength("claude-haiku-4-5")).toBe(200000);
   });

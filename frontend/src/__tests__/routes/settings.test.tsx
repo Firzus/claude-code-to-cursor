@@ -85,6 +85,7 @@ describe("SettingsPage", () => {
 
     expect(screen.getByRole("heading", { name: /settings/i })).toBeInTheDocument();
     expect(screen.getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(screen.getByText("Claude Opus 4.6")).toBeInTheDocument();
     expect(screen.getByText("Claude Sonnet 4.6")).toBeInTheDocument();
     expect(screen.getByText("Claude Haiku 4.5")).toBeInTheDocument();
   });

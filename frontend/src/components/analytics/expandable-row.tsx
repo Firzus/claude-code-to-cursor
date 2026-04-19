@@ -42,7 +42,7 @@ function effortBadge(effort: string | null | undefined) {
  * constant per model.
  */
 function getContextWindowTokens(model: string): number {
-  if (model === "claude-opus-4-7") return 1_000_000;
+  if (model === "claude-opus-4-7" || model === "claude-opus-4-6") return 1_000_000;
   return 200_000;
 }
 
