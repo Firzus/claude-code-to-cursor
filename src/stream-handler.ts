@@ -2,6 +2,7 @@
  * SSE streaming pipeline: converts Anthropic streaming events to OpenAI chat.completion.chunk format
  */
 
+import { createOpenAIErrorStream, createOpenAIErrorTail, toErrorMessage } from "./error-utils";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
@@ -11,6 +12,8 @@ import {
   createOpenAIStreamUsageChunk,
   createOpenAIToolCallChunk,
 } from "./openai-adapter";
+
+const encoder = new TextEncoder();
 
 /**
  * Creates a ReadableStream that converts Anthropic SSE events into OpenAI-compatible
@@ -88,20 +91,14 @@ export function createOpenAIStreamFromAnthropic(
       /** Raw characters received in thinking_delta chunks (approximate token estimate). */
       let thinkingCharsAccum = 0;
 
-      // Helper to safely enqueue data, automatically injecting
-      // "usage": null on SSE JSON chunks when include_usage is set
-      const safeEnqueue = (data: Uint8Array) => {
+      const safeEnqueue = (text: string) => {
         try {
           if (cancelled) return;
-          if (includeUsageNull) {
-            const str = new TextDecoder().decode(data);
-            if (str.startsWith("data: {") && !str.includes('"usage"')) {
-              const injected = str.replace(/\}\s*\n\n$/, ',"usage":null}\n\n');
-              controller.enqueue(new TextEncoder().encode(injected));
-              return;
-            }
+          let out = text;
+          if (includeUsageNull && text.startsWith("data: {") && !text.includes('"usage"')) {
+            out = text.replace(/\}\s*\n\n$/, ',"usage":null}\n\n');
           }
-          controller.enqueue(data);
+          controller.enqueue(encoder.encode(out));
         } catch {
           cancelled = true;
         }
@@ -116,7 +113,7 @@ export function createOpenAIStreamFromAnthropic(
         }
         const elapsed = Date.now() - lastChunkTime;
         if (elapsed >= HEARTBEAT_INTERVAL) {
-          safeEnqueue(new TextEncoder().encode(`: heartbeat\n\n`));
+          safeEnqueue(`: heartbeat\n\n`);
           lastChunkTime = Date.now();
         }
       }, HEARTBEAT_INTERVAL);
@@ -132,26 +129,24 @@ export function createOpenAIStreamFromAnthropic(
 
           const { done, value } = await reader.read();
           if (done) {
-            console.log(`   [Debug] Stream ended after ${chunkCount} chunks`);
+            logger.verbose(`[Debug] Stream ended after ${chunkCount} chunks`);
             if (!messageStopped) {
-              console.log(
-                `   [Debug] Stream ended without message_stop, sending fallback usage chunk`,
+              logger.verbose(
+                "[Debug] Stream ended without message_stop, sending fallback usage chunk",
               );
               const reasoningFromStream = Math.ceil(thinkingCharsAccum / 4);
               safeEnqueue(
-                new TextEncoder().encode(
-                  createOpenAIStreamUsageChunk(
-                    streamId,
-                    model,
-                    usageInputTokens,
-                    usageOutputTokens,
-                    usageCacheReadTokens,
-                    usageCacheCreationTokens,
-                    reasoningFromStream,
-                  ),
+                createOpenAIStreamUsageChunk(
+                  streamId,
+                  model,
+                  usageInputTokens,
+                  usageOutputTokens,
+                  usageCacheReadTokens,
+                  usageCacheCreationTokens,
+                  reasoningFromStream,
                 ),
               );
-              safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+              safeEnqueue("data: [DONE]\n\n");
               onComplete?.({
                 inputTokens: freshInputTokens,
                 outputTokens: usageOutputTokens,
@@ -167,7 +162,7 @@ export function createOpenAIStreamFromAnthropic(
 
           chunkCount++;
           if (chunkCount === 1) {
-            console.log(`   [Debug] First chunk received, length: ${value.length}`);
+            logger.verbose(`[Debug] First chunk received, length: ${value.length}`);
           }
 
           buffer += decoder.decode(value, { stream: true });
@@ -185,10 +180,8 @@ export function createOpenAIStreamFromAnthropic(
             try {
               const event = JSON.parse(data);
               if (chunkCount === 1) {
-                console.log(
-                  `   [Debug] First event type: ${
-                    event.type
-                  }, full event: ${JSON.stringify(event).substring(0, 200)}`,
+                logger.verbose(
+                  `[Debug] First event type: ${event.type}, full event: ${JSON.stringify(event).substring(0, 200)}`,
                 );
               }
 
@@ -197,27 +190,13 @@ export function createOpenAIStreamFromAnthropic(
               if (event.type === "error") {
                 const errorMessage = event.error?.message || "Unknown API error";
                 const errorType = event.error?.type || "api_error";
-                console.log(`   [Error] Anthropic stream error: ${errorType} — ${errorMessage}`);
+                logger.error(`[Stream] Anthropic stream error: ${errorType} — ${errorMessage}`);
 
-                if (!sentStart) {
-                  safeEnqueue(new TextEncoder().encode(createOpenAIStreamStart(streamId, model)));
-                  sentStart = true;
-                }
-
-                // Emit the error as text content so the user sees it in Cursor
-                safeEnqueue(
-                  new TextEncoder().encode(
-                    createOpenAIStreamChunk(streamId, model, `[Error: ${errorMessage}]`),
-                  ),
-                );
-
-                // Send stop + DONE
-                safeEnqueue(
-                  new TextEncoder().encode(
-                    createOpenAIStreamChunk(streamId, model, undefined, "stop"),
-                  ),
-                );
-                safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                const payload = sentStart
+                  ? createOpenAIErrorTail(streamId, model, errorMessage)
+                  : createOpenAIErrorStream(streamId, model, errorMessage);
+                safeEnqueue(payload);
+                sentStart = true;
                 messageStopped = true;
                 lastChunkTime = Date.now();
                 continue;
@@ -226,9 +205,9 @@ export function createOpenAIStreamFromAnthropic(
               // Handle message_start
               if (event.type === "message_start") {
                 if (!sentStart) {
-                  safeEnqueue(new TextEncoder().encode(createOpenAIStreamStart(streamId, model)));
+                  safeEnqueue(createOpenAIStreamStart(streamId, model));
                   sentStart = true;
-                  console.log(`   [Debug] Sent OpenAI stream start chunk`);
+                  logger.verbose("[Debug] Sent OpenAI stream start chunk");
                 }
                 if (event.message?.usage?.input_tokens !== undefined) {
                   usageCacheReadTokens = event.message.usage.cache_read_input_tokens || 0;
@@ -242,8 +221,8 @@ export function createOpenAIStreamFromAnthropic(
                     event.message.usage.input_tokens +
                     usageCacheReadTokens +
                     usageCacheCreationTokens;
-                  console.log(
-                    `   [Debug] Usage: input_tokens=${event.message.usage.input_tokens} + cache_read=${usageCacheReadTokens} + cache_creation=${usageCacheCreationTokens} = total prompt_tokens=${usageInputTokens}`,
+                  logger.verbose(
+                    `[Debug] Usage: input_tokens=${event.message.usage.input_tokens} + cache_read=${usageCacheReadTokens} + cache_creation=${usageCacheCreationTokens} = total prompt_tokens=${usageInputTokens}`,
                   );
                 }
               }
@@ -251,7 +230,7 @@ export function createOpenAIStreamFromAnthropic(
               // Handle content_block_start
               if (event.type === "content_block_start") {
                 if (!sentStart) {
-                  safeEnqueue(new TextEncoder().encode(createOpenAIStreamStart(streamId, model)));
+                  safeEnqueue(createOpenAIStreamStart(streamId, model));
                   sentStart = true;
                 }
 
@@ -298,16 +277,14 @@ export function createOpenAIStreamFromAnthropic(
                     };
 
                     safeEnqueue(
-                      new TextEncoder().encode(
-                        createOpenAIToolCallChunk(
-                          streamId,
-                          model,
-                          toolCallIndex,
-                          block.id,
-                          toolName,
-                          undefined,
-                          null,
-                        ),
+                      createOpenAIToolCallChunk(
+                        streamId,
+                        model,
+                        toolCallIndex,
+                        block.id,
+                        toolName,
+                        undefined,
+                        null,
                       ),
                     );
                   } else {
@@ -354,17 +331,11 @@ export function createOpenAIStreamFromAnthropic(
                     );
 
                     if (!sentStart) {
-                      safeEnqueue(
-                        new TextEncoder().encode(createOpenAIStreamStart(streamId, model)),
-                      );
+                      safeEnqueue(createOpenAIStreamStart(streamId, model));
                       sentStart = true;
                     }
 
-                    safeEnqueue(
-                      new TextEncoder().encode(
-                        createOpenAIStreamChunk(streamId, model, extractedText),
-                      ),
-                    );
+                    safeEnqueue(createOpenAIStreamChunk(streamId, model, extractedText));
                     lastChunkTime = Date.now();
                   }
 
@@ -378,22 +349,20 @@ export function createOpenAIStreamFromAnthropic(
                 logger.verbose(`   [Debug] content_block_stop for index ${event.index}`);
 
                 if (currentToolCall) {
-                  console.log(
-                    `   [Debug] Tool call done: ${currentToolCall.name} (${currentToolCall.inputJson.length} chars)`,
+                  logger.verbose(
+                    `[Debug] Tool call done: ${currentToolCall.name} (${currentToolCall.inputJson.length} chars)`,
                   );
 
                   if (!currentToolCall.inputJson) {
                     safeEnqueue(
-                      new TextEncoder().encode(
-                        createOpenAIToolCallChunk(
-                          streamId,
-                          model,
-                          toolCallIndex,
-                          undefined,
-                          undefined,
-                          "{}",
-                          null,
-                        ),
+                      createOpenAIToolCallChunk(
+                        streamId,
+                        model,
+                        toolCallIndex,
+                        undefined,
+                        undefined,
+                        "{}",
+                        null,
                       ),
                     );
                   }
@@ -433,16 +402,14 @@ export function createOpenAIStreamFromAnthropic(
                 currentToolCall.inputJson += jsonChunk;
                 if (jsonChunk) {
                   safeEnqueue(
-                    new TextEncoder().encode(
-                      createOpenAIToolCallChunk(
-                        streamId,
-                        model,
-                        toolCallIndex,
-                        undefined,
-                        undefined,
-                        jsonChunk,
-                        null,
-                      ),
+                    createOpenAIToolCallChunk(
+                      streamId,
+                      model,
+                      toolCallIndex,
+                      undefined,
+                      undefined,
+                      jsonChunk,
+                      null,
                     ),
                   );
                   lastChunkTime = Date.now();
@@ -462,7 +429,7 @@ export function createOpenAIStreamFromAnthropic(
                 }
 
                 if (!sentStart) {
-                  safeEnqueue(new TextEncoder().encode(createOpenAIStreamStart(streamId, model)));
+                  safeEnqueue(createOpenAIStreamStart(streamId, model));
                   sentStart = true;
                 }
 
@@ -520,9 +487,7 @@ export function createOpenAIStreamFromAnthropic(
                     `   [Debug] content_block_delta chunk (${output.length} chars): ${JSON.stringify(output)}`,
                   );
 
-                  safeEnqueue(
-                    new TextEncoder().encode(createOpenAIStreamChunk(streamId, model, output)),
-                  );
+                  safeEnqueue(createOpenAIStreamChunk(streamId, model, output));
                   lastChunkTime = Date.now();
                 }
               }
@@ -531,7 +496,7 @@ export function createOpenAIStreamFromAnthropic(
               if (event.type === "message_delta") {
                 if (event.usage?.output_tokens !== undefined) {
                   usageOutputTokens = event.usage.output_tokens;
-                  console.log(`   [Debug] Usage: output_tokens=${usageOutputTokens}`);
+                  logger.verbose(`[Debug] Usage: output_tokens=${usageOutputTokens}`);
                 }
               }
 
@@ -543,38 +508,34 @@ export function createOpenAIStreamFromAnthropic(
                 const reasoningFromStream = Math.ceil(thinkingCharsAccum / 4);
 
                 safeEnqueue(
-                  new TextEncoder().encode(
-                    createOpenAIStreamChunk(
-                      streamId,
-                      model,
-                      undefined,
-                      finishReason as "stop" | "length",
-                      computeOpenAIUsage(
-                        usageInputTokens,
-                        usageOutputTokens,
-                        usageCacheReadTokens,
-                        reasoningFromStream,
-                      ),
-                    ),
-                  ),
-                );
-                safeEnqueue(
-                  new TextEncoder().encode(
-                    createOpenAIStreamUsageChunk(
-                      streamId,
-                      model,
+                  createOpenAIStreamChunk(
+                    streamId,
+                    model,
+                    undefined,
+                    finishReason as "stop" | "length",
+                    computeOpenAIUsage(
                       usageInputTokens,
                       usageOutputTokens,
                       usageCacheReadTokens,
-                      usageCacheCreationTokens,
                       reasoningFromStream,
                     ),
                   ),
                 );
-                console.log(
-                  `   [Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, reasoning≈${reasoningFromStream}, total=${usageInputTokens + usageOutputTokens}`,
+                safeEnqueue(
+                  createOpenAIStreamUsageChunk(
+                    streamId,
+                    model,
+                    usageInputTokens,
+                    usageOutputTokens,
+                    usageCacheReadTokens,
+                    usageCacheCreationTokens,
+                    reasoningFromStream,
+                  ),
                 );
-                safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                logger.verbose(
+                  `[Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, reasoning≈${reasoningFromStream}, total=${usageInputTokens + usageOutputTokens}`,
+                );
+                safeEnqueue("data: [DONE]\n\n");
                 logger.verbose(`   [Debug] Sent [DONE] chunk with finish_reason: ${finishReason}`);
                 onComplete?.({
                   inputTokens: freshInputTokens,
@@ -586,18 +547,23 @@ export function createOpenAIStreamFromAnthropic(
               }
             } catch (parseError) {
               if (!cancelled) {
-                console.log(`   [Debug] Failed to parse event: ${parseError}`);
+                logger.verbose(`[Debug] Failed to parse event: ${parseError}`);
               }
             }
           }
         }
       } catch (streamError) {
         if (!cancelled) {
-          console.error(`   [Error] Stream processing failed: ${streamError}`);
+          const errMsg = toErrorMessage(streamError);
+          logger.error(`[Stream] Processing failed: ${errMsg}`);
           try {
-            controller.error(streamError);
+            const payload = sentStart
+              ? createOpenAIErrorTail(streamId, model, errMsg)
+              : createOpenAIErrorStream(streamId, model, errMsg);
+            safeEnqueue(payload);
+            controller.close();
           } catch {
-            // Controller already closed, ignore
+            // Best effort — controller may already be closed
           }
         }
       } finally {

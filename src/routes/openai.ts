@@ -1,5 +1,6 @@
 import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
+import { createOpenAIErrorStream, parseResponseError, toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import { getApiModelId, isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
@@ -33,12 +34,12 @@ function indentBlock(text: string, prefix = "      "): string {
 }
 
 function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
-  console.log(
-    `\n📋 [Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
+  logger.info(
+    `[Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
   );
 
   if (openaiBody.reasoning_effort) {
-    console.log(`   Reasoning Effort: ${openaiBody.reasoning_effort}`);
+    logger.info(`Reasoning Effort: ${openaiBody.reasoning_effort}`);
   }
 
   logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
@@ -61,7 +62,6 @@ function logAnthropicConversion(
   const thinkingEnabled = !!anthropicBody.thinking;
   const effort = anthropicBody.output_config?.effort ?? null;
   const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (effort=${effort})` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
-  console.log(`\n→ ${routeSummary}`);
   logger.info(routeSummary);
 
   if (anthropicBody.system) {
@@ -79,17 +79,17 @@ function logAnthropicConversion(
     });
   }
 
-  console.log(`\n📤 [Prepared Request Summary]:`);
-  console.log(`   System prompt present: ${!!anthropicBody.system}`);
+  logger.verbose(`[Prepared Request Summary]: system=${!!anthropicBody.system}`);
   if (anthropicBody.system) {
     const sysPreview =
       typeof anthropicBody.system === "string"
         ? anthropicBody.system.substring(0, 100)
         : `array (${(anthropicBody.system as ContentBlock[]).length} blocks)`;
-    console.log(`   System type: ${typeof anthropicBody.system}, preview: ${sysPreview}...`);
+    logger.verbose(`System type: ${typeof anthropicBody.system}, preview: ${sysPreview}...`);
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: orchestrates OpenAI→Anthropic conversion, thinking policy, and stream/sync branching in one handler.
 export async function handleOpenAIChatCompletions(req: Request): Promise<Response> {
   try {
     logRequestDetails(req, "OpenAI /v1/chat/completions");
@@ -125,14 +125,14 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     const response = await proxyRequest("/v1/messages", anthropicBody);
 
-    console.log(`   [Debug] Response status: ${response.status}, ok: ${response.ok}`);
+    logger.verbose(`[Debug] Response status: ${response.status}, ok: ${response.ok}`);
 
     if (!response.ok) {
       const errorText = await response
         .clone()
         .text()
         .catch(() => "Unable to read error");
-      console.log(`   [Debug] Error response: ${errorText.substring(0, 500)}`);
+      logger.verbose(`[Debug] Error response: ${errorText.substring(0, 500)}`);
     }
 
     logger.verbose(
@@ -143,13 +143,22 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     responseHeaders.set("Content-Type", "application/json");
 
     // Handle streaming
-    if (anthropicBody.stream && response.ok) {
+    if (anthropicBody.stream) {
       responseHeaders.set("Content-Type", "text/event-stream");
       responseHeaders.set("Cache-Control", "no-cache");
       responseHeaders.set("Connection", "keep-alive");
       responseHeaders.set("X-Accel-Buffering", "no");
 
       const streamId = Date.now().toString();
+
+      // Pre-stream error: emit as SSE so Cursor displays the message
+      // instead of silently dropping the conversation.
+      if (!response.ok) {
+        const { message } = await parseResponseError(response);
+        logger.error(`[SSE Error] Pre-stream failure for OpenAI route: ${message}`);
+        const ssePayload = createOpenAIErrorStream(streamId, openaiBody.model, message);
+        return new Response(new TextEncoder().encode(ssePayload), { headers: responseHeaders });
+      }
 
       if (!response.body) {
         return Response.json({ error: { message: "No response body" } }, { status: 500 });
@@ -160,9 +169,11 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         userToolNames = new Set<string>();
         for (const tool of openaiBody.tools) {
           const name =
-            tool.type === "function" && tool.function?.name
+            "type" in tool && tool.type === "function" && tool.function?.name
               ? tool.function.name
-              : (tool as any).name;
+              : "name" in tool
+                ? tool.name
+                : undefined;
           if (name) userToolNames.add(name);
         }
       }
@@ -218,9 +229,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {
-    console.error("OpenAI request handling error:", error);
-    const fullError = error instanceof Error ? error.message : String(error);
-    logger.error(`OpenAI request handling error: ${fullError}`);
+    logger.error(`OpenAI request handling error: ${toErrorMessage(error)}`);
     return Response.json(
       { error: { message: "Request processing failed", type: "invalid_request_error" } },
       { status: 400 },

@@ -1,5 +1,6 @@
 import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
+import { createAnthropicErrorSSE, parseResponseError, toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
@@ -83,6 +84,7 @@ function rewriteAnthropicSseResponseModel(
   let thinkingCharsAccum = 0;
 
   return new ReadableStream<Uint8Array>({
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: single-pass SSE rewriter with usage extraction — splitting would duplicate stream plumbing.
     async start(controller) {
       let buffer = "";
 
@@ -159,7 +161,14 @@ function rewriteAnthropicSseResponseModel(
         });
         controller.close();
       } catch (error) {
-        controller.error(error);
+        const errMsg = toErrorMessage(error);
+        logger.error(`[Stream] Anthropic SSE rewriter failed: ${errMsg}`);
+        try {
+          controller.enqueue(encoder.encode(createAnthropicErrorSSE("api_error", errMsg)));
+          controller.close();
+        } catch {
+          // Controller already closed or errored
+        }
       } finally {
         reader.releaseLock();
       }
@@ -258,11 +267,23 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       getApiModelId(modelSettings.selectedModel),
     );
 
-    console.log(
-      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking?.type ?? "none"} | effort=${body.output_config?.effort ?? "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
+    logger.info(
+      `Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking?.type ?? "none"} | effort=${body.output_config?.effort ?? "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
     );
 
     const proxiedResponse = await proxyRequest("/v1/messages", body);
+
+    // Pre-stream error: emit as SSE so the client sees the message
+    // instead of a silent stream death.
+    if (body.stream && !proxiedResponse.ok) {
+      const { message, type } = await parseResponseError(proxiedResponse);
+      logger.error(`[SSE Error] Pre-stream failure for Anthropic route: ${message}`);
+      const responseHeaders = new Headers(corsHeaders(req));
+      responseHeaders.set("Content-Type", "text/event-stream");
+      responseHeaders.set("Cache-Control", "no-cache");
+      return new Response(createAnthropicErrorSSE(type, message), { headers: responseHeaders });
+    }
+
     const streamStartTime = Date.now();
     const response = await rewriteAnthropicResponseModel(
       proxiedResponse,
@@ -296,8 +317,8 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error("Request handling error:", error);
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
+    logger.error(`Request handling error: ${message}`);
     return Response.json(
       {
         type: "error",

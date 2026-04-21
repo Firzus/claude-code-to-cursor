@@ -166,17 +166,18 @@ const ChartTooltipContent = React.forwardRef<HTMLDivElement, ChartTooltipContent
       >
         {tooltipLabel}
         <div className="grid gap-1.5">
-          {payload.map((item, index) => {
+          {payload.map((item, itemIndex) => {
             const key = nameKey
               ? String(item.payload?.[nameKey] ?? item.name)
               : ((item.dataKey as string) ?? item.name);
             const configEntry = key ? config[key] : undefined;
             const indicatorColor = item.fill || item.stroke || item.color || "var(--color-accent)";
             const displayName = configEntry?.label ?? key;
+            const itemKey = `${key}-${item.dataKey ?? item.name}`;
 
             return (
               <div
-                key={`${key}-${index}`}
+                key={itemKey}
                 className={cn(
                   "flex w-full items-center gap-2",
                   indicator === "dot" && "items-center",
@@ -197,7 +198,7 @@ const ChartTooltipContent = React.forwardRef<HTMLDivElement, ChartTooltipContent
                   <span className="text-muted-foreground">{displayName}</span>
                   <span className="font-mono font-medium text-foreground tabular-nums ml-3">
                     {formatter
-                      ? formatter(item.value ?? 0, String(key), item, index, payload)
+                      ? formatter(item.value ?? 0, String(key), item, itemIndex, payload)
                       : (item.value ?? 0).toLocaleString()}
                   </span>
                 </div>

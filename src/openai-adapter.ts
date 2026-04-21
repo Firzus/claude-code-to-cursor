@@ -6,14 +6,10 @@
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
-  getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
-  isValidThinkingEffort,
-  type ModelSettings,
   type ThinkingEffort,
 } from "./model-settings";
-import { applyThinkingToBody, pickRoute } from "./routing-policy";
 import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
@@ -34,7 +30,7 @@ interface OpenAIContentPart {
   };
 }
 
-interface OpenAITool {
+interface OpenAIFunctionTool {
   type: "function";
   function: {
     name: string;
@@ -42,6 +38,15 @@ interface OpenAITool {
     parameters?: Record<string, unknown>;
   };
 }
+
+interface AnthropicToolDirect {
+  name: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  cache_control?: { type: string };
+}
+
+type OpenAITool = OpenAIFunctionTool | AnthropicToolDirect;
 
 interface OpenAIToolCall {
   id: string;
@@ -169,6 +174,7 @@ export function computeOpenAIUsage(
   };
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: maps each OpenAI content part type to its Anthropic counterpart — one branch per type.
 function convertContent(
   content: string | OpenAIContentPart[] | ContentBlock[],
 ): string | ContentBlock[] {
@@ -251,6 +257,7 @@ function convertContent(
  *                         (e.g. "claude-opus-4-7"). Use getApiModelId() from
  *                         the caller to resolve from ModelSettings.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: full OpenAI→Anthropic conversion — branches cover message roles, tool calls, images; splitting would fragment a sequential pipeline.
 export function openaiToAnthropicBase(
   originalRequest: OpenAIChatRequest,
   targetApiModel: string,
@@ -280,7 +287,8 @@ export function openaiToAnthropicBase(
   logger.verbose(`\n=== OPENAI TO ANTHROPIC CONVERSION ===`);
   logger.verbose(`Total incoming messages: ${request.messages.length}`);
   for (let i = 0; i < request.messages.length; i++) {
-    const msg = request.messages[i]!;
+    const msg = request.messages[i];
+    if (!msg) continue;
     const hasToolCalls = (msg as OpenAIMessage).tool_calls?.length || 0;
     const hasToolCallId = (msg as OpenAIMessage).tool_call_id || null;
     const contentPreview =
@@ -403,7 +411,8 @@ export function openaiToAnthropicBase(
   // Log converted messages summary
   logger.verbose(`\nConverted to ${messages.length} Anthropic messages:`);
   for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]!;
+    const msg = messages[i];
+    if (!msg) continue;
     if (Array.isArray(msg.content)) {
       const types = msg.content.map((b: ContentBlock) => b.type).join(", ");
       logger.verbose(`  [${i}] role=${msg.role}, content=[${types}]`);
@@ -444,18 +453,11 @@ export function openaiToAnthropicBase(
       : undefined,
   };
 
-  // Pass through tools - Cursor already sends them in Anthropic format
-  // (name, description, input_schema) not OpenAI format (type: "function", function: {...})
   if (request.tools && request.tools.length > 0) {
-    // Check if it's OpenAI format (has type: "function") or Anthropic format (has name directly)
-    const firstTool = request.tools[0] as unknown as Record<string, unknown>;
-    if (firstTool.type === "function" && firstTool.function) {
-      // OpenAI format - convert to Anthropic
+    const firstTool = request.tools[0];
+    if (firstTool && "type" in firstTool && firstTool.type === "function") {
       result.tools = request.tools.map((tool) => {
-        const t = tool as {
-          type: string;
-          function: { name: string; description?: string; parameters?: Record<string, unknown> };
-        };
+        const t = tool as OpenAIFunctionTool;
         return {
           name: t.function.name,
           description: t.function.description || "",
@@ -463,41 +465,22 @@ export function openaiToAnthropicBase(
         };
       });
     } else {
-      // Already Anthropic format - pass through directly
-      result.tools = request.tools as unknown as typeof result.tools;
+      result.tools = request.tools as AnthropicToolDirect[] as typeof result.tools;
     }
-    console.log(`   [Debug] Passing ${request.tools.length} tools to Anthropic`);
+    logger.verbose(`[Debug] Passing ${request.tools.length} tools to Anthropic`);
   }
 
-  // Pass through tool_choice - Cursor sends it in Anthropic format
   if (request.tool_choice) {
-    result.tool_choice = request.tool_choice as unknown as typeof result.tool_choice;
+    if (typeof request.tool_choice === "object" && "type" in request.tool_choice) {
+      const tc = request.tool_choice;
+      result.tool_choice = {
+        type: tc.type === "function" ? ("tool" as const) : (tc.type as "auto" | "any" | "tool"),
+        name: "function" in tc ? tc.function.name : undefined,
+      };
+    }
   }
 
   return result;
-}
-
-/**
- * @deprecated Use openaiToAnthropicBase + pickRoute + applyThinkingToBody instead.
- * Kept for backward-compatibility; internally applies the routing policy.
- */
-export function openaiToAnthropic(
-  originalRequest: OpenAIChatRequest,
-  modelSettings: ModelSettings,
-): AnthropicRequest {
-  const apiModelId = getApiModelId(modelSettings.selectedModel);
-  const base = openaiToAnthropicBase(originalRequest, apiModelId);
-  const clientEffort = isValidThinkingEffort(originalRequest.reasoning_effort)
-    ? (originalRequest.reasoning_effort as ThinkingEffort)
-    : null;
-  const decision = pickRoute({ settings: modelSettings, clientEffort });
-  return applyThinkingToBody(
-    base,
-    decision,
-    originalRequest.max_tokens ?? originalRequest.max_completion_tokens,
-    originalRequest.temperature,
-    apiModelId,
-  );
 }
 
 export function anthropicToOpenai(

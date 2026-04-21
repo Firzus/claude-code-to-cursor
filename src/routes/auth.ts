@@ -93,7 +93,7 @@ export async function handleOAuthCallbackAPI(req: Request): Promise<Response> {
 
     const auth = await exchangeCode(code, pkce.codeVerifier, state);
     const expiresIn = Math.round((auth.expiresAt - Date.now()) / 1000 / 60);
-    console.log(`✓ OAuth login successful — token expires in ${expiresIn} minutes`);
+    logger.info(`OAuth login successful — token expires in ${expiresIn} minutes`);
 
     return Response.json({ success: true, message: "Authentication successful.", expiresIn });
   } catch (error) {

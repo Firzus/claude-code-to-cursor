@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import {
-  DEFAULT_MODEL_SETTINGS,
-  getSuggestedMaxTokens,
-  type ModelSettings,
-} from "./model-settings";
-import { openaiToAnthropic } from "./openai-adapter";
+import type { ThinkingEffort } from "./model-settings";
+import { getApiModelId, getSuggestedMaxTokens, type ModelSettings } from "./model-settings";
+import { openaiToAnthropicBase } from "./openai-adapter";
+import { applyThinkingToBody, pickRoute } from "./routing-policy";
 
 function createRequest(model = "Claude Code") {
   return {
@@ -14,11 +12,28 @@ function createRequest(model = "Claude Code") {
   };
 }
 
+function convert(
+  request: ReturnType<typeof createRequest> & { reasoning_effort?: ThinkingEffort },
+  settings: ModelSettings,
+) {
+  const apiModelId = getApiModelId(settings.selectedModel);
+  const base = openaiToAnthropicBase(request, apiModelId);
+  const clientEffort = request.reasoning_effort ?? null;
+  const decision = pickRoute({ settings, clientEffort });
+  return applyThinkingToBody(base, decision, request.max_tokens, undefined, apiModelId);
+}
+
 describe("openaiToAnthropic", () => {
   test('rejects requests whose model is not "Claude Code"', () => {
-    expect(() =>
-      openaiToAnthropic(createRequest("claude-opus-4-7"), DEFAULT_MODEL_SETTINGS),
-    ).toThrow('Invalid model "claude-opus-4-7": only "Claude Code" is supported.');
+    const settings: ModelSettings = {
+      selectedModel: "claude-opus-4-7",
+      thinkingEnabled: true,
+      thinkingEffort: "high",
+      subscriptionPlan: "max20x",
+    };
+    expect(() => convert(createRequest("claude-opus-4-7"), settings)).toThrow(
+      'Invalid model "claude-opus-4-7": only "Claude Code" is supported.',
+    );
   });
 
   test("uses selectedModel and omits thinking when thinkingEnabled=false", () => {
@@ -29,7 +44,7 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const result = openaiToAnthropic(createRequest(), settings);
+    const result = convert(createRequest(), settings);
 
     expect(result.model).toBe("claude-haiku-4-5");
     expect(result.thinking).toBeUndefined();
@@ -46,7 +61,7 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const result = openaiToAnthropic(createRequest(), settings);
+    const result = convert(createRequest(), settings);
 
     expect(result.model).toBe("claude-sonnet-4-6");
     expect(result.thinking).toEqual({ type: "adaptive" });
@@ -63,12 +78,8 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const request = {
-      ...createRequest(),
-      reasoning_effort: "low" as const,
-    };
-
-    const result = openaiToAnthropic(request, settings);
+    const request = { ...createRequest(), reasoning_effort: "low" as const };
+    const result = convert(request, settings);
 
     expect(result.thinking).toEqual({ type: "adaptive" });
     expect(result.output_config).toEqual({ effort: "low" });
@@ -82,12 +93,8 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const request = {
-      ...createRequest(),
-      reasoning_effort: "xhigh" as const,
-    };
-
-    const result = openaiToAnthropic(request, settings);
+    const request = { ...createRequest(), reasoning_effort: "xhigh" as const };
+    const result = convert(request, settings);
 
     expect(result.output_config).toEqual({ effort: "xhigh" });
   });
@@ -100,12 +107,8 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const request = {
-      ...createRequest(),
-      reasoning_effort: "max" as const,
-    };
-
-    const result = openaiToAnthropic(request, settings);
+    const request = { ...createRequest(), reasoning_effort: "max" as const };
+    const result = convert(request, settings);
 
     expect(result.output_config).toEqual({ effort: "medium" });
   });
@@ -118,7 +121,7 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const result = openaiToAnthropic(createRequest(), settings);
+    const result = convert(createRequest(), settings);
 
     expect(result.thinking).toEqual({ type: "adaptive" });
     expect(result.output_config).toEqual({ effort: "high" });
@@ -132,7 +135,7 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
 
-    const result = openaiToAnthropic(createRequest(), settings);
+    const result = convert(createRequest(), settings);
 
     expect(result.model).toBe("claude-opus-4-7");
   });

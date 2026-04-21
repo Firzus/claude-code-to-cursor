@@ -10,7 +10,7 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { AgoText } from "~/components/analytics/ago-text";
 import { ConfirmDialog } from "~/components/analytics/confirm-dialog";
@@ -122,11 +122,8 @@ function exportCsv(requests: RequestRecord[]) {
   URL.revokeObjectURL(url);
 }
 
-const tokenBreakdownConfig = {
-  cacheReadTokens: { label: "Cache Read", color: "var(--color-success)" },
-  inputTokens: { label: "Fresh Input", color: "var(--color-chart-1)" },
-  cacheCreationTokens: { label: "Cache Write", color: "var(--color-chart-3)" },
-  outputTokens: { label: "Output", color: "var(--color-chart-2)" },
+const usageChartConfig = {
+  weightedTokens: { label: "Usage", color: "var(--color-chart-1)" },
 } satisfies ChartConfig;
 
 const PAGE_SIZE = 20;
@@ -171,7 +168,15 @@ function AnalyticsPage() {
       .finally(() => setResetting(false));
   }
 
-  const timelineData = timeline.data?.buckets;
+  const timelineData = useMemo(() => {
+    if (!timeline.data?.buckets) return undefined;
+    return timeline.data.buckets.map((b) => ({
+      timestamp: b.timestamp,
+      weightedTokens: Math.round(
+        b.inputTokens + b.outputTokens + b.cacheCreationTokens + b.cacheReadTokens * 0.1,
+      ),
+    }));
+  }, [timeline.data?.buckets]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -331,29 +336,25 @@ function AnalyticsPage() {
         />
       )}
 
-      {/* Chart — Token usage over time */}
+      {/* Chart — Weighted token usage over time */}
       {timelineData && timelineData.length > 0 && (
         <Card variant="flat" padding="none">
-          <CardHeader index="// chart" title="token usage over time" hint="stacked area" />
+          <CardHeader
+            index="// chart"
+            title="subscription usage over time"
+            hint="weighted tokens"
+          />
           <CardContent className="p-4">
-            <ChartContainer config={tokenBreakdownConfig} className="aspect-auto h-[200px] w-full">
+            <ChartContainer config={usageChartConfig} className="aspect-auto h-[200px] w-full">
               <AreaChart
                 accessibilityLayer
                 data={timelineData}
                 margin={{ left: 0, right: 8, top: 4, bottom: 0 }}
               >
                 <defs>
-                  <linearGradient id="fillCacheRead" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--color-success)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="fillFreshInput" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.3} />
+                  <linearGradient id="fillUsage" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.25} />
                     <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="fillCacheWrite" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-chart-3)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--color-chart-3)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
@@ -404,38 +405,10 @@ function AnalyticsPage() {
                 />
                 <Area
                   type="monotone"
-                  dataKey="cacheReadTokens"
-                  stackId="1"
-                  stroke="var(--color-success)"
-                  strokeWidth={1.5}
-                  fill="url(#fillCacheRead)"
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="inputTokens"
-                  stackId="1"
+                  dataKey="weightedTokens"
                   stroke="var(--color-chart-1)"
                   strokeWidth={1.5}
-                  fill="url(#fillFreshInput)"
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="cacheCreationTokens"
-                  stackId="1"
-                  stroke="var(--color-chart-3)"
-                  strokeWidth={1.5}
-                  fill="url(#fillCacheWrite)"
-                  dot={false}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="outputTokens"
-                  stroke="var(--color-chart-2)"
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                  fill="none"
+                  fill="url(#fillUsage)"
                   dot={false}
                 />
               </AreaChart>

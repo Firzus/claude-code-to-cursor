@@ -74,7 +74,7 @@ describe("corsHeaders", () => {
 
   it("sets Vary: Origin so caches don't pollute responses across origins", () => {
     const headers = corsHeaders();
-    expect(headers["Vary"]).toBe("Origin");
+    expect(headers.Vary).toBe("Origin");
   });
 
   it("includes credentials header", () => {
