@@ -435,16 +435,12 @@ async function handle400(response: Response): Promise<RequestResult> {
   return { success: false, error: errorMessage || "Bad request" };
 }
 
-async function handleNonOkStatus(response: Response, stream: boolean): Promise<RequestResult> {
+async function handleNonOkStatus(response: Response, _stream: boolean): Promise<RequestResult> {
   const errorBody = await response
     .clone()
     .text()
     .catch(() => "");
-  console.log(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
-
-  if (stream) {
-    return { success: true, response, source: "claude_code" };
-  }
+  logger.error(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
 
   let errorMessage = "API error";
   try {
@@ -532,7 +528,6 @@ async function makeClaudeCodeRequest(
         "User-Agent": CLAUDE_CODE_USER_AGENT,
       },
       body: JSON.stringify(preparedBody),
-      signal: AbortSignal.timeout(120_000),
     });
 
     // Capture the unified rate-limit headers on every response (200 + 4xx).
@@ -558,7 +553,9 @@ async function makeClaudeCodeRequest(
     return { success: true, response, source: "claude_code" };
   } catch (error) {
     if (isProbe) finalizeRateLimitProbe("retry");
-    console.error("Claude Code OAuth request failed:", error);
+    logger.error(
+      `Claude Code OAuth request failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return { success: false, error: String(error) };
   }
 }

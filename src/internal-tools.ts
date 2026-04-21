@@ -8,6 +8,7 @@
  * Parse the JSON payload of an internal tool call and return human-readable text.
  * Returns null if nothing useful can be extracted.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: branches map 1:1 to supported tool names — a dispatch table would obscure intent.
 export function formatInternalToolContent(toolName: string, data: unknown): string | null {
   if (!data || typeof data !== "object") return null;
   const obj = data as Record<string, unknown>;
@@ -37,6 +38,7 @@ export function formatInternalToolContent(toolName: string, data: unknown): stri
   return genericExtract(obj);
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: nested type-narrowing guards are inherent to untyped JSON traversal.
 function appendList(parts: string[], value: unknown): void {
   if (!Array.isArray(value)) return;
   for (const item of value) {

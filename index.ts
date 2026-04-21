@@ -75,6 +75,7 @@ function printPortInUseHelp(port: number) {
 
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10 MB
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flat routing table — splitting would add indirection without reducing real complexity.
 async function handleRequest(req: Request, url: URL): Promise<Response> {
   // Reject oversized request bodies
   const contentLength = parseInt(req.headers.get("content-length") || "0", 10);

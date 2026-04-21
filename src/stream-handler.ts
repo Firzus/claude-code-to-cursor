@@ -197,7 +197,7 @@ export function createOpenAIStreamFromAnthropic(
               if (event.type === "error") {
                 const errorMessage = event.error?.message || "Unknown API error";
                 const errorType = event.error?.type || "api_error";
-                console.log(`   [Error] Anthropic stream error: ${errorType} — ${errorMessage}`);
+                logger.error(`[Stream] Anthropic stream error: ${errorType} — ${errorMessage}`);
 
                 if (!sentStart) {
                   safeEnqueue(new TextEncoder().encode(createOpenAIStreamStart(streamId, model)));
@@ -593,9 +593,28 @@ export function createOpenAIStreamFromAnthropic(
         }
       } catch (streamError) {
         if (!cancelled) {
-          console.error(`   [Error] Stream processing failed: ${streamError}`);
+          const errMsg = streamError instanceof Error ? streamError.message : String(streamError);
+          logger.error(`[Stream] Processing failed: ${errMsg}`);
+
           try {
-            controller.error(streamError);
+            if (!sentStart) {
+              safeEnqueue(new TextEncoder().encode(createOpenAIStreamStart(streamId, model)));
+            }
+            safeEnqueue(
+              new TextEncoder().encode(
+                createOpenAIStreamChunk(streamId, model, `[Error: ${errMsg}]`),
+              ),
+            );
+            safeEnqueue(
+              new TextEncoder().encode(createOpenAIStreamChunk(streamId, model, undefined, "stop")),
+            );
+            safeEnqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+          } catch {
+            // Best effort — controller may already be closed
+          }
+
+          try {
+            controller.close();
           } catch {
             // Controller already closed, ignore
           }

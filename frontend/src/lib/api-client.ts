@@ -10,7 +10,7 @@ declare global {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: ZodType requires explicit any for its internal definition/input type parameters
 type AnyZodType<T> = ZodType<T, any, any>;
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T>;

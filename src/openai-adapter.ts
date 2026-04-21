@@ -169,6 +169,7 @@ export function computeOpenAIUsage(
   };
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: maps each OpenAI content part type to its Anthropic counterpart — one branch per type.
 function convertContent(
   content: string | OpenAIContentPart[] | ContentBlock[],
 ): string | ContentBlock[] {
@@ -251,6 +252,7 @@ function convertContent(
  *                         (e.g. "claude-opus-4-7"). Use getApiModelId() from
  *                         the caller to resolve from ModelSettings.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: full OpenAI→Anthropic conversion — branches cover message roles, tool calls, images; splitting would fragment a sequential pipeline.
 export function openaiToAnthropicBase(
   originalRequest: OpenAIChatRequest,
   targetApiModel: string,
@@ -280,7 +282,8 @@ export function openaiToAnthropicBase(
   logger.verbose(`\n=== OPENAI TO ANTHROPIC CONVERSION ===`);
   logger.verbose(`Total incoming messages: ${request.messages.length}`);
   for (let i = 0; i < request.messages.length; i++) {
-    const msg = request.messages[i]!;
+    const msg = request.messages[i];
+    if (!msg) continue;
     const hasToolCalls = (msg as OpenAIMessage).tool_calls?.length || 0;
     const hasToolCallId = (msg as OpenAIMessage).tool_call_id || null;
     const contentPreview =
@@ -403,7 +406,8 @@ export function openaiToAnthropicBase(
   // Log converted messages summary
   logger.verbose(`\nConverted to ${messages.length} Anthropic messages:`);
   for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i]!;
+    const msg = messages[i];
+    if (!msg) continue;
     if (Array.isArray(msg.content)) {
       const types = msg.content.map((b: ContentBlock) => b.type).join(", ");
       logger.verbose(`  [${i}] role=${msg.role}, content=[${types}]`);

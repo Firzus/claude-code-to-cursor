@@ -5,6 +5,8 @@ import { corsHeaders, logRequestDetails } from "../middleware";
 import { getApiModelId, isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
 import {
   anthropicToOpenai,
+  createOpenAIStreamChunk,
+  createOpenAIStreamStart,
   type OpenAIChatRequest,
   openaiToAnthropicBase,
 } from "../openai-adapter";
@@ -90,6 +92,7 @@ function logAnthropicConversion(
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: orchestrates OpenAI→Anthropic conversion, thinking policy, and stream/sync branching in one handler.
 export async function handleOpenAIChatCompletions(req: Request): Promise<Response> {
   try {
     logRequestDetails(req, "OpenAI /v1/chat/completions");
@@ -143,13 +146,41 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     responseHeaders.set("Content-Type", "application/json");
 
     // Handle streaming
-    if (anthropicBody.stream && response.ok) {
+    if (anthropicBody.stream) {
       responseHeaders.set("Content-Type", "text/event-stream");
       responseHeaders.set("Cache-Control", "no-cache");
       responseHeaders.set("Connection", "keep-alive");
       responseHeaders.set("X-Accel-Buffering", "no");
 
       const streamId = Date.now().toString();
+
+      // Pre-stream error: proxy returned a non-ok status (429, 401, 502, etc.)
+      // Emit the error as a short SSE stream so Cursor displays the message
+      // instead of silently dropping the conversation.
+      if (!response.ok) {
+        const errorText = await response
+          .clone()
+          .text()
+          .catch(() => "");
+        let errorMessage = `HTTP ${response.status}`;
+        try {
+          const parsed = JSON.parse(errorText) as { error?: { message?: string } };
+          if (parsed?.error?.message) errorMessage = parsed.error.message;
+        } catch {
+          if (errorText) errorMessage = errorText.substring(0, 200);
+        }
+
+        logger.error(`[SSE Error] Pre-stream failure for OpenAI route: ${errorMessage}`);
+
+        const encoder = new TextEncoder();
+        const ssePayload =
+          createOpenAIStreamStart(streamId, openaiBody.model) +
+          createOpenAIStreamChunk(streamId, openaiBody.model, `[Error: ${errorMessage}]`) +
+          createOpenAIStreamChunk(streamId, openaiBody.model, undefined, "stop") +
+          "data: [DONE]\n\n";
+
+        return new Response(encoder.encode(ssePayload), { headers: responseHeaders });
+      }
 
       if (!response.body) {
         return Response.json({ error: { message: "No response body" } }, { status: 500 });
@@ -162,7 +193,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
           const name =
             tool.type === "function" && tool.function?.name
               ? tool.function.name
-              : (tool as any).name;
+              : ((tool as unknown as Record<string, unknown>).name as string | undefined);
           if (name) userToolNames.add(name);
         }
       }
@@ -218,7 +249,6 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {
-    console.error("OpenAI request handling error:", error);
     const fullError = error instanceof Error ? error.message : String(error);
     logger.error(`OpenAI request handling error: ${fullError}`);
     return Response.json(
