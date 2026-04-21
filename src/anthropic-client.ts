@@ -5,6 +5,7 @@ import {
   CLAUDE_CODE_USER_AGENT,
 } from "./config";
 import { recordRequest } from "./db";
+import { parseResponseError, toErrorMessage } from "./error-utils";
 import { logger } from "./logger";
 import { getSuggestedMaxTokens, isValidThinkingEffort } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
@@ -64,7 +65,7 @@ function checkRateLimit(): { limited: boolean; isProbe: boolean } {
   if (now >= rateLimitCache.cachedAt + RATE_LIMIT_SOFT_MS) {
     if (!rateLimitCache.probeInFlight) {
       rateLimitCache.probeInFlight = true;
-      console.log("Rate limit soft expiry: allowing probe request");
+      logger.info("Rate limit soft expiry: allowing probe request");
       return { limited: false, isProbe: true };
     }
     // Another probe already in flight, still block
@@ -154,7 +155,7 @@ function cacheRateLimit(apiResetAt: number) {
   const cappedMin = Math.ceil((rateLimitCache.resetAt - now) / 60000);
   const originalMin = Math.ceil((apiResetAt - now) / 60000);
   if (cappedMin < originalMin) {
-    console.log(`   Rate limit cached for ${cappedMin}m (API said ${originalMin}m, capped)`);
+    logger.warn(`Rate limit cached for ${cappedMin}m (API said ${originalMin}m, capped)`);
   }
 }
 
@@ -427,50 +428,38 @@ async function handle400(response: Response): Promise<RequestResult> {
   const errorMessage = errorBody?.error?.message || "";
 
   if (errorMessage.includes("only authorized for use with Claude Code")) {
-    console.log("OAuth token not authorized for direct API use");
+    logger.error("OAuth token not authorized for direct API use");
     return { success: false, error: "OAuth not authorized for API" };
   }
 
-  console.log("Claude Code 400 error:", JSON.stringify(errorBody));
+  logger.error(`Claude Code 400 error: ${JSON.stringify(errorBody)}`);
   return { success: false, error: errorMessage || "Bad request" };
 }
 
-async function handleNonOkStatus(response: Response, _stream: boolean): Promise<RequestResult> {
-  const errorBody = await response
-    .clone()
-    .text()
-    .catch(() => "");
-  logger.error(`Claude Code ${response.status} error: ${errorBody.substring(0, 500)}`);
-
-  let errorMessage = "API error";
-  try {
-    const parsed = JSON.parse(errorBody) as { error?: { message?: string; type?: string } };
-    errorMessage = parsed?.error?.message || `HTTP ${response.status}`;
-  } catch {
-    errorMessage = `HTTP ${response.status}: ${errorBody.substring(0, 200)}`;
-  }
-  return { success: false, error: errorMessage };
+async function handleNonOkStatus(response: Response): Promise<RequestResult> {
+  const { message } = await parseResponseError(response);
+  logger.error(`Claude Code ${response.status} error: ${message}`);
+  return { success: false, error: message };
 }
 
 async function handleErrorStatus(
   response: Response,
   isProbe: boolean,
-  stream: boolean,
 ): Promise<RequestResult | null> {
   if (response.status === 429) {
     const errorBody429 = await response
       .clone()
       .text()
       .catch(() => "");
-    console.log(`Claude Code 429 response body: ${errorBody429.substring(0, 500)}`);
+    logger.warn(`Claude Code 429 response body: ${errorBody429.substring(0, 500)}`);
     const { resetInfo } = handle429(response, isProbe);
-    console.log(`Claude Code rate limited${resetInfo}`);
+    logger.warn(`Claude Code rate limited${resetInfo}`);
     return { success: false, error: `Rate limited${resetInfo}` };
   }
 
   if (response.status === 401) {
     if (isProbe) finalizeRateLimitProbe("retry");
-    console.log("OAuth token expired or invalid, clearing cache");
+    logger.warn("OAuth token expired or invalid, clearing cache");
     clearCachedToken();
     return { success: false, error: "OAuth token invalid — visit /login to re-authenticate" };
   }
@@ -478,7 +467,7 @@ async function handleErrorStatus(
   if (response.status === 403) {
     if (isProbe) finalizeRateLimitProbe("retry");
     const errorBody = await response.clone().text();
-    console.log("Claude Code 403 error:", errorBody);
+    logger.error(`Claude Code 403 error: ${errorBody}`);
     return { success: false, error: "Permission denied" };
   }
 
@@ -489,7 +478,7 @@ async function handleErrorStatus(
 
   if (!response.ok) {
     if (isProbe) finalizeRateLimitProbe("retry");
-    return handleNonOkStatus(response, stream);
+    return handleNonOkStatus(response);
   }
 
   return null;
@@ -502,7 +491,7 @@ async function makeClaudeCodeRequest(
   const { limited, isProbe } = checkRateLimit();
   if (limited) {
     const minutes = getRateLimitResetMinutes();
-    console.log(`Claude Code rate limited (cached), skipping request (resets in ${minutes}m)`);
+    logger.warn(`Claude Code rate limited (cached), skipping request (resets in ${minutes}m)`);
     return { success: false, error: `Rate limited (cached, resets in ${minutes}m)` };
   }
 
@@ -540,23 +529,22 @@ async function makeClaudeCodeRequest(
       logger.verbose(`[plan-usage] header capture failed: ${String(err)}`);
     }
 
-    console.log(`   [Debug] Anthropic API response status: ${response.status}`);
+    logger.verbose(`[Debug] Anthropic API response status: ${response.status}`);
 
-    const errorResult = await handleErrorStatus(response, isProbe, body.stream || false);
+    const errorResult = await handleErrorStatus(response, isProbe);
     if (errorResult) return errorResult;
 
     if (isProbe) {
-      console.log("Rate limit probe succeeded, clearing cache");
+      logger.info("Rate limit probe succeeded, clearing cache");
       finalizeRateLimitProbe("cleared");
     }
 
     return { success: true, response, source: "claude_code" };
   } catch (error) {
     if (isProbe) finalizeRateLimitProbe("retry");
-    logger.error(
-      `Claude Code OAuth request failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return { success: false, error: String(error) };
+    const errMsg = toErrorMessage(error);
+    logger.error(`Claude Code OAuth request failed: ${errMsg}`);
+    return { success: false, error: errMsg };
   }
 }
 
@@ -623,7 +611,7 @@ export async function proxyRequest(endpoint: string, body: AnthropicRequest): Pr
   const result = await makeClaudeCodeRequest(endpoint, body);
 
   if (result.success) {
-    console.log(`✓ Request served via Claude Code`);
+    logger.info("Request served via Claude Code");
     return extractUsageFromResponse(result.response, model, stream, startTime);
   }
 

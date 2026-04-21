@@ -5,6 +5,7 @@ import {
   getRecentRequests,
   resetAnalytics,
 } from "../db";
+import { logger } from "../logger";
 
 function validatePaginationParams(
   limit: number,
@@ -91,7 +92,9 @@ export function handleAnalyticsReset(): Response {
     const result = resetAnalytics();
     return Response.json({ success: true, ...result });
   } catch (error) {
-    console.error("Reset analytics error:", error);
+    logger.error(
+      `Reset analytics error: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return Response.json(
       { error: { message: error instanceof Error ? error.message : "Reset failed" } },
       { status: 500 },

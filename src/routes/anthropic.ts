@@ -1,5 +1,6 @@
 import { proxyRequest } from "../anthropic-client";
 import { getModelSettings, recordRequest } from "../db";
+import { createAnthropicErrorSSE, parseResponseError, toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
@@ -160,18 +161,13 @@ function rewriteAnthropicSseResponseModel(
         });
         controller.close();
       } catch (error) {
-        const errMsg = error instanceof Error ? error.message : String(error);
+        const errMsg = toErrorMessage(error);
         logger.error(`[Stream] Anthropic SSE rewriter failed: ${errMsg}`);
         try {
-          const errorEvent = `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message: errMsg } })}\n\n`;
-          controller.enqueue(encoder.encode(errorEvent));
+          controller.enqueue(encoder.encode(createAnthropicErrorSSE("api_error", errMsg)));
           controller.close();
         } catch {
-          try {
-            controller.error(error);
-          } catch {
-            // Controller already closed
-          }
+          // Controller already closed or errored
         }
       } finally {
         reader.releaseLock();
@@ -216,7 +212,6 @@ async function rewriteAnthropicResponseModel(
   });
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: orchestrates model resolution, thinking policy, and stream/sync branching in one handler.
 export async function handleAnthropicMessages(req: Request): Promise<Response> {
   try {
     logRequestDetails(req, "Anthropic /v1/messages");
@@ -272,40 +267,21 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       getApiModelId(modelSettings.selectedModel),
     );
 
-    console.log(
-      `\n→ Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking?.type ?? "none"} | effort=${body.output_config?.effort ?? "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
+    logger.info(
+      `Model: "${incomingBody.model}" -> "${body.model}" | thinking=${body.thinking?.type ?? "none"} | effort=${body.output_config?.effort ?? "none"} | policy=${decision.policy} | ${body.stream ? "stream" : "sync"} | max_tokens=${body.max_tokens}`,
     );
 
     const proxiedResponse = await proxyRequest("/v1/messages", body);
 
-    // Pre-stream error: proxy returned a non-ok status (429, 401, 502, etc.)
-    // Emit the error as an Anthropic SSE error event so the client sees the
-    // message instead of a silent stream death.
+    // Pre-stream error: emit as SSE so the client sees the message
+    // instead of a silent stream death.
     if (body.stream && !proxiedResponse.ok) {
-      const errorText = await proxiedResponse
-        .clone()
-        .text()
-        .catch(() => "");
-      let errorMessage = `HTTP ${proxiedResponse.status}`;
-      let errorType = "api_error";
-      try {
-        const parsed = JSON.parse(errorText) as {
-          error?: { message?: string; type?: string };
-        };
-        if (parsed?.error?.message) errorMessage = parsed.error.message;
-        if (parsed?.error?.type) errorType = parsed.error.type;
-      } catch {
-        if (errorText) errorMessage = errorText.substring(0, 200);
-      }
-
-      logger.error(`[SSE Error] Pre-stream failure for Anthropic route: ${errorMessage}`);
-
-      const ssePayload = `event: error\ndata: ${JSON.stringify({ type: "error", error: { type: errorType, message: errorMessage } })}\n\n`;
-
+      const { message, type } = await parseResponseError(proxiedResponse);
+      logger.error(`[SSE Error] Pre-stream failure for Anthropic route: ${message}`);
       const responseHeaders = new Headers(corsHeaders(req));
       responseHeaders.set("Content-Type", "text/event-stream");
       responseHeaders.set("Cache-Control", "no-cache");
-      return new Response(ssePayload, { headers: responseHeaders });
+      return new Response(createAnthropicErrorSSE(type, message), { headers: responseHeaders });
     }
 
     const streamStartTime = Date.now();
@@ -341,10 +317,8 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       headers: responseHeaders,
     });
   } catch (error) {
-    logger.error(
-      `Request handling error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
+    logger.error(`Request handling error: ${message}`);
     return Response.json(
       {
         type: "error",

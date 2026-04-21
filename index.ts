@@ -35,17 +35,18 @@ const config = getConfig();
 
 async function checkCredentials(): Promise<boolean> {
   if (!hasCredentials()) {
-    console.log("\n⚠️  No OAuth credentials found.");
-    console.log("   >>> To authenticate: open the dashboard and go to the Auth page");
+    logger.warn(
+      "No OAuth credentials found. To authenticate: open the dashboard and go to the Auth page",
+    );
     return false;
   }
 
-  console.log("✓ OAuth credentials loaded");
+  logger.info("OAuth credentials loaded");
 
   const token = await getValidToken();
   if (token) {
     const expiresIn = Math.round((token.expiresAt - Date.now()) / 1000 / 60);
-    console.log(`  Token expires in ${expiresIn} minutes`);
+    logger.info(`Token expires in ${expiresIn} minutes`);
   }
 
   return true;
@@ -206,7 +207,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
     req.method === "POST"
   ) {
     const result = clearRateLimitCache();
-    console.log(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
+    logger.info(`Rate limit cache manually cleared (was limited: ${result.wasLimited})`);
     return Response.json(result);
   }
 
@@ -233,7 +234,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
   }
 
   // --- 404 ---
-  console.log(`[404] ${req.method} ${url.pathname}`);
+  logger.verbose(`[404] ${req.method} ${url.pathname}`);
   return Response.json(
     {
       type: "error",
@@ -267,7 +268,9 @@ try {
       try {
         response = await handleRequest(req, url);
       } catch (error) {
-        console.error("Unhandled request error:", error);
+        logger.error(
+          `Unhandled request error: ${error instanceof Error ? error.message : String(error)}`,
+        );
         response = Response.json(
           { error: { type: "internal_error", message: "Internal server error" } },
           { status: 500 },
@@ -291,28 +294,22 @@ try {
 }
 
 // --- Bootstrap ---
-console.log(`
-╔═══════════════════════════════════════════════════════════════╗
-║                    Claude Code Proxy                          ║
-╠═══════════════════════════════════════════════════════════════╣
-║  Proxy that routes requests through Claude Code OAuth.        ║
-╚═══════════════════════════════════════════════════════════════╝
-`);
+logger.info("Claude Code Proxy — routes requests through Claude Code OAuth");
 
 getDb();
 
-console.log(`🚀 Server listening on port ${server.port}`);
-console.log(`   Anthropic:  /v1/messages`);
-console.log(`   OpenAI:     /v1/chat/completions`);
-console.log(`   Analytics:  /api/analytics`);
-console.log(`   Settings:   /api/settings\n`);
+logger.info(`Server listening on port ${server.port}`);
+logger.info("  Anthropic:  /v1/messages");
+logger.info("  OpenAI:     /v1/chat/completions");
+logger.info("  Analytics:  /api/analytics");
+logger.info("  Settings:   /api/settings");
 
 await checkCredentials();
 
 startRateLimitCleanup();
 startPkceCleanup();
 
-console.log(`\n📝 Verbose logging enabled → api.log (gitignored)\n`);
+logger.info("Verbose logging enabled → api.log (gitignored)");
 
 // Graceful shutdown
 function shutdown() {
