@@ -17,9 +17,9 @@ import {
 
 describe("model settings contract", () => {
   test("locks the public model id contract", () => {
-    expect(PUBLIC_MODEL_ID).toBe("Claude Code");
-    expect(getExposedModels()).toEqual(["Claude Code"]);
-    expect(isAllowedPublicModel("Claude Code")).toBe(true);
+    expect(PUBLIC_MODEL_ID).toBe("claude-code");
+    expect(getExposedModels()).toEqual(["claude-code"]);
+    expect(isAllowedPublicModel("claude-code")).toBe(true);
     expect(isAllowedPublicModel("claude-opus-4-7")).toBe(false);
     expect(isAllowedPublicModel("claude-opus-4-6")).toBe(false);
     expect(isAllowedPublicModel("claude-sonnet-4-6")).toBe(false);

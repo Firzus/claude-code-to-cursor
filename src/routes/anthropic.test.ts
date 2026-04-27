@@ -64,7 +64,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "Claude Code",
+          model: "claude-code",
           max_tokens: 512,
           messages: [{ role: "user", content: "Hello" }],
           reasoning_budget: "high",
@@ -82,7 +82,7 @@ if (!SKIP) {
       expect("reasoning_budget" in body1).toBe(false);
     });
 
-    test("rewrites the native sync response model back to Claude Code", async () => {
+    test("rewrites the native sync response model back to claude-code", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-sonnet-4-6",
@@ -110,7 +110,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "Claude Code",
+          model: "claude-code",
           max_tokens: 256,
           messages: [{ role: "user", content: "Hello" }],
         } satisfies AnthropicRequest),
@@ -120,10 +120,10 @@ if (!SKIP) {
       const body = (await response.json()) as { model: string };
 
       expect(response.status).toBe(200);
-      expect(body.model).toBe("Claude Code");
+      expect(body.model).toBe("claude-code");
     });
 
-    test("rewrites the native SSE message_start model back to Claude Code", async () => {
+    test("rewrites the native SSE message_start model back to claude-code", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-haiku-4-5",
@@ -147,7 +147,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "Claude Code",
+          model: "claude-code",
           max_tokens: 256,
           stream: true,
           messages: [{ role: "user", content: "Hello" }],
@@ -158,7 +158,7 @@ if (!SKIP) {
       const body = await response.text();
 
       expect(response.status).toBe(200);
-      expect(body).toContain('"model":"Claude Code"');
+      expect(body).toContain('"model":"claude-code"');
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
@@ -178,7 +178,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "Claude Code",
+          model: "claude-code",
           max_tokens: 1024,
           messages: [
             {
@@ -219,7 +219,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "Claude Code",
+          model: "claude-code",
           max_tokens: 1024,
           messages: [{ role: "user", content: "Hello" }],
           reasoning_budget: "xhigh",

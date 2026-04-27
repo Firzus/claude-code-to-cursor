@@ -4,7 +4,7 @@ import { getApiModelId, getSuggestedMaxTokens, type ModelSettings } from "./mode
 import { openaiToAnthropicBase } from "./openai-adapter";
 import { applyThinkingToBody, pickRoute } from "./routing-policy";
 
-function createRequest(model = "Claude Code") {
+function createRequest(model = "claude-code") {
   return {
     model,
     messages: [{ role: "user" as const, content: "Hello" }],
@@ -24,7 +24,7 @@ function convert(
 }
 
 describe("openaiToAnthropic", () => {
-  test('rejects requests whose model is not "Claude Code"', () => {
+  test('rejects requests whose model is not "claude-code"', () => {
     const settings: ModelSettings = {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
@@ -32,7 +32,7 @@ describe("openaiToAnthropic", () => {
       subscriptionPlan: "max20x",
     };
     expect(() => convert(createRequest("claude-opus-4-7"), settings)).toThrow(
-      'Invalid model "claude-opus-4-7": only "Claude Code" is supported.',
+      'Invalid model "claude-opus-4-7": only "claude-code" is supported.',
     );
   });
 

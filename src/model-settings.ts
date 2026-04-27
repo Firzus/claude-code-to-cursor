@@ -17,7 +17,7 @@ export interface ModelSettings {
   subscriptionPlan: SubscriptionPlan;
 }
 
-export const PUBLIC_MODEL_ID = "Claude Code" as const;
+export const PUBLIC_MODEL_ID = "claude-code" as const;
 
 export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-7",
