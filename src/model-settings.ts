@@ -17,7 +17,26 @@ export interface ModelSettings {
   subscriptionPlan: SubscriptionPlan;
 }
 
-export const PUBLIC_MODEL_ID = "Claude Code" as const;
+/**
+ * Default public model id advertised to clients (Cursor settings, /v1/models).
+ *
+ * Deliberately a non-Claude slug: Cursor blocks "Override OpenAI API Key"
+ * for any model name that shadows its built-in Claude/Anthropic catalog
+ * ("This model does not support custom API keys"). Picking a GPT-style
+ * slug routes the client through Cursor's OpenAI-compatible path, which
+ * does honour the custom key. The proxy ignores the value at request
+ * time — the dashboard's selectedModel decides which Anthropic API to
+ * call, and the OpenAI→Anthropic adapter handles the format conversion.
+ */
+export const PUBLIC_MODEL_ID = "gpt-5.5" as const;
+
+/**
+ * Pattern for accepted client model ids. Permissive on purpose: the proxy
+ * doesn't care which slug the client sends, but we still reject obviously
+ * malformed values (empty strings, whitespace, weird characters) so that
+ * misconfiguration surfaces early.
+ */
+const PUBLIC_MODEL_PATTERN = /^[a-z][a-z0-9.-]*$/i;
 
 export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-7",
@@ -86,12 +105,12 @@ export function getExposedModels(): string[] {
   return [...EXPOSED_MODEL_IDS];
 }
 
-export function isAllowedPublicModel(modelId: string): modelId is typeof PUBLIC_MODEL_ID {
-  return modelId === PUBLIC_MODEL_ID;
+export function isAllowedPublicModel(modelId: string): boolean {
+  return typeof modelId === "string" && PUBLIC_MODEL_PATTERN.test(modelId);
 }
 
 export function getInvalidPublicModelMessage(modelId: string): string {
-  return `Invalid model "${modelId}": only "${PUBLIC_MODEL_ID}" is supported.`;
+  return `Invalid model "${modelId}": expected a non-empty model slug (e.g. "${PUBLIC_MODEL_ID}").`;
 }
 
 export function getSuggestedMaxTokens(effort: ThinkingEffort): number {

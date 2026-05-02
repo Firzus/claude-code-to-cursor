@@ -8,7 +8,6 @@ import {
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
   isValidThinkingEffort,
-  PUBLIC_MODEL_ID,
   type ThinkingEffort,
 } from "../model-settings";
 import { computeRequestShape } from "../request-metrics";
@@ -16,7 +15,7 @@ import { normalizeAnthropicRequestModel } from "../request-normalization";
 import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
 
-function rewriteAnthropicJsonResponseModel(bodyText: string): string {
+function rewriteAnthropicJsonResponseModel(bodyText: string, clientModel: string): string {
   try {
     const body = JSON.parse(bodyText) as AnthropicResponse | AnthropicError;
     if (body.type !== "message") {
@@ -25,14 +24,14 @@ function rewriteAnthropicJsonResponseModel(bodyText: string): string {
 
     return JSON.stringify({
       ...body,
-      model: PUBLIC_MODEL_ID,
+      model: clientModel,
     } satisfies AnthropicResponse).replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
   } catch {
     return bodyText;
   }
 }
 
-function rewriteAnthropicSseLine(line: string): string {
+function rewriteAnthropicSseLine(line: string, clientModel: string): string {
   if (!line.startsWith("data: ")) {
     return line;
   }
@@ -55,7 +54,7 @@ function rewriteAnthropicSseLine(line: string): string {
       ...event,
       message: {
         ...event.message,
-        model: PUBLIC_MODEL_ID,
+        model: clientModel,
       },
     })}`;
   } catch {
@@ -65,6 +64,7 @@ function rewriteAnthropicSseLine(line: string): string {
 
 function rewriteAnthropicSseResponseModel(
   body: ReadableStream<Uint8Array>,
+  clientModel: string,
   onComplete?: (usage: {
     inputTokens: number;
     outputTokens: number;
@@ -137,7 +137,7 @@ function rewriteAnthropicSseResponseModel(
               }
             }
 
-            const rewritten = rewriteAnthropicSseLine(line).replace(
+            const rewritten = rewriteAnthropicSseLine(line, clientModel).replace(
               /"name"\s*:\s*"mcp_([^"]+)"/g,
               '"name": "$1"',
             );
@@ -149,7 +149,7 @@ function rewriteAnthropicSseResponseModel(
 
         buffer += decoder.decode();
         if (buffer.length > 0) {
-          controller.enqueue(encoder.encode(rewriteAnthropicSseLine(buffer)));
+          controller.enqueue(encoder.encode(rewriteAnthropicSseLine(buffer, clientModel)));
         }
 
         onComplete?.({
@@ -178,6 +178,7 @@ function rewriteAnthropicSseResponseModel(
 
 async function rewriteAnthropicResponseModel(
   response: Response,
+  clientModel: string,
   onStreamComplete?: (usage: {
     inputTokens: number;
     outputTokens: number;
@@ -193,17 +194,20 @@ async function rewriteAnthropicResponseModel(
   const contentType = responseHeaders.get("Content-Type")?.toLowerCase() ?? "";
   if (contentType.includes("application/json")) {
     const bodyText = await response.text();
-    return new Response(rewriteAnthropicJsonResponseModel(bodyText), {
+    return new Response(rewriteAnthropicJsonResponseModel(bodyText, clientModel), {
       status: response.status,
       headers: responseHeaders,
     });
   }
 
   if (contentType.includes("text/event-stream") && response.body) {
-    return new Response(rewriteAnthropicSseResponseModel(response.body, onStreamComplete), {
-      status: response.status,
-      headers: responseHeaders,
-    });
+    return new Response(
+      rewriteAnthropicSseResponseModel(response.body, clientModel, onStreamComplete),
+      {
+        status: response.status,
+        headers: responseHeaders,
+      },
+    );
   }
 
   return new Response(response.body, {
@@ -287,6 +291,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
     const streamStartTime = Date.now();
     const response = await rewriteAnthropicResponseModel(
       proxiedResponse,
+      incomingBody.model,
       body.stream
         ? (usage) => {
             recordRequest({

@@ -5,7 +5,7 @@ import type { AnthropicRequest } from "./types";
 describe("normalizeAnthropicRequest", () => {
   test("normalizes the public Anthropic model alias and rewrites invalid tool ids consistently", () => {
     const input: AnthropicRequest = {
-      model: "Claude Code",
+      model: "claude-code",
       max_tokens: 128,
       messages: [
         {
@@ -41,13 +41,13 @@ describe("normalizeAnthropicRequest", () => {
     expect(normalized.model).toBe("claude-opus-4-7");
     expect((toolUse as Array<{ id?: string }>)[0]?.id).toBe("toolu_01_bad_id");
     expect((toolResult as Array<{ tool_use_id?: string }>)[0]?.tool_use_id).toBe("toolu_01_bad_id");
-    expect(input.model).toBe("Claude Code");
+    expect(input.model).toBe("claude-code");
     expect((input.messages[0]?.content as Array<{ id?: string }>)[0]?.id).toBe("toolu_01?bad:id");
   });
 
   test("keeps already valid ids unchanged", () => {
     const input: AnthropicRequest = {
-      model: "Claude Code",
+      model: "claude-code",
       max_tokens: 64,
       messages: [
         {
@@ -85,7 +85,7 @@ describe("normalizeAnthropicRequest", () => {
 
   test("uses stable fallbacks and resolves collisions after sanitation", () => {
     const input: AnthropicRequest = {
-      model: "Claude Code",
+      model: "claude-code",
       max_tokens: 64,
       messages: [
         {

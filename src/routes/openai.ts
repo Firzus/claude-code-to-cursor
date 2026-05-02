@@ -6,6 +6,7 @@ import { corsHeaders, logRequestDetails } from "../middleware";
 import { getApiModelId, isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
 import {
   anthropicToOpenai,
+  extractToolName,
   type OpenAIChatRequest,
   openaiToAnthropicBase,
 } from "../openai-adapter";
@@ -26,32 +27,68 @@ function stringifyContent(content: string | ContentBlock[] | null | undefined): 
     .join("\n");
 }
 
-function indentBlock(text: string, prefix = "      "): string {
-  return text
-    .split("\n")
-    .map((l: string) => `${prefix}${l}`)
-    .join("\n");
+function summarizeInputItem(item: unknown): string {
+  if (typeof item === "string") return `string(${item.length})`;
+  if (!item || typeof item !== "object") return typeof item;
+  const o = item as Record<string, unknown>;
+  const keys = Object.keys(o).join(",");
+  const type = typeof o.type === "string" ? `type=${o.type}` : "no-type";
+  const role = typeof o.role === "string" ? ` role=${o.role}` : "";
+  const contentShape =
+    typeof o.content === "string"
+      ? ` content=string(${o.content.length})`
+      : Array.isArray(o.content)
+        ? ` content=array(${o.content.length})[${(o.content[0] as { type?: string } | undefined)?.type ?? "?"}]`
+        : "";
+  return `{${type}${role}${contentShape} keys=${keys}}`;
+}
+
+function describeMessageSource(openaiBody: OpenAIChatRequest): {
+  count: number;
+  source: "messages" | "input" | "none";
+} {
+  if (openaiBody.messages) return { count: openaiBody.messages.length, source: "messages" };
+  if (openaiBody.input) {
+    const count = Array.isArray(openaiBody.input) ? openaiBody.input.length : 0;
+    return { count, source: "input" };
+  }
+  return { count: 0, source: "none" };
+}
+
+function summarizeToolItem(tool: unknown): string {
+  const keys = tool && typeof tool === "object" ? Object.keys(tool).join(",") : typeof tool;
+  const type =
+    tool && typeof tool === "object" && "type" in tool ? (tool as { type?: string }).type : "?";
+  return `{type=${type} keys=${keys}}`;
 }
 
 function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
+  const { count: messageCount, source: messageSource } = describeMessageSource(openaiBody);
   logger.info(
-    `[Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} messages=${openaiBody.messages?.length || 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
+    `[Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} ${messageSource}=${messageCount} tools=${openaiBody.tools?.length ?? 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
   );
+
+  const sourceArr = openaiBody.messages ?? openaiBody.input;
+  if (Array.isArray(sourceArr) && sourceArr.length > 0) {
+    const sample = sourceArr.slice(0, 3).map(summarizeInputItem);
+    logger.info(`[Cursor ${messageSource} sample] ${sample.join(" ")}`);
+  } else if (typeof openaiBody.input === "string") {
+    logger.info(`[Cursor input string] length=${openaiBody.input.length}`);
+  }
 
   if (openaiBody.reasoning_effort) {
     logger.info(`Reasoning Effort: ${openaiBody.reasoning_effort}`);
   }
 
-  logger.verbose(`\n🔍 [FULL Cursor Request Body]:`);
-  logger.verbose(JSON.stringify(openaiBody, null, 2));
-
   if (openaiBody.messages && openaiBody.messages.length > 0) {
-    logger.verbose(`\n📝 [Cursor Messages]:`);
-    openaiBody.messages.forEach((msg, idx) => {
-      const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-      logger.verbose(`   [${idx}] ${msg.role} (${content.length} chars):`);
-      logger.verbose(`   ${indentBlock(content)}`);
-    });
+    logger.verbose(
+      `[Cursor Messages] ${openaiBody.messages.length} msgs, roles: ${openaiBody.messages.map((m) => m.role).join(",")}`,
+    );
+  }
+
+  if (openaiBody.tools && openaiBody.tools.length > 0) {
+    const sample = openaiBody.tools.slice(0, 3).map(summarizeToolItem);
+    logger.info(`[Cursor Tools] ${openaiBody.tools.length} tools, sample: ${sample.join(" ")}`);
   }
 }
 
@@ -61,31 +98,17 @@ function logAnthropicConversion(
 ): void {
   const thinkingEnabled = !!anthropicBody.thinking;
   const effort = anthropicBody.output_config?.effort ?? null;
-  const routeSummary = `[OpenAI→Anthropic] Cursor model: "${openaiBody.model}" → API model: "${anthropicBody.model}" | thinking: ${thinkingEnabled ? `yes (effort=${effort})` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`;
-  logger.info(routeSummary);
+  logger.info(
+    `[OpenAI→Anthropic] "${openaiBody.model}" → "${anthropicBody.model}" | thinking=${thinkingEnabled ? `yes(${effort})` : "no"} | ${anthropicBody.stream ? "stream" : "sync"} | max_tokens=${anthropicBody.max_tokens}`,
+  );
 
   if (anthropicBody.system) {
     const systemContent = stringifyContent(anthropicBody.system as string | ContentBlock[]);
-    logger.verbose(`\n📋 [Anthropic System Prompt] (${systemContent.length} chars):`);
-    logger.verbose(indentBlock(systemContent, "   "));
+    logger.verbose(`[Anthropic System Prompt] ${systemContent.length} chars`);
   }
 
   if (anthropicBody.messages && anthropicBody.messages.length > 0) {
-    logger.verbose(`\n📨 [Anthropic Messages] (${anthropicBody.messages.length}):`);
-    anthropicBody.messages.forEach((msg, idx) => {
-      const content = stringifyContent(msg.content);
-      logger.verbose(`   [${idx}] ${msg.role} (${content.length} chars):`);
-      logger.verbose(`   ${indentBlock(content)}`);
-    });
-  }
-
-  logger.verbose(`[Prepared Request Summary]: system=${!!anthropicBody.system}`);
-  if (anthropicBody.system) {
-    const sysPreview =
-      typeof anthropicBody.system === "string"
-        ? anthropicBody.system.substring(0, 100)
-        : `array (${(anthropicBody.system as ContentBlock[]).length} blocks)`;
-    logger.verbose(`System type: ${typeof anthropicBody.system}, preview: ${sysPreview}...`);
+    logger.verbose(`[Anthropic Messages] ${anthropicBody.messages.length} msgs`);
   }
 }
 
@@ -125,19 +148,15 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     const response = await proxyRequest("/v1/messages", anthropicBody);
 
-    logger.verbose(`[Debug] Response status: ${response.status}, ok: ${response.ok}`);
-
     if (!response.ok) {
       const errorText = await response
         .clone()
         .text()
         .catch(() => "Unable to read error");
-      logger.verbose(`[Debug] Error response: ${errorText.substring(0, 500)}`);
+      logger.verbose(
+        `[OpenAI] Error response (${response.status}): ${errorText.substring(0, 500)}`,
+      );
     }
-
-    logger.verbose(
-      `   [Debug] Response headers: ${JSON.stringify(Object.fromEntries(response.headers))}`,
-    );
 
     const responseHeaders = new Headers(corsHeaders(req));
     responseHeaders.set("Content-Type", "application/json");
@@ -168,12 +187,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       if (openaiBody.tools && openaiBody.tools.length > 0) {
         userToolNames = new Set<string>();
         for (const tool of openaiBody.tools) {
-          const name =
-            "type" in tool && tool.type === "function" && tool.function?.name
-              ? tool.function.name
-              : "name" in tool
-                ? tool.name
-                : undefined;
+          const name = extractToolName(tool);
           if (name) userToolNames.add(name);
         }
       }
@@ -229,7 +243,8 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
 
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {
-    logger.error(`OpenAI request handling error: ${toErrorMessage(error)}`);
+    const stack = error instanceof Error && error.stack ? `\n${error.stack}` : "";
+    logger.error(`OpenAI request handling error: ${toErrorMessage(error)}${stack}`);
     return Response.json(
       { error: { message: "Request processing failed", type: "invalid_request_error" } },
       { status: 400 },
