@@ -75,8 +75,14 @@ Open Cursor settings and configure a custom model:
 | ------------ | ------------------------------------------------ |
 | **Base URL** | `https://<your-tunnel>.cfargotunnel.com/v1`      |
 | **API Key**  | `sk-cctc` (any non-empty string)                 |
-| **Model**    | `claude-sonnet-4-20250514` (or any Claude model) |
+| **Model**    | `gpt-5.5` (use a non-Claude slug — see note below) |
 
+
+> **Why a non-Claude model name?** Cursor blocks "Override OpenAI API Key"
+> for any slug that shadows its built-in Claude/Anthropic catalog ("This
+> model does not support custom API keys"). Picking a GPT-style slug
+> routes the request through Cursor's OpenAI-compatible path. The proxy
+> ignores the value and uses the model selected in the dashboard.
 
 claude-code-to-cursor exposes two compatible endpoints:
 
@@ -98,7 +104,7 @@ curl https://<your-tunnel>.cfargotunnel.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-cctc" \
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "gpt-5.5",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```

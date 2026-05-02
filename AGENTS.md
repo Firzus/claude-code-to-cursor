@@ -101,18 +101,24 @@ Frontend uses path alias `~/` → `./src/` (configured in `tsconfig.json` and `v
 
 All settings via `.env` (see `.env.example`):
 
+
 | Variable                        | Default                        | Description                                           |
 | ------------------------------- | ------------------------------ | ----------------------------------------------------- |
-| `CLOUDFLARE_TUNNEL_TOKEN`       | _(required)_                   | Cloudflare Tunnel token                               |
-| `CLOUDFLARE_TUNNEL_URL`         | _(empty)_                      | Public URL of the tunnel (shown in setup wizard)      |
+| `CLOUDFLARE_TUNNEL_TOKEN`       | *(required)*                   | Cloudflare Tunnel token                               |
+| `CLOUDFLARE_TUNNEL_URL`         | *(empty)*                      | Public URL of the tunnel (shown in setup wizard)      |
 | `PORT`                          | `8082`                         | Proxy server port                                     |
 | `FRONTEND_PORT`                 | `3111`                         | Dashboard frontend port                               |
 | `ALLOWED_IPS`                   | `52.44.113.131,184.73.225.134` | IP whitelist (set `disabled` to allow all)            |
-| `CLAUDE_CODE_EXTRA_INSTRUCTION` | _(empty)_                      | Extra instruction appended to system prompt           |
+| `CLAUDE_CODE_EXTRA_INSTRUCTION` | *(empty)*                      | Extra instruction appended to system prompt           |
 | `CCTC_AUTH_DIR`                 | `~/.cctc` / `/data/auth`       | OAuth credentials storage directory                   |
 | `CCTC_DB_PATH`                  | `./cctc.db` / `/data/cctc.db`  | SQLite database path                                  |
-| `SETTINGS_API_KEY`              | _(empty)_                      | Shared secret for settings API (empty = unrestricted) |
-| `LOG_DIR`                       | _(current dir)_ / `/data/logs` | Log files directory                                   |
+| `SETTINGS_API_KEY`              | *(empty)*                      | Shared secret for settings API (empty = unrestricted) |
+| `LOG_DIR`                       | *(current dir)* / `/data/logs` | Log files directory                                   |
+| `LOG_LEVEL`                     | `INFO`                         | Min log level: VERBOSE, DEBUG, INFO, WARN, ERROR      |
+| `LOG_MAX_SIZE_MB`               | `10`                           | Max size per log file in MB before rotation           |
+| `LOG_MAX_FILES`                 | `3`                            | Number of rotated log files to keep                   |
+| `LOG_CONSOLE`                   | `true`                         | Also write INFO/DEBUG to stdout (`false` to disable)  |
+
 
 ---
 
@@ -327,24 +333,29 @@ claude-code-to-cursor/
 
 ### Proxy Endpoints (IP whitelisted)
 
+
 | Method | Path                   | Description                       |
 | ------ | ---------------------- | --------------------------------- |
 | `POST` | `/v1/messages`         | Anthropic Messages API proxy      |
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions API proxy |
 | `GET`  | `/v1/models`           | List available models             |
 
+
 ### Analytics & Budget Endpoints (IP whitelisted)
 
-| Method | Path                                                    | Description                        |
-| ------ | ------------------------------------------------------- | ---------------------------------- |
-| `GET`  | `/api/analytics` (alias `/analytics`)                   | Analytics summary                  |
-| `GET`  | `/api/analytics/requests` (alias `/analytics/requests`) | Request history (paginated)        |
-| `GET`  | `/api/analytics/timeline` (alias `/analytics/timeline`) | Timeline data (bucketed)           |
-| `POST` | `/api/analytics/reset` (alias `/analytics/reset`)       | Reset analytics                    |
-| `GET`  | `/api/budget` (alias `/budget`)                         | UTC-day token totals + est. USD    |
-| `GET`  | `/api/plan-usage` (alias `/plan-usage`)                 | Subscription plan window usage     |
+
+| Method | Path                                                    | Description                     |
+| ------ | ------------------------------------------------------- | ------------------------------- |
+| `GET`  | `/api/analytics` (alias `/analytics`)                   | Analytics summary               |
+| `GET`  | `/api/analytics/requests` (alias `/analytics/requests`) | Request history (paginated)     |
+| `GET`  | `/api/analytics/timeline` (alias `/analytics/timeline`) | Timeline data (bucketed)        |
+| `POST` | `/api/analytics/reset` (alias `/analytics/reset`)       | Reset analytics                 |
+| `GET`  | `/api/budget` (alias `/budget`)                         | UTC-day token totals + est. USD |
+| `GET`  | `/api/plan-usage` (alias `/plan-usage`)                 | Subscription plan window usage  |
+
 
 ### Auth Endpoints
+
 
 | Method | Path                 | Description         |
 | ------ | -------------------- | ------------------- |
@@ -352,20 +363,25 @@ claude-code-to-cursor/
 | `POST` | `/api/auth/callback` | Complete OAuth flow |
 | `GET`  | `/api/auth/status`   | Auth status         |
 
+
 ### Settings Endpoints
+
 
 | Method | Path                  | Description           |
 | ------ | --------------------- | --------------------- |
 | `GET`  | `/api/settings`       | Get model settings    |
 | `POST` | `/api/settings/model` | Update model settings |
 
+
 ### Utility Endpoints
+
 
 | Method | Path                                                | Description            |
 | ------ | --------------------------------------------------- | ---------------------- |
 | `GET`  | `/health` (also `/`, `/api/health`)                 | Health check           |
 | `GET`  | `/api/rate-limit` (alias `/rate-limit`)             | Rate limit status      |
 | `POST` | `/api/rate-limit/reset` (alias `/rate-limit/reset`) | Clear rate limit cache |
+
 
 ---
 
@@ -425,6 +441,7 @@ When thinking is enabled, the proxy emits Anthropic's **adaptive** thinking + `o
 
 **Suggested `max_tokens`** per effort (used as the floor when the client doesn't provide a larger value) — see `getSuggestedMaxTokens` in `src/model-settings.ts`:
 
+
 | Effort | Suggested `max_tokens` |
 | ------ | ---------------------- |
 | low    | 8 192                  |
@@ -432,6 +449,7 @@ When thinking is enabled, the proxy emits Anthropic's **adaptive** thinking + `o
 | high   | 32 768                 |
 | xhigh  | 65 536                 |
 | max    | 65 536                 |
+
 
 These are ceilings to guarantee the model has headroom to think + answer — Anthropic's `effort` is a behavioural signal, not a strict token budget.
 
@@ -455,27 +473,26 @@ Clients can override thinking per-request using either `reasoning_effort` (OpenA
 The proxy surfaces two independent data sources for plan usage, with an automatic fallback:
 
 1. **Anthropic headers (authoritative)** — Every OAuth response carries the unified rate-limit headers used internally by Claude.ai and the Claude Code CLI. `src/anthropic-client.ts` captures them on every `fetch`, `src/plan-usage-snapshot.ts` persists the most recent snapshot to SQLite (`plan_usage_snapshot` table, 1 row max), and `/api/plan-usage` returns them with `source: "anthropic"` when the snapshot is < 5h old.
+  Headers captured (see `parseRateLimitHeaders`):
 
-   Headers captured (see `parseRateLimitHeaders`):
-
-   | Header | Meaning |
-   | ------ | ------- |
-   | `anthropic-ratelimit-unified-5h-utilization` | Fraction 0.0–1.0+ of the 5h session |
-   | `anthropic-ratelimit-unified-5h-reset` | Unix epoch (seconds) when the session rolls over |
-   | `anthropic-ratelimit-unified-5h-status` | `allowed` / `warning` / `rate_limited` |
-   | `anthropic-ratelimit-unified-7d-utilization` / `-reset` / `-status` | Weekly counterpart |
-   | `anthropic-ratelimit-unified-representative-claim` | `five_hour` or `seven_day` — the binding window |
-   | `anthropic-ratelimit-unified-status` | Overall status |
-   | `anthropic-ratelimit-unified-fallback-percentage` | Effective vs theoretical budget |
-   | `anthropic-ratelimit-unified-overage-status` | Extra-usage flag |
+  | Header                                                              | Meaning                                          |
+  | ------------------------------------------------------------------- | ------------------------------------------------ |
+  | `anthropic-ratelimit-unified-5h-utilization`                        | Fraction 0.0–1.0+ of the 5h session              |
+  | `anthropic-ratelimit-unified-5h-reset`                              | Unix epoch (seconds) when the session rolls over |
+  | `anthropic-ratelimit-unified-5h-status`                             | `allowed` / `warning` / `rate_limited`           |
+  | `anthropic-ratelimit-unified-7d-utilization` / `-reset` / `-status` | Weekly counterpart                               |
+  | `anthropic-ratelimit-unified-representative-claim`                  | `five_hour` or `seven_day` — the binding window  |
+  | `anthropic-ratelimit-unified-status`                                | Overall status                                   |
+  | `anthropic-ratelimit-unified-fallback-percentage`                   | Effective vs theoretical budget                  |
+  | `anthropic-ratelimit-unified-overage-status`                        | Extra-usage flag                                 |
 
 2. **Local estimate (fallback)** — When no recent snapshot exists (cold start, no OAuth traffic yet, or snapshot > 5h old), `/api/plan-usage` returns `source: "estimated"` and computes usage from the `requests` table against the hardcoded `PLAN_QUOTAS`. The local formula (`getPlanWindowUsage` in `src/db.ts`) weights `input + output + cache_creation` at full weight and `cache_read * 0.1`. Quotas are public approximations (see the table below) and are known to be off by 1–2 orders of magnitude vs Anthropic's actual metric — use them only as a fallback for UI display.
 
-   | Plan     | Price      | ~Tokens per 5-hr window | ~Weekly tokens (all models) |
-   | -------- | ---------- | ----------------------- | --------------------------- |
-   | `pro`    | $20 / mo   | 44 000                  | 1 500 000                   |
-   | `max5x`  | $100 / mo  | 88 000                  | 7 500 000                   |
-   | `max20x` | $200 / mo  | 220 000                 | 30 000 000                  |
+  | Plan     | Price     | ~Tokens per 5-hr window | ~Weekly tokens (all models) |
+  | -------- | --------- | ----------------------- | --------------------------- |
+  | `pro`    | $20 / mo  | 44 000                  | 1 500 000                   |
+  | `max5x`  | $100 / mo | 88 000                  | 7 500 000                   |
+  | `max20x` | $200 / mo | 220 000                 | 30 000 000                  |
 
 3. **No data** — No snapshot AND no local request rows → `source: "none"`. UI shows a "No data yet" badge and 0% bars.
 
@@ -604,15 +621,17 @@ docker compose -f docker-compose.dev.yml up
 
 ## Troubleshooting
 
+
 | Problem                        | Solution                                                                            |
 | ------------------------------ | ----------------------------------------------------------------------------------- |
-| Port 8082 in use               | `netstat -ano \| findstr :8082` then kill the process, or set `PORT=8083` in `.env` |
+| Port 8082 in use               | `netstat -ano                                                                       |
 | Health shows "Unauthenticated" | Open dashboard → Auth page → complete OAuth flow                                    |
 | Requests fail with 403         | IP not in whitelist. Check logs or set `ALLOWED_IPS=disabled` in `.env`             |
 | Requests fail with 429         | Rate limited by Anthropic. Dashboard shows reset time                               |
 | Tunnel not connecting          | Verify `CLOUDFLARE_TUNNEL_TOKEN` in `.env`. Check `docker compose logs cloudflared` |
 | Frontend can't reach API       | Ensure API is healthy first. In Docker, frontend uses `API_URL=http://api:8082`     |
 | `xhigh` rejected by API        | Only Opus 4.7 officially supports `xhigh`. Switch model or lower effort to `high`   |
+
 
 ---
 
@@ -623,3 +642,4 @@ docker compose -f docker-compose.dev.yml up
 - Title format: `[backend|frontend|docker] Brief description`
 - Keep database migrations backward-compatible (append to the migrations array in `src/db.ts`; never drop or rewrite existing rows)
 - Don't commit log files (`api.log` is gitignored)
+
