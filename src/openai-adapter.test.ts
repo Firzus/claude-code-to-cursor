@@ -191,9 +191,9 @@ describe("openaiToAnthropic", () => {
 
 describe("extractToolName", () => {
   test("reads name from OpenAI Chat Completions nested shape", () => {
-    expect(
-      extractToolName({ type: "function", function: { name: "alpha", parameters: {} } }),
-    ).toBe("alpha");
+    expect(extractToolName({ type: "function", function: { name: "alpha", parameters: {} } })).toBe(
+      "alpha",
+    );
   });
 
   test("reads name from OpenAI Responses API flat shape", () => {

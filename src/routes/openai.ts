@@ -43,13 +43,27 @@ function summarizeInputItem(item: unknown): string {
   return `{${type}${role}${contentShape} keys=${keys}}`;
 }
 
+function describeMessageSource(openaiBody: OpenAIChatRequest): {
+  count: number;
+  source: "messages" | "input" | "none";
+} {
+  if (openaiBody.messages) return { count: openaiBody.messages.length, source: "messages" };
+  if (openaiBody.input) {
+    const count = Array.isArray(openaiBody.input) ? openaiBody.input.length : 0;
+    return { count, source: "input" };
+  }
+  return { count: 0, source: "none" };
+}
+
+function summarizeToolItem(tool: unknown): string {
+  const keys = tool && typeof tool === "object" ? Object.keys(tool).join(",") : typeof tool;
+  const type =
+    tool && typeof tool === "object" && "type" in tool ? (tool as { type?: string }).type : "?";
+  return `{type=${type} keys=${keys}}`;
+}
+
 function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
-  const messageCount = openaiBody.messages?.length ?? openaiBody.input?.length ?? 0;
-  const messageSource = openaiBody.messages
-    ? "messages"
-    : openaiBody.input
-      ? "input"
-      : "none";
+  const { count: messageCount, source: messageSource } = describeMessageSource(openaiBody);
   logger.info(
     `[Cursor Request] model="${openaiBody.model}" stream=${openaiBody.stream || false} ${messageSource}=${messageCount} tools=${openaiBody.tools?.length ?? 0} max_tokens=${openaiBody.max_tokens || openaiBody.max_completion_tokens || "default"}`,
   );
@@ -73,14 +87,8 @@ function logOpenAIRequest(openaiBody: OpenAIChatRequest): void {
   }
 
   if (openaiBody.tools && openaiBody.tools.length > 0) {
-    const sample = openaiBody.tools.slice(0, 3).map((t) => {
-      const keys = t && typeof t === "object" ? Object.keys(t).join(",") : typeof t;
-      const type = t && typeof t === "object" && "type" in t ? (t as { type?: string }).type : "?";
-      return `{type=${type} keys=${keys}}`;
-    });
-    logger.info(
-      `[Cursor Tools] ${openaiBody.tools.length} tools, sample: ${sample.join(" ")}`,
-    );
+    const sample = openaiBody.tools.slice(0, 3).map(summarizeToolItem);
+    logger.info(`[Cursor Tools] ${openaiBody.tools.length} tools, sample: ${sample.join(" ")}`);
   }
 }
 
