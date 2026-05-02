@@ -52,7 +52,7 @@ function HomePage() {
             <FeatureTile
               index="01 · translate"
               title="openai ↔ anthropic"
-              description="Any OpenAI-compatible client speaks to Claude. Messages, tools, images, and streaming are rewritten on the fly — the only public model you need to know is 'claude-code'."
+              description="Any OpenAI-compatible client speaks to Claude. Messages, tools, images, and streaming are rewritten on the fly — pick a non-Claude slug in your client (e.g. 'gpt-5.5') so Cursor doesn't block your custom API key."
               icon={Radio}
               items={["OpenAI chat completions", "Anthropic messages", "Responses API input"]}
               delay={60}
