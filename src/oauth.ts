@@ -8,6 +8,7 @@ import {
   OAUTH_REDIRECT_URI,
   OAUTH_SCOPES,
 } from "./config";
+import { logger } from "./logger";
 import type { CctcAuth, TokenInfo, TokenRefreshResponse } from "./types";
 
 let cachedToken: TokenInfo | null = null;
@@ -135,7 +136,7 @@ export function hasCredentials(): boolean {
 
 async function refreshAccessToken(refreshTokenValue: string): Promise<TokenInfo | null> {
   try {
-    console.log("Refreshing OAuth token...");
+    logger.info("Refreshing OAuth token...");
 
     const response = await fetch(ANTHROPIC_TOKEN_URL, {
       method: "POST",
@@ -149,7 +150,7 @@ async function refreshAccessToken(refreshTokenValue: string): Promise<TokenInfo 
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Token refresh failed:", response.status, errorText);
+      logger.error(`Token refresh failed: ${response.status} ${errorText}`);
       return null;
     }
 
@@ -173,10 +174,10 @@ async function refreshAccessToken(refreshTokenValue: string): Promise<TokenInfo 
     });
 
     cachedToken = tokenInfo;
-    console.log("Token refreshed successfully");
+    logger.info("Token refreshed successfully");
     return tokenInfo;
   } catch (error) {
-    console.error("Failed to refresh token:", error);
+    logger.error(`Failed to refresh token: ${error}`);
     return null;
   }
 }
@@ -210,7 +211,7 @@ export async function getValidToken(): Promise<TokenInfo | null> {
   if (refreshed) return refreshed;
 
   // 5. Refresh failed → null
-  console.error("Token refresh failed. Please re-authenticate via /login.");
+  logger.error("Token refresh failed. Please re-authenticate via /login.");
   cachedToken = null;
   return null;
 }

@@ -82,7 +82,7 @@ if (!SKIP) {
       expect("reasoning_budget" in body1).toBe(false);
     });
 
-    test("rewrites the native sync response model back to claude-code", async () => {
+    test("echoes the client model back in native sync responses", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-sonnet-4-6",
@@ -123,7 +123,7 @@ if (!SKIP) {
       expect(body.model).toBe("claude-code");
     });
 
-    test("rewrites the native SSE message_start model back to claude-code", async () => {
+    test("echoes the client model back in native SSE message_start", async () => {
       proxiedBody = undefined;
       currentModelSettings = {
         selectedModel: "claude-haiku-4-5",

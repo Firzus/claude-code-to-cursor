@@ -374,15 +374,8 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   trimMessageToolResults(prepared.messages);
   applyCacheBreakpoints(prepared.messages);
 
-  const finalSystemContent = systemPrompts
-    .map((block) => (block.type === "text" ? block.text : JSON.stringify(block)))
-    .join("\n\n");
-  logger.verbose(`\n📋 [Final Claude Code System Prompt] (${finalSystemContent.length} chars):`);
   logger.verbose(
-    finalSystemContent
-      .split("\n")
-      .map((l: string) => `   ${l}`)
-      .join("\n"),
+    `[System Prompt] ${systemPrompts.length} blocks, ${systemPrompts.reduce((n, b) => n + (b.type === "text" && b.text ? b.text.length : 0), 0)} chars`,
   );
 
   prepared = normalizeAnthropicToolIds(prepared);
@@ -504,8 +497,9 @@ async function makeClaudeCodeRequest(
   try {
     const preparedBody = prepareClaudeCodeBody(body);
 
-    logger.verbose(`   [Debug] Sending model to Claude Code: "${preparedBody.model}"`);
-    logger.verbose(`   [Debug] Request body keys: ${Object.keys(preparedBody).join(", ")}`);
+    logger.verbose(
+      `[ClaudeCode] model="${preparedBody.model}" keys=${Object.keys(preparedBody).join(",")}`,
+    );
 
     const response = await fetch(`${ANTHROPIC_API_URL}${endpoint}?beta=true`, {
       method: "POST",
@@ -529,7 +523,7 @@ async function makeClaudeCodeRequest(
       logger.verbose(`[plan-usage] header capture failed: ${String(err)}`);
     }
 
-    logger.verbose(`[Debug] Anthropic API response status: ${response.status}`);
+    logger.verbose(`[ClaudeCode] Response status: ${response.status}`);
 
     const errorResult = await handleErrorStatus(response, isProbe);
     if (errorResult) return errorResult;

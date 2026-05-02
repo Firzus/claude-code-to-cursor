@@ -9,7 +9,7 @@ mock.module("./config", () => ({
 }));
 
 mock.module("./logger", () => ({
-  logger: { info: () => {}, verbose: () => {}, error: () => {} },
+  logger: { info: () => {}, verbose: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
 }));
 
 const { checkIPWhitelist, corsHeaders, extractHeaders } = await import("./middleware");

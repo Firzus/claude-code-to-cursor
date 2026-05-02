@@ -4,6 +4,7 @@
 
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import { logger } from "./logger";
 import type { ModelSettings } from "./model-settings";
 import {
   getModelSettingsFromDb,
@@ -135,7 +136,7 @@ function initSchema(database: Database) {
   initModelSettingsSchema(database);
   initPlanUsageSnapshotSchema(database);
 
-  console.log(`✓ Database initialized at ${DB_PATH}`);
+  logger.info(`Database initialized at ${DB_PATH}`);
 }
 
 type RequestSource = "claude_code" | "error";
@@ -473,7 +474,7 @@ export function resetAnalytics(): { deletedCount: number } {
   // Reset auto-increment counter
   database.run(`DELETE FROM sqlite_sequence WHERE name = 'requests'`);
 
-  console.log(`✓ Reset analytics: deleted ${deletedCount} records`);
+  logger.info(`Reset analytics: deleted ${deletedCount} records`);
   return { deletedCount };
 }
 

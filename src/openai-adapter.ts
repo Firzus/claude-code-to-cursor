@@ -39,6 +39,18 @@ interface OpenAIFunctionTool {
   };
 }
 
+/**
+ * OpenAI Responses API tool shape — flat, no `function` wrapper. Cursor
+ * sends tools in this format when using the Responses API path.
+ */
+interface OpenAIResponsesFunctionTool {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+  strict?: boolean;
+}
+
 interface AnthropicToolDirect {
   name: string;
   description?: string;
@@ -46,7 +58,110 @@ interface AnthropicToolDirect {
   cache_control?: { type: string };
 }
 
-type OpenAITool = OpenAIFunctionTool | AnthropicToolDirect;
+type OpenAITool = OpenAIFunctionTool | OpenAIResponsesFunctionTool | AnthropicToolDirect;
+
+const EMPTY_INPUT_SCHEMA = { type: "object", properties: {} } as const;
+
+function isOpenAIChatTool(tool: unknown): tool is OpenAIFunctionTool {
+  if (!tool || typeof tool !== "object") return false;
+  const t = tool as { type?: unknown; function?: { name?: unknown } };
+  return (
+    t.type === "function" &&
+    typeof t.function === "object" &&
+    t.function !== null &&
+    typeof t.function.name === "string"
+  );
+}
+
+function isOpenAIResponsesTool(tool: unknown): tool is OpenAIResponsesFunctionTool {
+  if (!tool || typeof tool !== "object") return false;
+  const t = tool as { type?: unknown; name?: unknown };
+  return t.type === "function" && typeof t.name === "string";
+}
+
+function isAnthropicTool(tool: unknown): tool is AnthropicToolDirect {
+  if (!tool || typeof tool !== "object") return false;
+  const t = tool as { name?: unknown };
+  return typeof t.name === "string";
+}
+
+/**
+ * Extract a tool's name across the three shapes Cursor / OpenAI / Anthropic
+ * may send. Returns undefined for malformed entries.
+ */
+export function extractToolName(tool: unknown): string | undefined {
+  if (isOpenAIChatTool(tool)) return tool.function.name;
+  if (isOpenAIResponsesTool(tool)) return tool.name;
+  if (isAnthropicTool(tool)) return tool.name;
+  return undefined;
+}
+
+function isResponsesInputArray(input: unknown): input is ResponsesInputItem[] {
+  if (!Array.isArray(input) || input.length === 0) return false;
+  const first = input[0];
+  return (
+    !!first &&
+    typeof first === "object" &&
+    "type" in first &&
+    typeof (first as { type?: unknown }).type === "string"
+  );
+}
+
+function responsesContentToOpenAI(
+  content: string | ResponsesContentPart[],
+): string | OpenAIContentPart[] {
+  if (typeof content === "string") return content;
+  const parts: OpenAIContentPart[] = [];
+  for (const part of content) {
+    if (part.type === "input_text" || part.type === "output_text" || part.type === "text") {
+      parts.push({ type: "text", text: part.text });
+    } else if (part.type === "input_image") {
+      parts.push({ type: "image_url", image_url: { url: part.image_url, detail: part.detail } });
+    }
+  }
+  return parts;
+}
+
+/**
+ * Translate OpenAI Responses API `input` items into Chat Completions messages
+ * so the rest of the pipeline can consume them. Handles message envelopes,
+ * function calls (assistant tool invocations), and function call outputs
+ * (tool results). The `developer` role is mapped to `system`.
+ *
+ * Consecutive `function_call` items are batched into a single assistant
+ * message with multiple `tool_calls`, matching Chat Completions semantics.
+ */
+export function responsesInputToChatMessages(items: ResponsesInputItem[]): OpenAIMessage[] {
+  const messages: OpenAIMessage[] = [];
+  let pendingToolCalls: OpenAIToolCall[] = [];
+
+  const flushPendingToolCalls = () => {
+    if (pendingToolCalls.length === 0) return;
+    messages.push({ role: "assistant", content: null, tool_calls: pendingToolCalls });
+    pendingToolCalls = [];
+  };
+
+  for (const item of items) {
+    if (item.type === "message") {
+      flushPendingToolCalls();
+      const role = item.role === "developer" ? "system" : item.role;
+      messages.push({ role, content: responsesContentToOpenAI(item.content) });
+    } else if (item.type === "function_call") {
+      pendingToolCalls.push({
+        id: item.call_id,
+        type: "function",
+        function: { name: item.name, arguments: item.arguments },
+      });
+    } else if (item.type === "function_call_output") {
+      flushPendingToolCalls();
+      messages.push({ role: "tool", tool_call_id: item.call_id, content: item.output });
+    }
+    // `reasoning` items have no Chat Completions equivalent — drop silently.
+  }
+
+  flushPendingToolCalls();
+  return messages;
+}
 
 interface OpenAIToolCall {
   id: string;
@@ -57,11 +172,49 @@ interface OpenAIToolCall {
   };
 }
 
+/**
+ * OpenAI Responses API input item shapes. Items in `input` are typed
+ * envelopes — they are NOT plain Chat Completions messages.
+ */
+type ResponsesContentPart =
+  | { type: "input_text"; text: string }
+  | { type: "output_text"; text: string }
+  | { type: "text"; text: string }
+  | { type: "input_image"; image_url: string; detail?: "auto" | "low" | "high" };
+
+type ResponsesInputItem =
+  | {
+      type: "message";
+      role: "user" | "assistant" | "system" | "developer";
+      content: string | ResponsesContentPart[];
+    }
+  | {
+      type: "function_call";
+      call_id: string;
+      name: string;
+      arguments: string;
+      id?: string;
+    }
+  | {
+      type: "function_call_output";
+      call_id: string;
+      output: string;
+    }
+  | {
+      type: "reasoning";
+      summary?: unknown;
+      content?: unknown;
+    };
+
 export interface OpenAIChatRequest {
   model: string;
   messages: OpenAIMessage[];
-  /** OpenAI Responses API format - alias for messages */
-  input?: OpenAIMessage[];
+  /**
+   * OpenAI Responses API field. Items here are Responses-API envelopes
+   * ({type:"message"}, {type:"function_call"}, {type:"function_call_output"})
+   * — NOT plain Chat Completions messages. Cursor sends this format.
+   */
+  input?: ResponsesInputItem[] | OpenAIMessage[] | string;
   max_tokens?: number;
   max_completion_tokens?: number;
   temperature?: number;
@@ -188,19 +341,12 @@ function convertContent(
     // Pass through Anthropic-format blocks (tool_use, tool_result) directly
     // Cursor sends these in Anthropic format, not OpenAI format
     if ((part as ContentBlock).type === "tool_use") {
-      const toolUse = part as ContentBlock;
-      logger.verbose(
-        `    [convertContent] Passing through tool_use block: id=${toolUse.id}, name=${toolUse.name}`,
-      );
-      blocks.push(toolUse);
+      blocks.push(part as ContentBlock);
       continue;
     }
 
     if ((part as ContentBlock).type === "tool_result") {
       const toolResult = part as ContentBlock;
-      logger.verbose(
-        `    [convertContent] Passing through tool_result block: tool_use_id=${toolResult.tool_use_id}`,
-      );
       if (typeof toolResult.content === "string") {
         blocks.push({ ...toolResult, content: trimToolResult(toolResult.content) });
       } else {
@@ -264,15 +410,29 @@ export function openaiToAnthropicBase(
 ): AnthropicRequest {
   const request = { ...originalRequest };
 
-  // Normalize: Responses API uses `input` instead of `messages`
-  if (!request.messages && request.input) {
-    console.log(`   [Debug] Detected Responses API format: converting 'input' to 'messages'`);
-    request.messages = request.input;
+  // Normalize: Responses API uses `input`. Items there are typed envelopes
+  // ({type:"message"|"function_call"|"function_call_output"}), not plain
+  // Chat Completions messages, so we translate them rather than aliasing.
+  if (!request.messages && request.input !== undefined) {
+    if (typeof request.input === "string") {
+      request.messages = [{ role: "user", content: request.input }];
+      logger.info(`[Conversion] input=string(${request.input.length}) → 1 message`);
+    } else if (isResponsesInputArray(request.input)) {
+      const before = request.input.length;
+      request.messages = responsesInputToChatMessages(request.input);
+      logger.info(
+        `[Conversion] Responses API: ${before} items → ${request.messages.length} messages`,
+      );
+    } else {
+      request.messages = request.input as OpenAIMessage[];
+      logger.info(
+        `[Conversion] input array (no type field) → ${request.messages.length} messages (legacy mode)`,
+      );
+    }
   }
 
-  // Safety check: if still no messages, use empty array
   if (!request.messages) {
-    console.log(`   [Warning] No 'messages' or 'input' found in request, using empty array`);
+    logger.warn(`No 'messages' or 'input' found in request, using empty array`);
     request.messages = [];
   }
 
@@ -283,24 +443,7 @@ export function openaiToAnthropicBase(
   const messages: AnthropicMessage[] = [];
   let system: string | ContentBlock[] | undefined;
 
-  // Log incoming message summary for debugging
-  logger.verbose(`\n=== OPENAI TO ANTHROPIC CONVERSION ===`);
-  logger.verbose(`Total incoming messages: ${request.messages.length}`);
-  for (let i = 0; i < request.messages.length; i++) {
-    const msg = request.messages[i];
-    if (!msg) continue;
-    const hasToolCalls = (msg as OpenAIMessage).tool_calls?.length || 0;
-    const hasToolCallId = (msg as OpenAIMessage).tool_call_id || null;
-    const contentPreview =
-      typeof msg.content === "string"
-        ? msg.content.slice(0, 100)
-        : Array.isArray(msg.content)
-          ? `[${msg.content.length} parts]`
-          : String(msg.content).slice(0, 100);
-    logger.verbose(
-      `  [${i}] role=${msg.role}, tool_calls=${hasToolCalls}, tool_call_id=${hasToolCallId}, content=${contentPreview}...`,
-    );
-  }
+  logger.verbose(`[Conversion] ${request.messages.length} incoming messages`);
 
   for (const msg of request.messages) {
     if (msg.role === "system") {
@@ -330,18 +473,13 @@ export function openaiToAnthropicBase(
 
       // Convert tool_calls to Anthropic tool_use blocks
       if (msg.tool_calls && msg.tool_calls.length > 0) {
-        logger.verbose(`  Converting ${msg.tool_calls.length} tool_calls to tool_use blocks`);
         for (const toolCall of msg.tool_calls) {
           let input = {};
           try {
             input = JSON.parse(toolCall.function.arguments);
           } catch {
-            // If arguments aren't valid JSON, wrap in object
             input = { raw: toolCall.function.arguments };
           }
-          logger.verbose(
-            `    -> tool_use: id=${toolCall.id}, name=${toolCall.function.name}, input=${JSON.stringify(input).slice(0, 200)}`,
-          );
           contentBlocks.push({
             type: "tool_use",
             id: toolCall.id,
@@ -358,14 +496,9 @@ export function openaiToAnthropicBase(
         });
       }
     } else if (msg.role === "tool") {
-      // Convert tool results to Anthropic tool_result blocks
-      logger.verbose(`  Converting tool result: tool_call_id=${msg.tool_call_id}`);
       const rawResultContent =
         typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
       const resultContent = trimToolResult(rawResultContent);
-      logger.verbose(
-        `    -> tool_result content (first 500 chars): ${resultContent.slice(0, 500)}`,
-      );
 
       const toolResultContent: ContentBlock[] = [
         {
@@ -378,10 +511,8 @@ export function openaiToAnthropicBase(
       // Check if the last message is a user message - if so, append to it
       const lastMsg = messages[messages.length - 1];
       if (lastMsg && lastMsg.role === "user" && Array.isArray(lastMsg.content)) {
-        logger.verbose(`    -> Appending to existing user message`);
         lastMsg.content.push(...toolResultContent);
       } else {
-        logger.verbose(`    -> Creating new user message for tool_result`);
         messages.push({
           role: "user",
           content: toolResultContent,
@@ -408,18 +539,7 @@ export function openaiToAnthropicBase(
     }
   }
 
-  // Log converted messages summary
-  logger.verbose(`\nConverted to ${messages.length} Anthropic messages:`);
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    if (!msg) continue;
-    if (Array.isArray(msg.content)) {
-      const types = msg.content.map((b: ContentBlock) => b.type).join(", ");
-      logger.verbose(`  [${i}] role=${msg.role}, content=[${types}]`);
-    } else {
-      logger.verbose(`  [${i}] role=${msg.role}, content=${String(msg.content).slice(0, 100)}...`);
-    }
-  }
+  logger.verbose(`[Conversion] → ${messages.length} Anthropic messages`);
 
   // Ensure messages alternate properly (Anthropic requirement)
   // If first message isn't user, prepend an empty user message
@@ -435,7 +555,7 @@ export function openaiToAnthropicBase(
       ? "Cursor (max_completion_tokens)"
       : "Default (4096)";
 
-  console.log(`   [Debug] Max tokens: ${maxTokens} (${maxTokensSource})`);
+  logger.verbose(`Max tokens: ${maxTokens} (${maxTokensSource})`);
 
   // Note: thinking block and temperature are applied later via applyThinkingToBody()
   const result: AnthropicRequest = {
@@ -454,20 +574,43 @@ export function openaiToAnthropicBase(
   };
 
   if (request.tools && request.tools.length > 0) {
-    const firstTool = request.tools[0];
-    if (firstTool && "type" in firstTool && firstTool.type === "function") {
-      result.tools = request.tools.map((tool) => {
-        const t = tool as OpenAIFunctionTool;
-        return {
-          name: t.function.name,
-          description: t.function.description || "",
-          input_schema: t.function.parameters || { type: "object", properties: {} },
-        };
-      });
-    } else {
-      result.tools = request.tools as AnthropicToolDirect[] as typeof result.tools;
+    // Three tool shapes can show up — Cursor uses the flat Responses API
+    // form, hence the per-tool detection rather than branching on the first.
+    const converted: AnthropicToolDirect[] = [];
+    let skipped = 0;
+    for (const tool of request.tools) {
+      if (isOpenAIChatTool(tool)) {
+        converted.push({
+          name: tool.function.name,
+          description: tool.function.description || "",
+          input_schema: tool.function.parameters || { ...EMPTY_INPUT_SCHEMA },
+        });
+      } else if (isOpenAIResponsesTool(tool)) {
+        converted.push({
+          name: tool.name,
+          description: tool.description || "",
+          input_schema: tool.parameters || { ...EMPTY_INPUT_SCHEMA },
+        });
+      } else if (isAnthropicTool(tool)) {
+        converted.push({
+          name: tool.name,
+          description: tool.description || "",
+          input_schema: tool.input_schema || { ...EMPTY_INPUT_SCHEMA },
+          ...(tool.cache_control ? { cache_control: tool.cache_control } : {}),
+        });
+      } else {
+        skipped++;
+      }
     }
-    logger.verbose(`[Debug] Passing ${request.tools.length} tools to Anthropic`);
+
+    if (skipped > 0) {
+      logger.warn(`[Conversion] dropped ${skipped}/${request.tools.length} malformed tool(s)`);
+    }
+
+    if (converted.length > 0) {
+      result.tools = converted as typeof result.tools;
+    }
+    logger.verbose(`[Conversion] ${converted.length} tools (of ${request.tools.length})`);
   }
 
   if (request.tool_choice) {
@@ -629,11 +772,7 @@ export function createOpenAIToolCallChunk(
     ],
   };
 
-  const result = `data: ${JSON.stringify(chunk)}\n\n`;
-  logger.verbose(
-    `   [EMIT TOOL CALL CHUNK] index=${toolCallIndex}, id=${toolCallId || "-"}, name=${functionName || "-"}, args=${functionArgs ? functionArgs.slice(0, 200) : "-"}, finish=${finishReason || "-"}`,
-  );
-  return result;
+  return `data: ${JSON.stringify(chunk)}\n\n`;
 }
 
 /**

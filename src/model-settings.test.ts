@@ -17,13 +17,18 @@ import {
 
 describe("model settings contract", () => {
   test("locks the public model id contract", () => {
-    expect(PUBLIC_MODEL_ID).toBe("claude-code");
-    expect(getExposedModels()).toEqual(["claude-code"]);
+    expect(PUBLIC_MODEL_ID).toBe("gpt-5.5");
+    expect(getExposedModels()).toEqual(["gpt-5.5"]);
+    expect(isAllowedPublicModel("gpt-5.5")).toBe(true);
+    expect(isAllowedPublicModel("gpt-4o")).toBe(true);
+    expect(isAllowedPublicModel("claude-sonnet-4-5")).toBe(true);
     expect(isAllowedPublicModel("claude-code")).toBe(true);
-    expect(isAllowedPublicModel("claude-opus-4-7")).toBe(false);
-    expect(isAllowedPublicModel("claude-opus-4-6")).toBe(false);
-    expect(isAllowedPublicModel("claude-sonnet-4-6")).toBe(false);
-    expect(isAllowedPublicModel("claude-haiku-4-5")).toBe(false);
+    expect(isAllowedPublicModel("cctc-claude-opus-4-7")).toBe(true);
+    expect(isAllowedPublicModel("foo")).toBe(true);
+    expect(isAllowedPublicModel("")).toBe(false);
+    expect(isAllowedPublicModel("Claude Code")).toBe(false);
+    expect(isAllowedPublicModel("-foo")).toBe(false);
+    expect(isAllowedPublicModel("foo bar")).toBe(false);
   });
 
   test("locks the default model settings", () => {

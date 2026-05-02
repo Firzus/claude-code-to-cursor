@@ -8,34 +8,14 @@ const config = getConfig();
  */
 export function logRequestDetails(req: Request, endpoint: string) {
   const url = new URL(req.url);
-  const userAgent = req.headers.get("user-agent") || "unknown";
-  const origin = req.headers.get("origin") || "none";
-  const referer = req.headers.get("referer") || "none";
-  const cfRay = req.headers.get("cf-ray") || "none";
   const cfConnectingIp = req.headers.get("cf-connecting-ip") || "none";
-  const xForwardedFor = req.headers.get("x-forwarded-for") || "none";
-  const xRealIp = req.headers.get("x-real-ip") || "none";
+  logger.info(`[${endpoint}] ${req.method} ${url.pathname}${url.search} ip=${cfConnectingIp}`);
 
-  const anthropicBeta = req.headers.get("anthropic-beta") || "none";
-
-  console.log(`\n📥 [${endpoint}] Request Details:`);
-  console.log(`   User-Agent: ${userAgent}`);
-  console.log(`   Origin: ${origin}`);
-  console.log(`   Referer: ${referer}`);
-  console.log(`   CF-Ray: ${cfRay}`);
-  console.log(`   CF-Connecting-IP: ${cfConnectingIp} (Cursor backend server)`);
-  console.log(`   X-Forwarded-For: ${xForwardedFor}`);
-  console.log(`   X-Real-IP: ${xRealIp}`);
-  console.log(`   Anthropic-Beta: ${anthropicBeta}`);
-  console.log(`   URL: ${url.pathname}${url.search}`);
-  console.log(`   Method: ${req.method}`);
-
-  // Log all headers to file only (verbose)
   const allHeaders: Record<string, string> = {};
   req.headers.forEach((value, key) => {
     allHeaders[key] = value;
   });
-  logger.verbose(`   All Headers: ${JSON.stringify(allHeaders, null, 2)}`);
+  logger.verbose(`[${endpoint}] Headers: ${JSON.stringify(allHeaders)}`);
 }
 
 /**
@@ -81,10 +61,7 @@ export function checkIPWhitelist(req: Request): {
   const isAllowed = config.allowedIPs.includes(clientIP);
 
   if (!isAllowed) {
-    const cfRay = req.headers.get("cf-ray") || "none";
-    console.log(`\n🚫 [SECURITY] Blocked request from unauthorized IP: ${clientIP}`);
-    console.log(`   Allowed IPs: ${config.allowedIPs.join(", ")}`);
-    console.log(`   CF-Ray: ${cfRay}`);
+    logger.warn(`[SECURITY] Blocked IP: ${clientIP} (allowed: ${config.allowedIPs.join(", ")})`);
   }
 
   return {

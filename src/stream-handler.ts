@@ -119,21 +119,14 @@ export function createOpenAIStreamFromAnthropic(
       }, HEARTBEAT_INTERVAL);
 
       try {
-        logger.verbose(`   [Debug] Starting to read stream...`);
         let chunkCount = 0;
         while (true) {
-          if (cancelled) {
-            logger.verbose(`   [Debug] Stream cancelled by client`);
-            break;
-          }
+          if (cancelled) break;
 
           const { done, value } = await reader.read();
           if (done) {
-            logger.verbose(`[Debug] Stream ended after ${chunkCount} chunks`);
+            logger.verbose(`[Stream] Ended after ${chunkCount} chunks`);
             if (!messageStopped) {
-              logger.verbose(
-                "[Debug] Stream ended without message_stop, sending fallback usage chunk",
-              );
               const reasoningFromStream = Math.ceil(thinkingCharsAccum / 4);
               safeEnqueue(
                 createOpenAIStreamUsageChunk(
@@ -161,9 +154,6 @@ export function createOpenAIStreamFromAnthropic(
           if (cancelled) break;
 
           chunkCount++;
-          if (chunkCount === 1) {
-            logger.verbose(`[Debug] First chunk received, length: ${value.length}`);
-          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -179,11 +169,6 @@ export function createOpenAIStreamFromAnthropic(
 
             try {
               const event = JSON.parse(data);
-              if (chunkCount === 1) {
-                logger.verbose(
-                  `[Debug] First event type: ${event.type}, full event: ${JSON.stringify(event).substring(0, 200)}`,
-                );
-              }
 
               // Handle error events from the Anthropic API (e.g., overloaded, rate limit)
               // These arrive as SSE data with type "error" inside a 200 streaming response
@@ -207,23 +192,15 @@ export function createOpenAIStreamFromAnthropic(
                 if (!sentStart) {
                   safeEnqueue(createOpenAIStreamStart(streamId, model));
                   sentStart = true;
-                  logger.verbose("[Debug] Sent OpenAI stream start chunk");
                 }
                 if (event.message?.usage?.input_tokens !== undefined) {
                   usageCacheReadTokens = event.message.usage.cache_read_input_tokens || 0;
                   usageCacheCreationTokens = event.message.usage.cache_creation_input_tokens || 0;
-                  // Fresh (uncached) input tokens for analytics recording
                   freshInputTokens = event.message.usage.input_tokens;
-                  // Total input tokens = uncached + cache_read + cache_creation
-                  // Anthropic splits input_tokens into uncached only; we need the full total
-                  // so Cursor displays the correct "context used" percentage
                   usageInputTokens =
                     event.message.usage.input_tokens +
                     usageCacheReadTokens +
                     usageCacheCreationTokens;
-                  logger.verbose(
-                    `[Debug] Usage: input_tokens=${event.message.usage.input_tokens} + cache_read=${usageCacheReadTokens} + cache_creation=${usageCacheCreationTokens} = total prompt_tokens=${usageInputTokens}`,
-                  );
                 }
               }
 
@@ -235,27 +212,16 @@ export function createOpenAIStreamFromAnthropic(
                 }
 
                 const block = event.content_block;
-                logger.verbose(
-                  `   [Debug] content_block_start: type=${block?.type}, block=${JSON.stringify(block)}`,
-                );
 
                 currentBlockIndex = event.index ?? currentBlockIndex;
                 blockTextSent = false;
 
-                // Skip thinking blocks
                 if (block?.type === "thinking") {
                   inThinkingBlock = true;
                   continue;
                 }
                 inThinkingBlock = false;
 
-                if (block?.type === "text" && block.text) {
-                  logger.verbose(
-                    `   [Debug] content_block_start text block (${block.text.length} chars): ${block.text}`,
-                  );
-                }
-
-                // Handle tool_use blocks
                 if (block?.type === "tool_use") {
                   const toolName = block.name?.startsWith("mcp_")
                     ? block.name.slice(4)
@@ -266,10 +232,6 @@ export function createOpenAIStreamFromAnthropic(
                   const isUserTool = userToolNames?.has(toolName);
 
                   if (isUserTool) {
-                    logger.verbose(
-                      `   [Debug] tool_use block started (user tool): id=${block.id}, name=${toolName}`,
-                    );
-
                     currentToolCall = {
                       id: block.id,
                       name: toolName,
@@ -288,11 +250,6 @@ export function createOpenAIStreamFromAnthropic(
                       ),
                     );
                   } else {
-                    // Claude Code internal tool (CreatePlan, TodoWrite, etc.)
-                    // Buffer JSON and extract content as text at block end
-                    logger.verbose(
-                      `   [Debug] tool_use block started (internal tool, will extract text): id=${block.id}, name=${toolName}`,
-                    );
                     inInternalToolCall = true;
                     internalToolCallJson = "";
                     internalToolCallName = toolName;
@@ -304,26 +261,18 @@ export function createOpenAIStreamFromAnthropic(
               if (event.type === "content_block_stop") {
                 if (inThinkingBlock) {
                   inThinkingBlock = false;
-                  logger.verbose(`   [Debug] Thinking block ended`);
                   continue;
                 }
 
                 if (inInternalToolCall) {
                   inInternalToolCall = false;
-                  logger.verbose(
-                    `   [Debug] Internal tool call block ended: ${internalToolCallName}`,
-                  );
 
                   // Parse buffered JSON and extract readable text
                   let extractedText: string | null = null;
                   try {
                     const parsed = internalToolCallJson ? JSON.parse(internalToolCallJson) : null;
                     extractedText = formatInternalToolContent(internalToolCallName, parsed);
-                  } catch {
-                    logger.verbose(
-                      `   [Debug] Failed to parse internal tool JSON for ${internalToolCallName}`,
-                    );
-                  }
+                  } catch {}
 
                   if (extractedText) {
                     logger.info(
@@ -346,13 +295,7 @@ export function createOpenAIStreamFromAnthropic(
                   continue;
                 }
 
-                logger.verbose(`   [Debug] content_block_stop for index ${event.index}`);
-
                 if (currentToolCall) {
-                  logger.verbose(
-                    `[Debug] Tool call done: ${currentToolCall.name} (${currentToolCall.inputJson.length} chars)`,
-                  );
-
                   if (!currentToolCall.inputJson) {
                     safeEnqueue(
                       createOpenAIToolCallChunk(
@@ -421,12 +364,7 @@ export function createOpenAIStreamFromAnthropic(
               // Includes a state machine to filter <thinking>...</thinking> tags
               // that Claude may emit in plain text (not via the thinking API block).
               if (event.type === "content_block_delta" && event.delta?.text) {
-                if (blockTextSent) {
-                  logger.verbose(
-                    `   [Debug] Skipping delta - already sent complete text from content_block_start`,
-                  );
-                  continue;
-                }
+                if (blockTextSent) continue;
 
                 if (!sentStart) {
                   safeEnqueue(createOpenAIStreamStart(streamId, model));
@@ -447,7 +385,6 @@ export function createOpenAIStreamFromAnthropic(
                     if (textTagBuffer.endsWith("</thinking>")) {
                       inTextThinkingTag = false;
                       textTagBuffer = "";
-                      logger.verbose(`   [Debug] Filtered </thinking> closing tag from text delta`);
                     }
                     continue;
                   }
@@ -459,12 +396,8 @@ export function createOpenAIStreamFromAnthropic(
                     if (target.startsWith(textTagBuffer)) {
                       // Still a valid prefix
                       if (textTagBuffer === target) {
-                        // Full match — enter thinking mode
                         inTextThinkingTag = true;
                         textTagBuffer = "";
-                        logger.verbose(
-                          `   [Debug] Detected <thinking> tag in text delta, filtering`,
-                        );
                       }
                     } else {
                       // Not a match — flush buffer as normal text
@@ -483,10 +416,6 @@ export function createOpenAIStreamFromAnthropic(
                 }
 
                 if (output.length > 0) {
-                  logger.verbose(
-                    `   [Debug] content_block_delta chunk (${output.length} chars): ${JSON.stringify(output)}`,
-                  );
-
                   safeEnqueue(createOpenAIStreamChunk(streamId, model, output));
                   lastChunkTime = Date.now();
                 }
@@ -496,7 +425,6 @@ export function createOpenAIStreamFromAnthropic(
               if (event.type === "message_delta") {
                 if (event.usage?.output_tokens !== undefined) {
                   usageOutputTokens = event.usage.output_tokens;
-                  logger.verbose(`[Debug] Usage: output_tokens=${usageOutputTokens}`);
                 }
               }
 
@@ -532,11 +460,10 @@ export function createOpenAIStreamFromAnthropic(
                     reasoningFromStream,
                   ),
                 );
-                logger.verbose(
-                  `[Debug] Sent usage chunk: prompt=${usageInputTokens}, completion=${usageOutputTokens}, reasoning≈${reasoningFromStream}, total=${usageInputTokens + usageOutputTokens}`,
-                );
                 safeEnqueue("data: [DONE]\n\n");
-                logger.verbose(`   [Debug] Sent [DONE] chunk with finish_reason: ${finishReason}`);
+                logger.verbose(
+                  `[Stream] Done: prompt=${usageInputTokens} completion=${usageOutputTokens} reasoning≈${reasoningFromStream} finish=${finishReason} chunks=${chunkCount}`,
+                );
                 onComplete?.({
                   inputTokens: freshInputTokens,
                   outputTokens: usageOutputTokens,
@@ -545,11 +472,7 @@ export function createOpenAIStreamFromAnthropic(
                   thinkingTokens: reasoningFromStream,
                 });
               }
-            } catch (parseError) {
-              if (!cancelled) {
-                logger.verbose(`[Debug] Failed to parse event: ${parseError}`);
-              }
-            }
+            } catch {}
           }
         }
       } catch (streamError) {
@@ -587,7 +510,7 @@ export function createOpenAIStreamFromAnthropic(
       }
     },
     cancel(reason) {
-      logger.verbose(`   [Debug] Stream cancelled by client: ${reason}`);
+      logger.verbose(`[Stream] Cancelled by client: ${reason}`);
       cancelled = true;
       // Stop the timer immediately so we don't keep firing heartbeats for
       // up to HEARTBEAT_INTERVAL ms after the client disconnects.
