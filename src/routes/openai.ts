@@ -3,7 +3,7 @@ import { getModelSettings, recordRequest } from "../db";
 import { createOpenAIErrorStream, parseResponseError, toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
-import { getApiModelId, isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
+import { isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
 import {
   anthropicToOpenai,
   extractToolName,
@@ -125,7 +125,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       ? openaiBody.reasoning_effort
       : null;
 
-    const apiModelId = getApiModelId(modelSettings.selectedModel);
+    const apiModelId = modelSettings.selectedModel;
     const converted = openaiToAnthropicBase(openaiBody, apiModelId);
 
     const shape = computeRequestShape(converted, "openai", clientEffort);

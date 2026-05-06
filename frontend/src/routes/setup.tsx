@@ -261,8 +261,8 @@ function ConfigureStep({ onNext, onPrev }: { onNext: () => void; onPrev: () => v
           <ConfigField label="api_key" value="sk-cctc" sub="any non-empty string" />
           <ConfigField
             label="model"
-            value="gpt-5.5"
-            sub="use a non-Claude slug — Cursor blocks custom keys on Claude names"
+            value="Claude"
+            sub="public proxy model; backend model is selected in the dashboard"
           />
         </div>
       </Panel>

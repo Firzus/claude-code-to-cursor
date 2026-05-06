@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ThinkingEffort } from "./model-settings";
-import { getApiModelId, getSuggestedMaxTokens, type ModelSettings } from "./model-settings";
+import { getSuggestedMaxTokens, type ModelSettings } from "./model-settings";
 import {
   extractToolName,
   openaiToAnthropicBase,
@@ -8,7 +8,7 @@ import {
 } from "./openai-adapter";
 import { applyThinkingToBody, pickRoute } from "./routing-policy";
 
-function createRequest(model = "claude-code") {
+function createRequest(model = "Claude") {
   return {
     model,
     messages: [{ role: "user" as const, content: "Hello" }],
@@ -20,7 +20,7 @@ function convert(
   request: ReturnType<typeof createRequest> & { reasoning_effort?: ThinkingEffort },
   settings: ModelSettings,
 ) {
-  const apiModelId = getApiModelId(settings.selectedModel);
+  const apiModelId = settings.selectedModel;
   const base = openaiToAnthropicBase(request, apiModelId);
   const clientEffort = request.reasoning_effort ?? null;
   const decision = pickRoute({ settings, clientEffort });
@@ -28,29 +28,23 @@ function convert(
 }
 
 describe("openaiToAnthropic", () => {
-  test("rejects requests with a malformed model slug", () => {
+  test("rejects requests whose model is not Claude", () => {
     const settings: ModelSettings = {
       selectedModel: "claude-opus-4-7",
       thinkingEnabled: true,
       thinkingEffort: "high",
       subscriptionPlan: "max20x",
     };
-    expect(() => convert(createRequest("Claude Code"), settings)).toThrow(
-      'Invalid model "Claude Code": expected a non-empty model slug (e.g. "gpt-5.5").',
+    expect(() => convert(createRequest("Claude"), settings)).not.toThrow();
+    expect(() => convert(createRequest("gpt-5.5"), settings)).toThrow(
+      'Invalid model "gpt-5.5": only "Claude" is supported.',
     );
-  });
-
-  test("accepts any reasonable model slug from the client", () => {
-    const settings: ModelSettings = {
-      selectedModel: "claude-opus-4-7",
-      thinkingEnabled: false,
-      thinkingEffort: "high",
-      subscriptionPlan: "max20x",
-    };
-    expect(() => convert(createRequest("gpt-5.5"), settings)).not.toThrow();
-    expect(() => convert(createRequest("gpt-4o"), settings)).not.toThrow();
-    expect(() => convert(createRequest("claude-sonnet-4-5"), settings)).not.toThrow();
-    expect(() => convert(createRequest("claude-code"), settings)).not.toThrow();
+    expect(() => convert(createRequest("claude-code"), settings)).toThrow(
+      'Invalid model "claude-code": only "Claude" is supported.',
+    );
+    expect(() => convert(createRequest("Claude Code"), settings)).toThrow(
+      'Invalid model "Claude Code": only "Claude" is supported.',
+    );
   });
 
   test("uses selectedModel and omits thinking when thinkingEnabled=false", () => {

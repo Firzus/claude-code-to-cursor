@@ -20,23 +20,10 @@ export interface ModelSettings {
 /**
  * Default public model id advertised to clients (Cursor settings, /v1/models).
  *
- * Deliberately a non-Claude slug: Cursor blocks "Override OpenAI API Key"
- * for any model name that shadows its built-in Claude/Anthropic catalog
- * ("This model does not support custom API keys"). Picking a GPT-style
- * slug routes the client through Cursor's OpenAI-compatible path, which
- * does honour the custom key. The proxy ignores the value at request
- * time — the dashboard's selectedModel decides which Anthropic API to
- * call, and the OpenAI→Anthropic adapter handles the format conversion.
+ * This is only the client-facing model label. The proxy ignores the
+ * value after validation and routes to the dashboard's selectedModel.
  */
-export const PUBLIC_MODEL_ID = "gpt-5.5" as const;
-
-/**
- * Pattern for accepted client model ids. Permissive on purpose: the proxy
- * doesn't care which slug the client sends, but we still reject obviously
- * malformed values (empty strings, whitespace, weird characters) so that
- * misconfiguration surfaces early.
- */
-const PUBLIC_MODEL_PATTERN = /^[a-z][a-z0-9.-]*$/i;
+export const PUBLIC_MODEL_ID = "Claude" as const;
 
 export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-7",
@@ -72,7 +59,7 @@ export function isValidSubscriptionPlan(value: unknown): value is SubscriptionPl
   return typeof value === "string" && (SUPPORTED_PLANS as readonly string[]).includes(value);
 }
 
-const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
+const EXPOSED_MODEL_IDS: readonly string[] = [PUBLIC_MODEL_ID];
 
 /**
  * Suggested `max_tokens` per effort level.
@@ -101,16 +88,16 @@ export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
   "claude-haiku-4-5",
 ];
 
-export function getExposedModels(): string[] {
-  return [...EXPOSED_MODEL_IDS];
+export function getExposedModels(): readonly string[] {
+  return EXPOSED_MODEL_IDS;
 }
 
-export function isAllowedPublicModel(modelId: string): boolean {
-  return typeof modelId === "string" && PUBLIC_MODEL_PATTERN.test(modelId);
+export function isAllowedPublicModel(modelId: string): modelId is typeof PUBLIC_MODEL_ID {
+  return modelId === PUBLIC_MODEL_ID;
 }
 
 export function getInvalidPublicModelMessage(modelId: string): string {
-  return `Invalid model "${modelId}": expected a non-empty model slug (e.g. "${PUBLIC_MODEL_ID}").`;
+  return `Invalid model "${modelId}": only "${PUBLIC_MODEL_ID}" is supported.`;
 }
 
 export function getSuggestedMaxTokens(effort: ThinkingEffort): number {
@@ -119,11 +106,6 @@ export function getSuggestedMaxTokens(effort: ThinkingEffort): number {
 
 export function isValidThinkingEffort(value: unknown): value is ThinkingEffort {
   return typeof value === "string" && (VALID_EFFORTS as readonly string[]).includes(value);
-}
-
-/** Maps a user-facing selected model to the actual API model ID */
-export function getApiModelId(model: SupportedSelectedModel): string {
-  return model;
 }
 
 /** Returns the context window size for a given selected model */

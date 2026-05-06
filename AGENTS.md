@@ -12,7 +12,7 @@ Three services orchestrated via Docker Compose:
 - **Frontend Dashboard** (React + Vite, port 3111) — authentication UI, onboarding wizard, analytics dashboard, settings management
 - **Cloudflare Tunnel** (cloudflared) — secure external access to the API
 
-The API converts between OpenAI chat completion format and Anthropic messages format, allowing any OpenAI-compatible client to talk to Claude. It exposes a single public model ID (`Claude Code`) and maps it to a user-configured backend model (Opus 4.7, Opus 4.6, Sonnet 4.6, or Haiku 4.5).
+The API converts between OpenAI chat completion format and Anthropic messages format, allowing any OpenAI-compatible client to talk to Claude. It exposes a single public model ID (`Claude`) and maps it to a user-configured backend model (Opus 4.7, Opus 4.6, Sonnet 4.6, or Haiku 4.5).
 
 ### Key Technologies
 
@@ -402,7 +402,7 @@ claude-code-to-cursor/
 - `src/openai-adapter.ts` converts OpenAI chat completion requests to Anthropic messages format
 - `src/stream-handler.ts` converts Anthropic SSE streaming responses back to OpenAI format
 - Model names in requests are ignored — the proxy uses the model selected in settings
-- The only public model ID exposed is `"Claude Code"` (see `src/model-settings.ts`)
+- The only public model ID exposed is `"Claude"` (see `src/model-settings.ts`)
 - Supports OpenAI Responses API format (`input` field), images, and tool calls
 
 ### Cache Strategy
