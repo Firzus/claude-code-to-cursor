@@ -64,7 +64,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-code",
+          model: "Claude",
           max_tokens: 512,
           messages: [{ role: "user", content: "Hello" }],
           reasoning_budget: "high",
@@ -110,7 +110,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-code",
+          model: "Claude",
           max_tokens: 256,
           messages: [{ role: "user", content: "Hello" }],
         } satisfies AnthropicRequest),
@@ -120,7 +120,7 @@ if (!SKIP) {
       const body = (await response.json()) as { model: string };
 
       expect(response.status).toBe(200);
-      expect(body.model).toBe("claude-code");
+      expect(body.model).toBe("Claude");
     });
 
     test("echoes the client model back in native SSE message_start", async () => {
@@ -147,7 +147,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-code",
+          model: "Claude",
           max_tokens: 256,
           stream: true,
           messages: [{ role: "user", content: "Hello" }],
@@ -158,7 +158,7 @@ if (!SKIP) {
       const body = await response.text();
 
       expect(response.status).toBe(200);
-      expect(body).toContain('"model":"claude-code"');
+      expect(body).toContain('"model":"Claude"');
       expect(body).not.toContain('"model":"claude-haiku-4-5"');
     });
 
@@ -178,7 +178,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-code",
+          model: "Claude",
           max_tokens: 1024,
           messages: [
             {
@@ -219,7 +219,7 @@ if (!SKIP) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-code",
+          model: "Claude",
           max_tokens: 1024,
           messages: [{ role: "user", content: "Hello" }],
           reasoning_budget: "xhigh",
