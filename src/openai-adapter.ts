@@ -400,8 +400,8 @@ function convertContent(
  *
  * @param originalRequest  The incoming OpenAI-format request
  * @param targetApiModel   The raw Anthropic model ID string to set on the body
- *                         (e.g. "claude-opus-4-7"). Use getApiModelId() from
- *                         the caller to resolve from ModelSettings.
+ *                         (e.g. "claude-opus-4-7"). Pass `ModelSettings.selectedModel`
+ *                         from the caller.
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: full OpenAI→Anthropic conversion — branches cover message roles, tool calls, images; splitting would fragment a sequential pipeline.
 export function openaiToAnthropicBase(

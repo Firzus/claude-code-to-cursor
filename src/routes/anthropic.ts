@@ -4,7 +4,6 @@ import { createAnthropicErrorSSE, parseResponseError, toErrorMessage } from "../
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
-  getApiModelId,
   getInvalidPublicModelMessage,
   isAllowedPublicModel,
   isValidThinkingEffort,
@@ -268,7 +267,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       decision,
       normalizedBody.max_tokens,
       incomingBody.temperature,
-      getApiModelId(modelSettings.selectedModel),
+      modelSettings.selectedModel,
     );
 
     logger.info(

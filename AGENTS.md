@@ -642,3 +642,4 @@ docker compose -f docker-compose.dev.yml up
 - Title format: `[backend|frontend|docker] Brief description`
 - Keep database migrations backward-compatible (append to the migrations array in `src/db.ts`; never drop or rewrite existing rows)
 - Don't commit log files (`api.log` is gitignored)
+

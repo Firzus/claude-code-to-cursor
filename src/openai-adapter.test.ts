@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ThinkingEffort } from "./model-settings";
-import { getApiModelId, getSuggestedMaxTokens, type ModelSettings } from "./model-settings";
+import { getSuggestedMaxTokens, type ModelSettings } from "./model-settings";
 import {
   extractToolName,
   openaiToAnthropicBase,
@@ -20,7 +20,7 @@ function convert(
   request: ReturnType<typeof createRequest> & { reasoning_effort?: ThinkingEffort },
   settings: ModelSettings,
 ) {
-  const apiModelId = getApiModelId(settings.selectedModel);
+  const apiModelId = settings.selectedModel;
   const base = openaiToAnthropicBase(request, apiModelId);
   const clientEffort = request.reasoning_effort ?? null;
   const decision = pickRoute({ settings, clientEffort });

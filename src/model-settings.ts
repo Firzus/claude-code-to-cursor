@@ -59,7 +59,7 @@ export function isValidSubscriptionPlan(value: unknown): value is SubscriptionPl
   return typeof value === "string" && (SUPPORTED_PLANS as readonly string[]).includes(value);
 }
 
-const EXPOSED_MODEL_IDS = [PUBLIC_MODEL_ID] as const;
+const EXPOSED_MODEL_IDS: readonly string[] = [PUBLIC_MODEL_ID];
 
 /**
  * Suggested `max_tokens` per effort level.
@@ -88,8 +88,8 @@ export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
   "claude-haiku-4-5",
 ];
 
-export function getExposedModels(): string[] {
-  return [...EXPOSED_MODEL_IDS];
+export function getExposedModels(): readonly string[] {
+  return EXPOSED_MODEL_IDS;
 }
 
 export function isAllowedPublicModel(modelId: string): modelId is typeof PUBLIC_MODEL_ID {
@@ -106,11 +106,6 @@ export function getSuggestedMaxTokens(effort: ThinkingEffort): number {
 
 export function isValidThinkingEffort(value: unknown): value is ThinkingEffort {
   return typeof value === "string" && (VALID_EFFORTS as readonly string[]).includes(value);
-}
-
-/** Maps a user-facing selected model to the actual API model ID */
-export function getApiModelId(model: SupportedSelectedModel): string {
-  return model;
 }
 
 /** Returns the context window size for a given selected model */

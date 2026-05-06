@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_MODEL_SETTINGS,
-  getApiModelId,
   getContextLength,
   getExposedModels,
   getPlanQuotas,
@@ -206,13 +205,6 @@ describe("model settings contract", () => {
         thinkingEffort: "ultra",
       }),
     ).toThrow();
-  });
-
-  test("returns API model ID unchanged", () => {
-    expect(getApiModelId("claude-opus-4-7")).toBe("claude-opus-4-7");
-    expect(getApiModelId("claude-opus-4-6")).toBe("claude-opus-4-6");
-    expect(getApiModelId("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
-    expect(getApiModelId("claude-haiku-4-5")).toBe("claude-haiku-4-5");
   });
 
   test("returns correct context length per model", () => {
