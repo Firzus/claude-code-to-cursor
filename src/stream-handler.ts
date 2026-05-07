@@ -2,6 +2,7 @@
  * SSE streaming pipeline: converts Anthropic streaming events to OpenAI chat.completion.chunk format
  */
 
+import { TURN_MARKER } from "./anthropic-client";
 import { createOpenAIErrorStream, createOpenAIErrorTail, toErrorMessage } from "./error-utils";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
@@ -12,6 +13,7 @@ import {
   createOpenAIStreamUsageChunk,
   createOpenAIToolCallChunk,
 } from "./openai-adapter";
+import { stripMcpPrefix } from "./request-normalization";
 
 const encoder = new TextEncoder();
 
@@ -82,6 +84,10 @@ export function createOpenAIStreamFromAnthropic(
       // Claude can emit these in plain text even when thinking is not enabled via the API.
       let inTextThinkingTag = false; // true while inside <thinking>...</thinking> in text
       let textTagBuffer = ""; // buffers partial tag matches
+      // Defense in depth for the TURN_MARKER leak — upstream stop_sequences
+      // miss some variants (no newline prefix, mid-paragraph after a canvas).
+      let turnMarkerSuffix = "";
+      let turnMarkerStopped = false;
       let usageInputTokens = 0;
       let usageOutputTokens = 0;
       let usageCacheReadTokens = 0;
@@ -90,6 +96,18 @@ export function createOpenAIStreamFromAnthropic(
       let messageStopped = false;
       /** Raw characters received in thinking_delta chunks (approximate token estimate). */
       let thinkingCharsAccum = 0;
+
+      // Idempotency guard: onComplete must fire at most once per stream. The
+      // two emit sites below (`message_stop` event and reader-done) are
+      // mutually-exclusive by design (`messageStopped` is checked in the
+      // done branch), but routing this through a single helper makes the
+      // contract explicit and survives future edits.
+      let onCompleteFired = false;
+      const fireOnComplete = (usage: StreamUsage) => {
+        if (onCompleteFired) return;
+        onCompleteFired = true;
+        onComplete?.(usage);
+      };
 
       const safeEnqueue = (text: string) => {
         try {
@@ -140,7 +158,7 @@ export function createOpenAIStreamFromAnthropic(
                 ),
               );
               safeEnqueue("data: [DONE]\n\n");
-              onComplete?.({
+              fireOnComplete({
                 inputTokens: freshInputTokens,
                 outputTokens: usageOutputTokens,
                 cacheReadTokens: usageCacheReadTokens,
@@ -223,9 +241,7 @@ export function createOpenAIStreamFromAnthropic(
                 inThinkingBlock = false;
 
                 if (block?.type === "tool_use") {
-                  const toolName = block.name?.startsWith("mcp_")
-                    ? block.name.slice(4)
-                    : block.name;
+                  const toolName = stripMcpPrefix(block.name);
 
                   // Check if this is a user tool (sent by Cursor) or a Claude Code internal tool
                   // If userToolNames is undefined, no tools were sent → all tool calls are internal
@@ -316,6 +332,8 @@ export function createOpenAIStreamFromAnthropic(
 
                 blockTextSent = false;
                 currentBlockIndex = -1;
+                turnMarkerSuffix = "";
+                turnMarkerStopped = false;
               }
 
               // Accumulate thinking deltas (not forwarded to OpenAI text stream)
@@ -365,6 +383,7 @@ export function createOpenAIStreamFromAnthropic(
               // that Claude may emit in plain text (not via the thinking API block).
               if (event.type === "content_block_delta" && event.delta?.text) {
                 if (blockTextSent) continue;
+                if (turnMarkerStopped) continue; // tail of block already truncated
 
                 if (!sentStart) {
                   safeEnqueue(createOpenAIStreamStart(streamId, model));
@@ -412,6 +431,17 @@ export function createOpenAIStreamFromAnthropic(
                     textTagBuffer = "<";
                   } else {
                     output += ch;
+                  }
+
+                  // Marker may straddle a delta boundary; the suffix tracks
+                  // across deltas, but only this delta's output is mutable.
+                  turnMarkerSuffix = (turnMarkerSuffix + ch).slice(-TURN_MARKER.length);
+                  if (turnMarkerSuffix === TURN_MARKER) {
+                    if (output.endsWith(TURN_MARKER)) {
+                      output = output.slice(0, -TURN_MARKER.length);
+                    }
+                    turnMarkerStopped = true;
+                    break;
                   }
                 }
 
@@ -464,7 +494,7 @@ export function createOpenAIStreamFromAnthropic(
                 logger.verbose(
                   `[Stream] Done: prompt=${usageInputTokens} completion=${usageOutputTokens} reasoning≈${reasoningFromStream} finish=${finishReason} chunks=${chunkCount}`,
                 );
-                onComplete?.({
+                fireOnComplete({
                   inputTokens: freshInputTokens,
                   outputTokens: usageOutputTokens,
                   cacheReadTokens: usageCacheReadTokens,

@@ -192,7 +192,10 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         }
       }
 
-      const streamStartTime = Date.now();
+      // performance.now() is monotonic; Date.now() can jump backward under
+      // NTP correction or VM clock skew (we run in Docker), which produced
+      // negative latency rows in production analytics.
+      const streamStartPerf = performance.now();
       const stream = createOpenAIStreamFromAnthropic(
         response,
         streamId,
@@ -209,7 +212,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
             cacheCreationTokens: usage.cacheCreationTokens,
             thinkingTokens: usage.thinkingTokens,
             stream: true,
-            latencyMs: Date.now() - streamStartTime,
+            latencyMs: Math.round(performance.now() - streamStartPerf),
             shape,
             decision,
             appliedModel: anthropicBody.model,

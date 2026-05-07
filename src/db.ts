@@ -23,6 +23,13 @@ let db: Database | null = null;
 export function getDb(): Database {
   if (!db) {
     db = new Database(DB_PATH);
+    // WAL: writers don't block readers — the dashboard can poll while
+    // recordRequest()/saveSnapshot() write. NORMAL synchronous trades a tiny
+    // crash window (last few writes only) for ~10× write throughput. Both
+    // are persistent PRAGMAs and only need to be set once per file.
+    db.exec("PRAGMA journal_mode = WAL;");
+    db.exec("PRAGMA synchronous = NORMAL;");
+    db.exec("PRAGMA busy_timeout = 5000;");
     initSchema(db);
   }
   return db;
@@ -141,6 +148,31 @@ function initSchema(database: Database) {
 
 type RequestSource = "claude_code" | "error";
 
+// Blended pricing heuristics (USD per 1M tokens) for dashboard estimates only —
+// these are NOT billing truth. Anthropic's actual price tiers vary by model and
+// volume; we only use them so the UI can show approximate spend / savings.
+const INPUT_USD_PER_M = 15;
+const OUTPUT_USD_PER_M = 75;
+const CACHE_READ_COST_RATIO = 0.1;
+const CACHE_CREATION_COST_RATIO = 1.25;
+const CACHE_READ_USD_PER_M = INPUT_USD_PER_M * CACHE_READ_COST_RATIO;
+const CACHE_CREATION_USD_PER_M = INPUT_USD_PER_M * CACHE_CREATION_COST_RATIO;
+
+function estimateRequestUsd(
+  inputTokens: number,
+  outputTokens: number,
+  cacheReadTokens: number,
+  cacheCreationTokens: number,
+): number {
+  return (
+    (inputTokens * INPUT_USD_PER_M +
+      outputTokens * OUTPUT_USD_PER_M +
+      cacheReadTokens * CACHE_READ_USD_PER_M +
+      cacheCreationTokens * CACHE_CREATION_USD_PER_M) /
+    1_000_000
+  );
+}
+
 export type { RequestShapeMetrics };
 
 interface RequestRecord {
@@ -188,11 +220,17 @@ const INSERT_SQL = `INSERT INTO requests (
   thinking_tokens
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-/**
- * Record a request in the database
- */
-export function recordRequest(record: RequestRecord): void {
-  const params: SQLParam[] = [
+// Batched writes. Every recordRequest() builds the INSERT params, queues
+// them, and arms a 50 ms timer. The flush wraps all queued INSERTs in a
+// single transaction → one fsync instead of N. Cap of 50 forces an immediate
+// flush under heavy load so the queue can't grow without bound.
+const BATCH_FLUSH_MS = 50;
+const BATCH_MAX_PENDING = 50;
+const pendingRecords: SQLParam[][] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function buildInsertParams(record: RequestRecord): SQLParam[] {
+  return [
     Date.now(),
     record.model,
     record.source,
@@ -209,8 +247,54 @@ export function recordRequest(record: RequestRecord): void {
     record.decision?.policy ?? null,
     record.thinkingTokens ?? 0,
   ];
+}
 
-  getDb().run(INSERT_SQL, params);
+/**
+ * Drain the queue in a single transaction. Safe to call from shutdown.
+ * Errors are logged but never thrown — analytics loss must not crash the
+ * proxy.
+ */
+export function flushPendingRequests(): void {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (pendingRecords.length === 0) return;
+
+  const batch = pendingRecords.splice(0, pendingRecords.length);
+  try {
+    const database = getDb();
+    const insert = database.prepare(INSERT_SQL);
+    const txn = database.transaction((rows: SQLParam[][]) => {
+      for (const row of rows) insert.run(...row);
+    });
+    txn(batch);
+  } catch (err) {
+    logger.error(`[db] flushPendingRequests failed: ${(err as Error).message ?? err}`);
+  }
+}
+
+function scheduleFlush(): void {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    flushPendingRequests();
+  }, BATCH_FLUSH_MS);
+}
+
+/**
+ * Record a request in the database. Writes are coalesced via a 50 ms
+ * micro-batch; under heavy load the queue auto-flushes at 50 entries.
+ * Call flushPendingRequests() during shutdown to drain.
+ */
+export function recordRequest(record: RequestRecord): void {
+  pendingRecords.push(buildInsertParams(record));
+
+  if (pendingRecords.length >= BATCH_MAX_PENDING) {
+    flushPendingRequests();
+  } else {
+    scheduleFlush();
+  }
 
   if (record.source === "claude_code") {
     checkForStuckLoop({
@@ -219,6 +303,11 @@ export function recordRequest(record: RequestRecord): void {
       messageCount: record.shape?.messageCount ?? null,
     });
   }
+}
+
+/** @internal for tests */
+export function __getPendingRequestsCount(): number {
+  return pendingRecords.length;
 }
 
 interface AnalyticsSummary {
@@ -274,9 +363,6 @@ export function getAnalytics(since: number, until: number = Date.now()): Analyti
   const allInput = totalInput + cacheRead + cacheCreation;
   const totalThinking = totals.total_thinking_tokens || 0;
 
-  // Blended heuristic (USD per 1M tokens) for dashboard only — not billing truth.
-  const INPUT_USD_PER_M = 15;
-  const CACHE_READ_COST_RATIO = 0.1;
   const cacheSavingsUsdEstimate =
     (cacheRead * (1 - CACHE_READ_COST_RATIO) * INPUT_USD_PER_M) / 1_000_000;
 
@@ -359,11 +445,6 @@ export function getRecentRequests(
     applied_thinking_effort: string | null;
   }>;
 
-  const INPUT_USD_PER_M = 15;
-  const OUTPUT_USD_PER_M = 75;
-  const CACHE_READ_USD_PER_M = INPUT_USD_PER_M * 0.1;
-  const CACHE_CREATION_USD_PER_M = INPUT_USD_PER_M * 1.25;
-
   return {
     total: countResult.count,
     requests: rows.map((row) => ({
@@ -384,12 +465,12 @@ export function getRecentRequests(
       toolDefsCount: row.tool_defs_count,
       routingPolicy: row.routing_policy,
       appliedThinkingEffort: row.applied_thinking_effort,
-      estimatedUsd:
-        (row.input_tokens * INPUT_USD_PER_M +
-          row.output_tokens * OUTPUT_USD_PER_M +
-          row.cache_read_tokens * CACHE_READ_USD_PER_M +
-          row.cache_creation_tokens * CACHE_CREATION_USD_PER_M) /
-        1_000_000,
+      estimatedUsd: estimateRequestUsd(
+        row.input_tokens,
+        row.output_tokens,
+        row.cache_read_tokens,
+        row.cache_creation_tokens,
+      ),
     })),
   };
 }
@@ -524,17 +605,6 @@ export function getBudgetDaySummary(): {
   const cacheCreationTokens = row.cache_creation_tokens;
   const thinkingTokens = row.thinking_tokens;
 
-  const INPUT_USD_PER_M = 15;
-  const OUTPUT_USD_PER_M = 75;
-  const CACHE_READ_USD_PER_M = INPUT_USD_PER_M * 0.1;
-  const CACHE_CREATION_USD_PER_M = INPUT_USD_PER_M * 1.25;
-
-  const estimatedUsd =
-    (inputTokens * INPUT_USD_PER_M) / 1_000_000 +
-    (outputTokens * OUTPUT_USD_PER_M) / 1_000_000 +
-    (cacheReadTokens * CACHE_READ_USD_PER_M) / 1_000_000 +
-    (cacheCreationTokens * CACHE_CREATION_USD_PER_M) / 1_000_000;
-
   return {
     periodStart,
     periodEnd,
@@ -543,7 +613,12 @@ export function getBudgetDaySummary(): {
     cacheReadTokens,
     cacheCreationTokens,
     thinkingTokens,
-    estimatedUsd,
+    estimatedUsd: estimateRequestUsd(
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheCreationTokens,
+    ),
   };
 }
 
@@ -648,7 +723,10 @@ export function getPlanWindowUsage(sinceMs: number): {
   };
 
   const weightedTokens = Math.round(
-    row.input_tokens + row.output_tokens + row.cache_creation_tokens + row.cache_read_tokens * 0.1,
+    row.input_tokens +
+      row.output_tokens +
+      row.cache_creation_tokens +
+      row.cache_read_tokens * CACHE_READ_COST_RATIO,
   );
 
   return {

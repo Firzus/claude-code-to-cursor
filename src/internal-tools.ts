@@ -1,8 +1,16 @@
 /**
  * Extract readable text content from Claude Code internal tool calls
- * (CreatePlan, TodoWrite, etc.) so they can be emitted as text to Cursor
- * instead of being silently dropped.
+ * (CreatePlan, TodoWrite, Task/Agent for subagent dispatch, etc.) so they can
+ * be emitted as text to Cursor instead of being silently dropped.
  */
+
+const SUBAGENT_TOOL_NAMES = new Set(["Task", "Agent", "spawn_subagent", "delegate"]);
+
+/** True when the tool name maps to a subagent-dispatch invocation. */
+export function isSubagentToolName(name: string | undefined | null): boolean {
+  if (!name) return false;
+  return SUBAGENT_TOOL_NAMES.has(name);
+}
 
 /**
  * Parse the JSON payload of an internal tool call and return human-readable text.
@@ -31,6 +39,24 @@ export function formatInternalToolContent(toolName: string, data: unknown): stri
     appendList(parts, obj.todos);
     appendList(parts, obj.items);
     appendList(parts, obj.tasks);
+    return parts.length > 0 ? parts.join("\n\n") : null;
+  }
+
+  // Cursor subagent dispatch — only reached when Cursor didn't declare the
+  // tool client-side, so we surface the brief inline as text.
+  if (isSubagentToolName(toolName)) {
+    const parts: string[] = [];
+    const subagentType = typeof obj.subagent_type === "string" ? obj.subagent_type : "";
+    const description = typeof obj.description === "string" ? obj.description : "";
+    const prompt = typeof obj.prompt === "string" ? obj.prompt : "";
+    const model = typeof obj.model === "string" ? obj.model : "";
+
+    const headerBits = [subagentType, description].filter(Boolean);
+    const headerLabel = headerBits.length > 0 ? `: ${headerBits.join(" — ")}` : "";
+    parts.push(
+      `▶ Subagent dispatch (${toolName}${headerLabel})${model ? ` [model: ${model}]` : ""}`,
+    );
+    if (prompt) parts.push(prompt);
     return parts.length > 0 ? parts.join("\n\n") : null;
   }
 

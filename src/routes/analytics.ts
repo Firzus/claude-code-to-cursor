@@ -5,6 +5,7 @@ import {
   getRecentRequests,
   resetAnalytics,
 } from "../db";
+import { toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 
 function validatePaginationParams(
@@ -92,12 +93,8 @@ export function handleAnalyticsReset(): Response {
     const result = resetAnalytics();
     return Response.json({ success: true, ...result });
   } catch (error) {
-    logger.error(
-      `Reset analytics error: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return Response.json(
-      { error: { message: error instanceof Error ? error.message : "Reset failed" } },
-      { status: 500 },
-    );
+    const message = toErrorMessage(error);
+    logger.error(`Reset analytics error: ${message}`);
+    return Response.json({ error: { message: message || "Reset failed" } }, { status: 500 });
   }
 }

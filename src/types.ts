@@ -123,4 +123,5 @@ export interface ProxyConfig {
   port: number;
   allowedIPs: string[];
   allowedOrigins: string[];
+  maxUpstreamConcurrency: number;
 }

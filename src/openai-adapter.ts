@@ -3,6 +3,7 @@
  * Converts OpenAI chat completion format to/from Anthropic messages format
  */
 
+import { TURN_MARKER } from "./anthropic-client";
 import { formatInternalToolContent } from "./internal-tools";
 import { logger } from "./logger";
 import {
@@ -10,6 +11,7 @@ import {
   isAllowedPublicModel,
   type ThinkingEffort,
 } from "./model-settings";
+import { stripMcpPrefix } from "./request-normalization";
 import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicMessage, AnthropicRequest, AnthropicResponse, ContentBlock } from "./types";
 
@@ -635,8 +637,7 @@ export function anthropicToOpenai(
       ?.map((block: ContentBlock) => {
         if (block.type === "text") return block.text;
         if (block.type === "tool_use") {
-          const rawName = block.name || "";
-          const name = rawName.startsWith("mcp_") ? rawName.slice(4) : rawName;
+          const name = stripMcpPrefix(block.name);
           const extracted = formatInternalToolContent(name, block.input);
           if (extracted) return extracted;
           return `[Tool: ${name}]`;
@@ -648,6 +649,13 @@ export function anthropicToOpenai(
   // Strip <thinking>...</thinking> tags that Claude may emit in plain text
   // (separate from the API thinking blocks which are already filtered by type)
   content = content.replace(/<thinking>[\s\S]*?<\/thinking>/g, "").trim();
+
+  // Mirror the streaming-path turn-marker filter: drop "Human:" and anything
+  // after it (Claude can leak the legacy chat-transcript marker at the tail).
+  const markerIdx = content.indexOf(TURN_MARKER);
+  if (markerIdx !== -1) {
+    content = content.slice(0, markerIdx).trimEnd();
+  }
 
   return {
     id: `chatcmpl-${anthropicResponse.id || Date.now()}`,

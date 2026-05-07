@@ -1,3 +1,4 @@
+import { toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 import {
   exchangeCode,
@@ -97,8 +98,7 @@ export async function handleOAuthCallbackAPI(req: Request): Promise<Response> {
 
     return Response.json({ success: true, message: "Authentication successful.", expiresIn });
   } catch (error) {
-    const fullError = error instanceof Error ? error.message : String(error);
-    logger.error(`OAuth callback error: ${fullError}`);
+    logger.error(`OAuth callback error: ${toErrorMessage(error)}`);
     return Response.json(
       { success: false, message: "Authentication failed. Please try again." },
       { status: 500 },

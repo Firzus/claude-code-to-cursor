@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { getModelSettings, saveModelSettings } from "../db";
+import { toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 import { validateModelSettings } from "../model-settings";
 
@@ -49,7 +50,9 @@ export async function handleSettingsModelAPI(req: Request): Promise<Response> {
     saveModelSettings(settings);
     return Response.json({ success: true, settings });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Invalid model settings payload";
-    return Response.json({ success: false, error: message }, { status: 400 });
+    return Response.json(
+      { success: false, error: toErrorMessage(error) || "Invalid model settings payload" },
+      { status: 400 },
+    );
   }
 }

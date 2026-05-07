@@ -3,6 +3,7 @@ import {
   CLAUDE_CODE_BETA_HEADERS,
   CLAUDE_CODE_SYSTEM_PROMPT,
   CLAUDE_CODE_USER_AGENT,
+  getConfig,
 } from "./config";
 import { recordRequest } from "./db";
 import { parseResponseError, toErrorMessage } from "./error-utils";
@@ -10,9 +11,24 @@ import { logger } from "./logger";
 import { getSuggestedMaxTokens, isValidThinkingEffort } from "./model-settings";
 import { clearCachedToken, getValidToken } from "./oauth";
 import { parseRateLimitHeaders, saveSnapshot } from "./plan-usage-snapshot";
-import { normalizeAnthropicToolIds } from "./request-normalization";
+import {
+  ensureTrailingUserMessage,
+  normalizeAnthropicToolIds,
+  TOOL_PREFIX,
+} from "./request-normalization";
+import { createSemaphore } from "./semaphore";
 import { trimToolResult } from "./tool-result-trimmer";
 import type { AnthropicError, AnthropicRequest, ContentBlock } from "./types";
+
+// Cap concurrent in-flight upstream calls so heavy CPU work
+// (prepareClaudeCodeBody + JSON.stringify of large bodies) doesn't pile up
+// on the event loop and stall other in-flight streams. See CCTC_MAX_UPSTREAM_CONCURRENCY.
+const upstreamSemaphore = createSemaphore(getConfig().maxUpstreamConcurrency);
+
+/** @internal for tests */
+export function getUpstreamSemaphoreState(): { active: number; pending: number } {
+  return { active: upstreamSemaphore.active(), pending: upstreamSemaphore.pending() };
+}
 
 type RequestResult =
   | { success: true; response: Response; source: "claude_code" }
@@ -208,8 +224,6 @@ export function getRateLimitStatus(): {
  * 2. Adds optional extra instruction (headless mode)
  * 3. Strips TTL from cache_control objects
  */
-const TOOL_PREFIX = "mcp_";
-
 function convertReasoningBudget(prepared: AnthropicRequest): void {
   if (!("reasoning_budget" in prepared)) return;
   if (!prepared.thinking) {
@@ -244,7 +258,7 @@ function prefixToolNames(prepared: AnthropicRequest): void {
       }
     }
     logger.verbose(
-      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with mcp_, last cached)`,
+      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with ${TOOL_PREFIX}, last cached)`,
     );
   }
   if (prepared.tool_choice?.type === "tool" && prepared.tool_choice.name) {
@@ -272,35 +286,33 @@ function prefixToolNames(prepared: AnthropicRequest): void {
   }
 }
 
+function systemToBlocks(existing: AnthropicRequest["system"]): ContentBlock[] {
+  if (!existing) return [];
+  if (typeof existing === "string") return [{ type: "text", text: existing }];
+  return Array.isArray(existing) ? existing : [];
+}
+
+function totalTextChars(blocks: ContentBlock[]): number {
+  return blocks.reduce(
+    (n, b) => n + (b.type === "text" && typeof b.text === "string" ? b.text.length : 0),
+    0,
+  );
+}
+
 /**
- * Build the final system prompt sent to Anthropic.
- *
- * Anthropic's OAuth-backed Claude Code API requires the FIRST system block
- * to match the exact string `CLAUDE_CODE_SYSTEM_PROMPT` — without it the
- * token is rejected with "OAuth not authorized". That's the only content
- * the proxy adds. Everything else is the upstream client's (Cursor's) own
- * system prompt, passed through verbatim and kept authoritative: it owns
- * the agent identity, tool semantics, and task instructions.
- *
- * No optional "extra instructions" are appended — that codepath was
- * removed to avoid polluting Cursor's prompt with proxy-side identity
- * text that would conflict with Cursor's agent framing.
+ * The first system block must equal CLAUDE_CODE_SYSTEM_PROMPT verbatim;
+ * otherwise the OAuth token is rejected with "OAuth not authorized".
  */
 function buildSystemPrompt(existing: AnthropicRequest["system"]): ContentBlock[] {
-  const systemPrompts: ContentBlock[] = [{ type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT }];
-  if (existing) {
-    if (typeof existing === "string") {
-      systemPrompts.push({ type: "text", text: existing });
-    } else if (Array.isArray(existing)) {
-      systemPrompts.push(...existing);
-    }
-  }
-  if (systemPrompts.length > 0) {
-    const lastIdx = systemPrompts.length - 1;
-    const lastBlock = systemPrompts[lastIdx];
-    if (lastBlock) {
-      systemPrompts[lastIdx] = { ...lastBlock, cache_control: { type: "ephemeral" } };
-    }
+  const systemPrompts: ContentBlock[] = [
+    { type: "text", text: CLAUDE_CODE_SYSTEM_PROMPT },
+    ...systemToBlocks(existing),
+  ];
+
+  const lastIdx = systemPrompts.length - 1;
+  const lastBlock = systemPrompts[lastIdx];
+  if (lastBlock) {
+    systemPrompts[lastIdx] = { ...lastBlock, cache_control: { type: "ephemeral" } };
   }
   return systemPrompts;
 }
@@ -362,11 +374,28 @@ function trimMessageToolResults(messages: AnthropicRequest["messages"]): void {
   }
 }
 
+// Legacy chat-transcript turn marker — Claude leaks it as text in long,
+// tool-heavy conversations (e.g. "Human: continue" tail in Cursor /multitask).
+export const TURN_MARKER = "Human:";
+
+// Variants seen in the wild include single-newline and bare-prefix leaks; the
+// bare-marker false-positive surface (training-data dumps, dialogue scripts)
+// doesn't appear in coding workflows. Stream-handler also strips client-side.
+const TURN_MARKER_STOP_SEQUENCES = [`\n\n${TURN_MARKER}`, `\n${TURN_MARKER}`, TURN_MARKER] as const;
+const MAX_STOP_SEQUENCES = 4; // Anthropic Messages API limit
+
+function injectTurnMarkerStopSequences(prepared: AnthropicRequest): void {
+  const merged = new Set<string>(prepared.stop_sequences ?? []);
+  for (const seq of TURN_MARKER_STOP_SEQUENCES) merged.add(seq);
+  prepared.stop_sequences = [...merged].slice(0, MAX_STOP_SEQUENCES);
+}
+
 function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   let prepared = { ...body };
 
   convertReasoningBudget(prepared);
   prefixToolNames(prepared);
+  injectTurnMarkerStopSequences(prepared);
 
   const systemPrompts = buildSystemPrompt(prepared.system);
   prepared.system = systemPrompts;
@@ -375,10 +404,11 @@ function prepareClaudeCodeBody(body: AnthropicRequest): AnthropicRequest {
   applyCacheBreakpoints(prepared.messages);
 
   logger.verbose(
-    `[System Prompt] ${systemPrompts.length} blocks, ${systemPrompts.reduce((n, b) => n + (b.type === "text" && b.text ? b.text.length : 0), 0)} chars`,
+    `[System Prompt] ${systemPrompts.length} blocks, ${totalTextChars(systemPrompts)} chars`,
   );
 
   prepared = normalizeAnthropicToolIds(prepared);
+  prepared = ensureTrailingUserMessage(prepared);
 
   return prepared;
 }
@@ -494,6 +524,12 @@ async function makeClaudeCodeRequest(
     return { success: false, error: "No valid OAuth token — visit /login to authenticate" };
   }
 
+  // Acquire BEFORE prepareClaudeCodeBody — the JSON.stringify of large bodies
+  // is the dominant CPU spike that stalls in-flight streams. Released once
+  // headers are back; per-chunk SSE rewriting is naturally interleaved with
+  // network reads and not a sustained burst.
+  const release = await upstreamSemaphore.acquire();
+
   try {
     const preparedBody = prepareClaudeCodeBody(body);
 
@@ -520,7 +556,7 @@ async function makeClaudeCodeRequest(
       const snapshot = parseRateLimitHeaders(response.headers);
       if (snapshot) saveSnapshot(snapshot);
     } catch (err) {
-      logger.verbose(`[plan-usage] header capture failed: ${String(err)}`);
+      logger.verbose(`[plan-usage] header capture failed: ${toErrorMessage(err)}`);
     }
 
     logger.verbose(`[ClaudeCode] Response status: ${response.status}`);
@@ -539,17 +575,22 @@ async function makeClaudeCodeRequest(
     const errMsg = toErrorMessage(error);
     logger.error(`Claude Code OAuth request failed: ${errMsg}`);
     return { success: false, error: errMsg };
+  } finally {
+    release();
   }
 }
 
 /**
- * Extract usage from response (for non-streaming)
+ * Extract usage from response (for non-streaming).
+ * `startPerf` is a `performance.now()` reading captured by the caller —
+ * monotonic, immune to system clock skew (we run in Docker, where NTP
+ * adjustments can rewind `Date.now()` and yielded negative latencies).
  */
 async function extractUsageFromResponse(
   response: Response,
   model: string,
   stream: boolean,
-  startTime: number,
+  startPerf: number,
 ): Promise<Response> {
   // For streaming, token tracking is handled by the stream handler's onComplete callback
   if (stream) {
@@ -579,7 +620,7 @@ async function extractUsageFromResponse(
       cacheCreationTokens: usage.cache_creation_input_tokens || 0,
       thinkingTokens: usage.thinking_tokens ?? 0,
       stream: false,
-      latencyMs: Date.now() - startTime,
+      latencyMs: Math.round(performance.now() - startPerf),
     });
   } catch {
     // If we can't parse, record with zeros
@@ -590,7 +631,7 @@ async function extractUsageFromResponse(
       outputTokens: 0,
       thinkingTokens: 0,
       stream: false,
-      latencyMs: Date.now() - startTime,
+      latencyMs: Math.round(performance.now() - startPerf),
     });
   }
 
@@ -598,7 +639,7 @@ async function extractUsageFromResponse(
 }
 
 export async function proxyRequest(endpoint: string, body: AnthropicRequest): Promise<Response> {
-  const startTime = Date.now();
+  const startPerf = performance.now();
   const model = body.model;
   const stream = body.stream || false;
 
@@ -606,7 +647,7 @@ export async function proxyRequest(endpoint: string, body: AnthropicRequest): Pr
 
   if (result.success) {
     logger.info("Request served via Claude Code");
-    return extractUsageFromResponse(result.response, model, stream, startTime);
+    return extractUsageFromResponse(result.response, model, stream, startPerf);
   }
 
   // Claude Code failed - return the error directly
