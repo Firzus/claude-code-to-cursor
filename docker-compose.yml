@@ -45,7 +45,9 @@ services:
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3111}:3111"
     environment:
-      - API_URL=http://api:8082
+      - BACKEND_URL=http://api:8082
+      - BACKEND_SETTINGS_KEY=${SETTINGS_API_KEY:-}
+      - NEXT_TELEMETRY_DISABLED=1
     depends_on:
       api:
         condition: service_healthy

@@ -14,11 +14,20 @@ services:
   frontend:
     build:
       context: ./frontend
-      target: builder
+      target: deps
+    working_dir: /app
     volumes:
-      - ./frontend/src:/app/src
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+      - frontend-next-cache:/app/.next
     ports:
       - "3111:3111"
-    command: npx vite dev --host --port 3111
+    command: sh -c "corepack enable && pnpm install && pnpm run dev"
     environment:
-      - API_URL=http://api:8082
+      - BACKEND_URL=http://api:8082
+      - BACKEND_SETTINGS_KEY=${SETTINGS_API_KEY:-}
+      - NEXT_TELEMETRY_DISABLED=1
+
+volumes:
+  frontend-node-modules:
+  frontend-next-cache:

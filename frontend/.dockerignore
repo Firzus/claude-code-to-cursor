@@ -1,3 +1,13 @@
 node_modules
-dist
-.vinxi
+.next
+out
+.git
+.gitignore
+.env*
+.dockerignore
+README.md
+playwright-report
+test-results
+.vscode
+.idea
+**/*.log
