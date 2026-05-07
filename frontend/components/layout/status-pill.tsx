@@ -28,7 +28,7 @@ export function StatusPill({ initial }: { initial?: Health }) {
   return (
     <span
       className={cn(
-        "inline-flex h-7 items-center gap-2 rounded-full border bg-card px-3 text-xs font-medium text-foreground/85 shadow-(--shadow-soft-xs)",
+        "inline-flex h-7 items-center gap-2 rounded-full border bg-background/80 px-3 text-xs font-medium text-foreground/85 backdrop-blur",
       )}
       aria-live="polite"
     >

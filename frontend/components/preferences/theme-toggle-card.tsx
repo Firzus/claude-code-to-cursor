@@ -3,7 +3,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "~/components/ui/card";
 import { cn } from "~/lib/cn";
 
 const options = [
@@ -18,42 +17,50 @@ export function ThemeToggleCard() {
   useEffect(() => setMounted(true), []);
 
   return (
-    <Card className="border-none shadow-(--shadow-soft-md)">
-      <CardContent className="grid gap-6 px-6 md:grid-cols-[1fr_2fr] md:px-10">
-        <div>
-          <span className="eyebrow">Appearance</span>
-          <h3 className="font-display mt-2 text-2xl tracking-tight">Theme</h3>
-          <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
-            Cream paper or quiet ink. Match your editor.
-          </p>
-        </div>
-        <div role="radiogroup" className="grid grid-cols-3 gap-2">
-          {options.map(({ value, label, icon: Icon }) => {
-            const active = mounted && theme === value;
-            return (
-              <button
-                type="button"
-                key={value}
-                onClick={() => setTheme(value)}
+    <section
+      aria-label="Theme"
+      className="grid gap-6 rounded-xl border bg-card px-6 py-8 md:grid-cols-[1fr_2fr] md:gap-10 md:px-10 md:py-10"
+    >
+      <div>
+        <span className="eyebrow">Appearance</span>
+        <h3 className="font-display mt-3 text-2xl leading-tight tracking-tight">Theme</h3>
+        <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
+          Pure light or quiet ink — match your editor.
+        </p>
+      </div>
+      <div role="radiogroup" className="grid grid-cols-3 gap-2">
+        {options.map(({ value, label, icon: Icon }) => {
+          const active = mounted && theme === value;
+          return (
+            <button
+              type="button"
+              key={value}
+              onClick={() => setTheme(value)}
+              aria-pressed={active}
+              className={cn(
+                "flex flex-col items-start gap-2 rounded-lg border p-4 text-left outline-none",
+                "transition-[background-color,border-color,transform] duration-150 ease-out",
+                "focus-visible:ring-2 focus-visible:ring-ring/60",
+                active
+                  ? "border-primary/40 bg-primary/[0.04]"
+                  : "border-border hover-only:hover:border-foreground/20 hover-only:hover:bg-accent/40 hover-only:hover:-translate-y-px",
+              )}
+            >
+              <span
                 className={cn(
-                  "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors",
-                  active ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40",
+                  "flex size-7 items-center justify-center rounded-full border",
+                  active
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground",
                 )}
               >
-                <span
-                  className={cn(
-                    "flex size-8 items-center justify-center rounded-full",
-                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Icon className="size-4" />
-                </span>
-                <span className="text-sm font-medium">{label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
+                <Icon className="size-3.5" />
+              </span>
+              <span className="text-sm font-medium">{label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }

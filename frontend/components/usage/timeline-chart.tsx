@@ -3,15 +3,14 @@
 import { useGSAP } from "@gsap/react";
 import { useMemo, useRef } from "react";
 import {
-  Area,
-  AreaChart,
   CartesianGrid,
+  Line,
+  LineChart,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
   XAxis,
   YAxis,
 } from "recharts";
-import { Card, CardContent } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAnalyticsTimeline } from "~/hooks/use-analytics-timeline";
 import { formatCompactTokens } from "~/lib/format";
@@ -43,42 +42,39 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
       const node = containerRef.current;
       if (!node) return;
       const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMotion: "(prefers-reduced-motion: no-preference)",
-        },
-        (ctx) => {
-          const { isMotion } = ctx.conditions as { isMotion: boolean };
-          if (!isMotion) {
-            gsap.set(node, { clipPath: "inset(0 0 0 0)" });
-            return;
-          }
-          gsap.fromTo(
-            node,
-            { clipPath: "inset(0 100% 0 0)" },
-            { clipPath: "inset(0 0 0 0)", duration: 1.1, ease: "power3.out" },
-          );
-        },
-      );
+      mm.add({ isMotion: "(prefers-reduced-motion: no-preference)" }, (ctx) => {
+        const { isMotion } = ctx.conditions as { isMotion: boolean };
+        if (!isMotion) {
+          gsap.set(node, { clipPath: "inset(0 0 0 0)" });
+          return;
+        }
+        gsap.fromTo(
+          node,
+          { clipPath: "inset(0 100% 0 0)" },
+          { clipPath: "inset(0 0 0 0)", duration: 1.1, ease: "power3.out" },
+        );
+      });
       return () => mm.revert();
     },
     { scope: containerRef, dependencies: [points.length, period] },
   );
 
   return (
-    <Card className="border-none shadow-(--shadow-soft-md)">
-      <CardContent className="px-6 md:px-8">
-        <header className="mb-5 flex items-baseline justify-between">
-          <div>
-            <span className="eyebrow">Throughput</span>
-            <h3 className="font-display mt-2 text-2xl tracking-tight">Weighted token usage</h3>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Cache reads counted at 10% of equivalent fresh tokens.
-          </p>
-        </header>
+    <section aria-label="Throughput timeline" className="rounded-xl border bg-card">
+      <header className="flex items-baseline justify-between border-b px-6 py-5 md:px-8">
+        <div className="space-y-2">
+          <span className="eyebrow">Throughput</span>
+          <h3 className="font-display text-2xl leading-tight tracking-tight">
+            Weighted token usage
+          </h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Cache reads counted at 10% of equivalent fresh tokens.
+        </p>
+      </header>
+      <div className="px-2 py-6 md:px-4">
         {isLoading && !data ? (
-          <Skeleton className="h-[220px] w-full" />
+          <Skeleton className="mx-4 h-[220px] w-[calc(100%-2rem)]" />
         ) : points.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             No data in this window yet.
@@ -86,18 +82,12 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
         ) : (
           <div ref={containerRef} className="h-[220px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={points} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="usageFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <LineChart data={points} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid
                   vertical={false}
-                  strokeDasharray="2 4"
+                  strokeDasharray="2 6"
                   stroke="var(--color-border)"
-                  strokeOpacity={0.6}
+                  strokeOpacity={0.7}
                 />
                 <XAxis
                   dataKey="timestamp"
@@ -105,7 +95,7 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
                   axisLine={false}
                   tickMargin={10}
                   minTickGap={40}
-                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
                   tickFormatter={(v: number) => {
                     const d = new Date(v);
                     if (period === "5hour" || period === "day") {
@@ -119,17 +109,17 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
                   axisLine={false}
                   tickMargin={8}
                   width={48}
-                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
                   tickFormatter={(v: number) => formatCompactTokens(v)}
                 />
                 <RechartsTooltip
-                  cursor={{ stroke: "var(--color-border)", strokeWidth: 1 }}
+                  cursor={{ stroke: "var(--color-primary)", strokeWidth: 1, strokeOpacity: 0.4 }}
                   contentStyle={{
                     background: "var(--color-popover)",
                     border: "1px solid var(--color-border)",
-                    borderRadius: "0.625rem",
+                    borderRadius: "0.5rem",
                     fontSize: "12px",
-                    boxShadow: "var(--shadow-soft-md)",
+                    boxShadow: "var(--shadow-floating)",
                   }}
                   labelFormatter={(v) => {
                     const d = new Date(Number(v));
@@ -142,19 +132,19 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
                   }}
                   formatter={(v) => [formatCompactTokens(Number(v ?? 0)), "Weighted tokens"]}
                 />
-                <Area
+                <Line
                   type="monotone"
                   dataKey="tokens"
-                  stroke="var(--color-chart-1)"
-                  strokeWidth={1.6}
-                  fill="url(#usageFill)"
+                  stroke="var(--color-primary)"
+                  strokeWidth={1.5}
                   dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0, fill: "var(--color-primary)" }}
                 />
-              </AreaChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

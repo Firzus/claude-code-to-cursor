@@ -31,15 +31,17 @@ export default async function IntegrationsPage() {
       />
 
       <Reveal delay={0.05} className="grid gap-6 md:grid-cols-[2fr_1fr]">
-        <div className="rounded-2xl border bg-card p-6 shadow-(--shadow-soft-sm) md:p-8">
+        <div className="rounded-xl border bg-card p-6 md:p-8">
           <span className="eyebrow">Step 1 — Authorize</span>
-          <h2 className="font-display mt-2 text-3xl tracking-tight">Connect with Claude Code</h2>
-          <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">
+          <h2 className="font-display mt-4 text-3xl leading-tight tracking-tight">
+            Connect with Claude Code
+          </h2>
+          <p className="mt-3 max-w-prose text-sm leading-relaxed text-muted-foreground">
             Click below to start the OAuth handshake with Anthropic. We never see or store your
             password — only a refreshable token, kept on disk in{" "}
             <code className="font-mono text-foreground">auth.json</code>.
           </p>
-          <div className="mt-5">
+          <div className="mt-6">
             <ConnectFlow
               initiallyConnected={health?.claudeCode.authenticated ?? false}
               expiresAt={health?.claudeCode.expiresAt ?? null}
@@ -54,10 +56,12 @@ export default async function IntegrationsPage() {
 
       <Reveal delay={0.1}>
         <div className="space-y-6">
-          <div className="flex items-baseline justify-between">
-            <div>
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-baseline">
+            <div className="space-y-2">
               <span className="eyebrow">Step 2 — Point your client</span>
-              <h2 className="font-display mt-2 text-3xl tracking-tight">Snippets, ready to copy</h2>
+              <h2 className="font-display text-3xl leading-tight tracking-tight">
+                Snippets, ready to copy
+              </h2>
             </div>
             <span className="text-xs text-muted-foreground">
               Endpoint:{" "}
@@ -66,7 +70,7 @@ export default async function IntegrationsPage() {
               </span>
             </span>
           </div>
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2 [&>*]:min-w-0">
             <SnippetCard
               title="Cursor"
               description="Add a custom OpenAI provider in Cursor's model settings."

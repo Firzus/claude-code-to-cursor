@@ -1,9 +1,11 @@
 "use client";
 
+import { NumberTicker } from "~/components/motion/number-ticker";
 import { Card, CardContent } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAnalyticsSummary } from "~/hooks/use-analytics-summary";
-import { formatCompactTokens, formatPercent, formatUsd } from "~/lib/format";
+import { cn } from "~/lib/cn";
+import { formatPercent } from "~/lib/format";
 import type { AnalyticsSummary, Period } from "~/lib/schemas";
 
 interface UsageSummaryProps {
@@ -11,16 +13,33 @@ interface UsageSummaryProps {
   initial?: AnalyticsSummary;
 }
 
+function compactSuffix(n: number): { value: number; suffix: string; decimals: number } {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return { value: n / 1_000_000, suffix: "M", decimals: 1 };
+  if (abs >= 1_000) return { value: n / 1_000, suffix: "k", decimals: 1 };
+  return { value: n, suffix: "", decimals: 0 };
+}
+
 export function UsageSummary({ period, initial }: UsageSummaryProps) {
   const { data, isLoading } = useAnalyticsSummary(period, initial);
 
+  const totalIn = data
+    ? data.totalInputTokens + data.totalCacheReadTokens + data.totalCacheCreationTokens
+    : 0;
+  const totalOut = data?.totalOutputTokens ?? 0;
+  const inFmt = compactSuffix(totalIn);
+  const outFmt = compactSuffix(totalOut);
+
   return (
     <Card className="border-none shadow-(--shadow-soft-md)">
-      <CardContent className="grid grid-cols-2 gap-6 px-6 md:grid-cols-5 md:px-8">
-        <Stat label="Requests" value={data ? data.totalRequests.toString() : null} />
+      <CardContent className="grid grid-cols-2 gap-6 px-5 py-6 sm:gap-7 md:grid-cols-5 md:px-8 md:py-7">
+        <Stat
+          label="Requests"
+          numeric={data ? <NumberTicker value={data.totalRequests} /> : null}
+        />
         <Stat
           label="Errors"
-          value={data ? data.errorRequests.toString() : null}
+          numeric={data ? <NumberTicker value={data.errorRequests} /> : null}
           hint={
             data && data.totalRequests > 0
               ? `${formatPercent((data.errorRequests / data.totalRequests) * 100, 1)} error rate`
@@ -29,21 +48,31 @@ export function UsageSummary({ period, initial }: UsageSummaryProps) {
         />
         <Stat
           label="Tokens in"
-          value={
-            data
-              ? formatCompactTokens(
-                  data.totalInputTokens + data.totalCacheReadTokens + data.totalCacheCreationTokens,
-                )
-              : null
+          numeric={
+            data ? (
+              <NumberTicker value={inFmt.value} decimals={inFmt.decimals} suffix={inFmt.suffix} />
+            ) : null
           }
         />
         <Stat
           label="Tokens out"
-          value={data ? formatCompactTokens(data.totalOutputTokens) : null}
+          numeric={
+            data ? (
+              <NumberTicker
+                value={outFmt.value}
+                decimals={outFmt.decimals}
+                suffix={outFmt.suffix}
+              />
+            ) : null
+          }
         />
         <Stat
           label="Cache savings"
-          value={data ? formatUsd(data.cacheSavingsUsdEstimate) : null}
+          numeric={
+            data ? (
+              <NumberTicker value={data.cacheSavingsUsdEstimate} prefix="$" decimals={2} />
+            ) : null
+          }
           hint={data ? `${formatPercent(data.cacheHitRate)} hit rate` : "—"}
           tone="success"
         />
@@ -63,12 +92,12 @@ export function UsageSummary({ period, initial }: UsageSummaryProps) {
 
 function Stat({
   label,
-  value,
+  numeric,
   hint,
   tone,
 }: {
   label: string;
-  value: string | null;
+  numeric: React.ReactNode;
   hint?: string;
   tone?: "success";
 }) {
@@ -76,11 +105,12 @@ function Stat({
     <div className="space-y-1">
       <span className="eyebrow">{label}</span>
       <p
-        className={`font-display text-3xl tracking-tight tabular ${
-          tone === "success" ? "text-success" : ""
-        }`}
+        className={cn(
+          "font-display text-3xl tracking-tight tabular md:text-[2rem]",
+          tone === "success" && "text-success",
+        )}
       >
-        {value ?? "—"}
+        {numeric ?? "—"}
       </p>
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>

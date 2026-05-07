@@ -15,48 +15,45 @@ import {
   AlertDialogTrigger,
 } from "~/components/ui/alert-dialog";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
 import { resetAnalyticsAction, resetRateLimitAction } from "~/lib/server-actions";
 
 export function AdvancedPanel() {
   return (
-    <Card className="border-none shadow-(--shadow-soft-sm)">
-      <CardContent className="px-6 md:px-10">
-        <div className="space-y-2 pb-6">
-          <span className="eyebrow">Advanced</span>
-          <h3 className="font-display text-2xl tracking-tight">Maintenance</h3>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            Tools for when something feels off. These actions don't affect your OAuth credentials.
-          </p>
-        </div>
+    <section aria-label="Advanced" className="rounded-xl border bg-card">
+      <header className="space-y-2 border-b px-6 py-6 md:px-10">
+        <span className="eyebrow">Advanced</span>
+        <h3 className="font-display text-2xl leading-tight tracking-tight">Maintenance</h3>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Tools for when something feels off. These actions don't affect your OAuth credentials.
+        </p>
+      </header>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <ResetCard
-            icon={<Gauge className="size-4" />}
-            title="Reset rate-limit cache"
-            description="Clear the in-memory backpressure lock — useful right after Anthropic lifts a rate limit."
-            confirm="Clear the rate-limit lock?"
-            confirmHelp="The next request will probe upstream and re-hydrate the cache."
-            action={async () => {
-              const res = await resetRateLimitAction();
-              return res.ok ? "Rate-limit cache cleared" : `Failed: ${res.error}`;
-            }}
-          />
-          <ResetCard
-            icon={<Database className="size-4" />}
-            title="Wipe analytics history"
-            description="Permanently delete every recorded request and incident. The proxy keeps running normally."
-            confirm="Delete all recorded requests?"
-            confirmHelp="This can't be undone. Estimates and budget cards will reset to zero."
-            action={async () => {
-              const res = await resetAnalyticsAction();
-              return res.ok ? `Cleared ${res.data} requests` : `Failed: ${res.error}`;
-            }}
-            danger
-          />
-        </div>
-      </CardContent>
-    </Card>
+      <div className="grid gap-px border-t bg-border md:grid-cols-2">
+        <ResetCard
+          icon={<Gauge className="size-3.5" />}
+          title="Reset rate-limit cache"
+          description="Clear the in-memory backpressure lock — useful right after Anthropic lifts a rate limit."
+          confirm="Clear the rate-limit lock?"
+          confirmHelp="The next request will probe upstream and re-hydrate the cache."
+          action={async () => {
+            const res = await resetRateLimitAction();
+            return res.ok ? "Rate-limit cache cleared" : `Failed: ${res.error}`;
+          }}
+        />
+        <ResetCard
+          icon={<Database className="size-3.5" />}
+          title="Wipe analytics history"
+          description="Permanently delete every recorded request and incident. The proxy keeps running normally."
+          confirm="Delete all recorded requests?"
+          confirmHelp="This can't be undone. Estimates and budget cards will reset to zero."
+          action={async () => {
+            const res = await resetAnalyticsAction();
+            return res.ok ? `Cleared ${res.data} requests` : `Failed: ${res.error}`;
+          }}
+          danger
+        />
+      </div>
+    </section>
   );
 }
 
@@ -82,9 +79,9 @@ function ResetCard({
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <article className="flex h-full flex-col gap-4 rounded-xl border bg-card/60 p-5">
+      <article className="flex h-full flex-col gap-4 bg-card p-6">
         <div className="flex items-start gap-3">
-          <span className="flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <span className="flex size-7 items-center justify-center rounded-full border bg-background text-muted-foreground">
             {icon}
           </span>
           <div className="space-y-1">

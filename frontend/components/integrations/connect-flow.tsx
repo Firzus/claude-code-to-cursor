@@ -1,13 +1,15 @@
 "use client";
 
+import { useGSAP } from "@gsap/react";
 import { CheckCircle2, ExternalLink, KeyRound, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { ensureGsapPlugins, gsap } from "~/lib/motion";
 import { startOAuthAction, submitOAuthCodeAction } from "~/lib/server-actions";
 
 interface FormValues {
@@ -25,8 +27,40 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
   const [connected, setConnected] = useState(initiallyConnected);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorTick, setErrorTick] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const form = useForm<FormValues>({ defaultValues: { code: "" } });
+
+  useGSAP(
+    () => {
+      if (!error || errorTick === 0) return;
+      ensureGsapPlugins();
+      const node = formRef.current;
+      if (!node) return;
+      const mm = gsap.matchMedia();
+      mm.add(
+        {
+          isMotion: "(prefers-reduced-motion: no-preference)",
+        },
+        (ctx) => {
+          const { isMotion } = ctx.conditions as { isMotion: boolean };
+          if (!isMotion) return;
+          gsap.fromTo(
+            node,
+            { x: 0 },
+            {
+              keyframes: [{ x: -6 }, { x: 6 }, { x: -4 }, { x: 4 }, { x: 0 }],
+              duration: 0.34,
+              ease: "power2.inOut",
+            },
+          );
+        },
+      );
+      return () => mm.revert();
+    },
+    { dependencies: [errorTick] },
+  );
 
   async function startOAuth() {
     setError(null);
@@ -35,6 +69,7 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
     setStarting(false);
     if (!result.ok) {
       setError(result.error);
+      setErrorTick((n) => n + 1);
       return;
     }
     setAuthUrl(result.data.authURL);
@@ -45,6 +80,7 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
   async function onSubmit(values: FormValues) {
     if (!state) {
       setError("Start the OAuth flow first.");
+      setErrorTick((n) => n + 1);
       return;
     }
     setError(null);
@@ -54,6 +90,7 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
     });
     if (!result.ok) {
       setError(result.error);
+      setErrorTick((n) => n + 1);
       toast.error("OAuth callback failed", { description: result.error });
       return;
     }
@@ -107,7 +144,7 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
         </Alert>
       ) : null}
 
-      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-3">
+      <form ref={formRef} onSubmit={form.handleSubmit(onSubmit)} className="grid gap-3">
         <Label htmlFor="oauth-code" className="text-sm font-medium">
           Authorization code
         </Label>
@@ -117,6 +154,7 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
           disabled={!authUrl || form.formState.isSubmitting}
           autoComplete="off"
           spellCheck={false}
+          aria-invalid={Boolean(error) || undefined}
           className="font-mono"
           {...form.register("code", { required: true })}
         />

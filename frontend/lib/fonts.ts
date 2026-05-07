@@ -1,10 +1,21 @@
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 
-export const geistSans = Geist({
-  subsets: ["latin"],
-  variable: "--font-geist-sans",
+export const satoshi = localFont({
+  variable: "--font-satoshi",
   display: "swap",
-  adjustFontFallback: true,
+  src: [
+    {
+      path: "../public/fonts/Satoshi-Variable.woff2",
+      style: "normal",
+      weight: "300 900",
+    },
+    {
+      path: "../public/fonts/Satoshi-VariableItalic.woff2",
+      style: "italic",
+      weight: "300 900",
+    },
+  ],
 });
 
 export const geistMono = Geist_Mono({
@@ -14,13 +25,4 @@ export const geistMono = Geist_Mono({
   adjustFontFallback: true,
 });
 
-export const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
-  display: "swap",
-  axes: ["opsz", "SOFT", "WONK"],
-  style: ["normal", "italic"],
-  adjustFontFallback: true,
-});
-
-export const fontVariables = `${geistSans.variable} ${geistMono.variable} ${fraunces.variable}`;
+export const fontVariables = `${satoshi.variable} ${geistMono.variable}`;

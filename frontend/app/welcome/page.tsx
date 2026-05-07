@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ConnectFlow } from "~/components/integrations/connect-flow";
 import { SnippetCard } from "~/components/integrations/snippet-card";
 import { buildSnippets } from "~/components/integrations/snippets";
+import { AuroraShader } from "~/components/layout/aurora-shader";
 import { Reveal } from "~/components/motion/reveal";
 import { Button } from "~/components/ui/button";
 import { WelcomeHero } from "~/components/welcome/hero";
@@ -44,7 +45,8 @@ export default async function WelcomePage({
   const settings: ModelSettings | undefined = settingsRes?.settings;
 
   return (
-    <div className="space-y-14">
+    <div className="relative space-y-16">
+      <AuroraShader className="-top-24 h-[42rem]" intensity={0.7} />
       <WelcomeHero
         eyebrow="Welcome"
         title="Route Claude through your own credentials, in three quiet steps."
@@ -81,7 +83,7 @@ export default async function WelcomePage({
           description="Defaults to Sonnet 4.6. Switch to Opus or Haiku from preferences whenever you like."
           state={settings ? "done" : authenticated ? "active" : "pending"}
         >
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <p className="font-mono text-xs text-muted-foreground">
               Currently:{" "}
               <span className="text-foreground">
@@ -110,9 +112,9 @@ export default async function WelcomePage({
       <Reveal delay={0.3}>
         <div className="space-y-6">
           <div className="flex items-baseline justify-between gap-4">
-            <div>
+            <div className="space-y-2">
               <span className="eyebrow">Quick connect</span>
-              <h2 className="font-display mt-2 text-3xl tracking-tight">Drop this into Cursor</h2>
+              <h2 className="font-display text-3xl tracking-tight">Drop this into Cursor</h2>
             </div>
             <span className="text-xs text-muted-foreground">
               Endpoint:{" "}

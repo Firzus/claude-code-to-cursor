@@ -3,6 +3,7 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { AppShell } from "~/components/layout/app-shell";
+import { AuroraShader } from "~/components/layout/aurora-shader";
 import { Providers } from "~/components/providers";
 import { Toaster } from "~/components/ui/sonner";
 import { getHealth } from "~/lib/api";
@@ -25,8 +26,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafaf7" },
-    { media: "(prefers-color-scheme: dark)", color: "#1a1d24" },
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#181b22" },
   ],
 };
 
@@ -40,6 +41,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className={fontVariables} suppressHydrationWarning>
       <body className="min-h-screen antialiased" suppressHydrationWarning>
+        <AuroraShader />
         <Providers>
           <AppShell appName={serverEnv.appName} initialHealth={initialHealth}>
             {children}

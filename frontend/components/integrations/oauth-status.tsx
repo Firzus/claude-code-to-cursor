@@ -15,7 +15,10 @@ export function OAuthStatus({ initial }: { initial?: Health }) {
     <div
       className={cn(
         "flex items-start gap-4 rounded-2xl border bg-card p-5 shadow-(--shadow-soft-sm)",
-        authenticated ? "border-success/30" : "border-destructive/30",
+        "transition-[border-color,box-shadow] duration-200 ease-out",
+        authenticated
+          ? "border-success/30 hover-only:hover:border-success/50"
+          : "border-destructive/30 hover-only:hover:border-destructive/50",
       )}
     >
       <span
@@ -26,7 +29,7 @@ export function OAuthStatus({ initial }: { initial?: Health }) {
       >
         {authenticated ? <CheckCircle2 className="size-5" /> : <ShieldAlert className="size-5" />}
       </span>
-      <div className="space-y-1">
+      <div className="space-y-1 min-w-0">
         <h3 className="font-display text-lg leading-tight tracking-tight">
           {authenticated ? "Authorized" : "Not connected"}
         </h3>
