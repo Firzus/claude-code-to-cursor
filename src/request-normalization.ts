@@ -1,5 +1,12 @@
 import type { AnthropicMessage, AnthropicRequest, ContentBlock } from "./types";
 
+export const TOOL_PREFIX = "mcp_";
+
+export function stripMcpPrefix(name: string | undefined | null): string {
+  if (!name) return "";
+  return name.startsWith(TOOL_PREFIX) ? name.slice(TOOL_PREFIX.length) : name;
+}
+
 type ToolIdState = {
   idMap: Map<string, string>;
   usedIds: Set<string>;
@@ -64,6 +71,26 @@ export function normalizeAnthropicRequestModel(
   };
 }
 
+/**
+ * Upstream rejects requests whose last message has role `assistant` with:
+ *   "This model does not support assistant message prefill.
+ *    The conversation must end with a user message."
+ * Append a minimal user nudge when that happens (e.g. an assistant `tool_use`
+ * sent without its paired `tool_result`).
+ */
+export function ensureTrailingUserMessage(request: AnthropicRequest): AnthropicRequest {
+  const messages = request.messages;
+  if (!messages || messages.length === 0) return request;
+
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "assistant") return request;
+
+  return {
+    ...request,
+    messages: [...messages, { role: "user", content: "Continue." }],
+  };
+}
+
 export function normalizeAnthropicToolIds(request: AnthropicRequest): AnthropicRequest {
   const state: ToolIdState = {
     idMap: new Map(),
@@ -82,11 +109,4 @@ export function normalizeAnthropicToolIds(request: AnthropicRequest): AnthropicR
     ...request,
     messages,
   };
-}
-
-export function normalizeAnthropicRequest(
-  request: AnthropicRequest,
-  model: string,
-): AnthropicRequest {
-  return normalizeAnthropicToolIds(normalizeAnthropicRequestModel(request, model));
 }

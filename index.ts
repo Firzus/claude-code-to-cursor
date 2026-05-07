@@ -5,10 +5,17 @@ import {
   stopRateLimitCleanup,
 } from "./src/anthropic-client";
 import { getConfig, TUNNEL_URL } from "./src/config";
-import { getDb } from "./src/db";
+import { flushPendingRequests, getDb } from "./src/db";
+import { toErrorMessage } from "./src/error-utils";
+import {
+  getEventLoopLag,
+  startEventLoopMonitor,
+  stopEventLoopMonitor,
+} from "./src/event-loop-monitor";
 import { logger } from "./src/logger";
 import { checkIPWhitelist, corsHeaders } from "./src/middleware";
 import { getValidToken, hasCredentials } from "./src/oauth";
+import { flushPendingSnapshot } from "./src/plan-usage-snapshot";
 import {
   handleAnalytics,
   handleAnalyticsErrors,
@@ -131,6 +138,7 @@ async function handleRequest(req: Request, url: URL): Promise<Response> {
         expiresAt: token?.expiresAt,
       },
       rateLimit,
+      eventLoopLag: getEventLoopLag(),
     });
   }
 
@@ -268,9 +276,7 @@ try {
       try {
         response = await handleRequest(req, url);
       } catch (error) {
-        logger.error(
-          `Unhandled request error: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        logger.error(`Unhandled request error: ${toErrorMessage(error)}`);
         response = Response.json(
           { error: { type: "internal_error", message: "Internal server error" } },
           { status: 500 },
@@ -308,6 +314,7 @@ await checkCredentials();
 
 startRateLimitCleanup();
 startPkceCleanup();
+startEventLoopMonitor();
 
 logger.info("Verbose logging enabled → api.log (gitignored)");
 
@@ -317,6 +324,15 @@ function shutdown() {
   server.stop();
   stopRateLimitCleanup();
   stopPkceCleanup();
+  stopEventLoopMonitor();
+  // Drain the request batch before closing the DB so we don't lose the
+  // last <50 ms of analytics on graceful exits.
+  try {
+    flushPendingRequests();
+  } catch {}
+  try {
+    flushPendingSnapshot();
+  } catch {}
   try {
     getDb().close();
   } catch {}

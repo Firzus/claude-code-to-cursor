@@ -4,6 +4,7 @@ import { useAnalyticsSummary } from "~/hooks/use-analytics";
 import { useBudgetDay } from "~/hooks/use-budget";
 import { useHealth } from "~/hooks/use-health";
 import { useSettings } from "~/hooks/use-settings";
+import { formatCompactTokens } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import type {
   AnalyticsResponse,
@@ -16,12 +17,6 @@ function formatUsd(n: number): string {
   if (n < 0.005) return "$0.00";
   if (n < 10) return `$${n.toFixed(2)}`;
   return `$${n.toFixed(1)}`;
-}
-
-function formatCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
 }
 
 function formatModel(id: string): string {
@@ -103,7 +98,7 @@ function ModelCell({ settings }: { settings: QueryShape<SettingsResponse> }) {
 }
 
 function RequestsCell({ analytics }: { analytics: QueryShape<AnalyticsResponse> }) {
-  if (analytics.data) return <span>{formatCount(analytics.data.totalRequests)}</span>;
+  if (analytics.data) return <span>{formatCompactTokens(analytics.data.totalRequests)}</span>;
   return analytics.isError ? <Dash /> : <Loading />;
 }
 

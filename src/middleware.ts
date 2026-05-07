@@ -19,25 +19,6 @@ export function logRequestDetails(req: Request, endpoint: string) {
 }
 
 /**
- * Extract Anthropic-specific headers from the request
- */
-export function extractHeaders(req: Request): Record<string, string> {
-  const headers: Record<string, string> = {};
-  const passthrough = ["anthropic-version", "anthropic-beta"];
-
-  for (const key of passthrough) {
-    const value = req.headers.get(key);
-    if (value) headers[key] = value;
-  }
-
-  if (!headers["anthropic-version"]) {
-    headers["anthropic-version"] = "2023-06-01";
-  }
-
-  return headers;
-}
-
-/**
  * Check if the request IP is in the whitelist.
  * All requests come through the Cloudflare tunnel; the client IP is
  * extracted from CF-Connecting-IP or X-Forwarded-For headers.

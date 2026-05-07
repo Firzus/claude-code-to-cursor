@@ -1,4 +1,5 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, renameSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import {
   ANTHROPIC_AUTHORIZE_URL,
   ANTHROPIC_TOKEN_URL,
@@ -8,10 +9,17 @@ import {
   OAUTH_REDIRECT_URI,
   OAUTH_SCOPES,
 } from "./config";
+import { toErrorMessage } from "./error-utils";
 import { logger } from "./logger";
 import type { CctcAuth, TokenInfo, TokenRefreshResponse } from "./types";
 
 let cachedToken: TokenInfo | null = null;
+
+// Coalesce concurrent token refreshes. Anthropic rotates the refresh_token
+// on every call, so two parallel refreshes would race: one wins, the other
+// fails with an invalid refresh_token. A single in-flight Promise lets all
+// concurrent requests share the same outcome.
+let refreshInFlight: Promise<TokenInfo | null> | null = null;
 
 // ---------------------------------------------------------------------------
 // PKCE helpers
@@ -109,7 +117,13 @@ export async function exchangeCode(
 
 async function saveCredentials(auth: CctcAuth): Promise<void> {
   mkdirSync(CCTC_AUTH_DIR, { recursive: true });
-  await Bun.write(CCTC_AUTH_PATH, JSON.stringify(auth, null, 2));
+  // Atomic write: tmp + rename. A naked Bun.write() with concurrent callers
+  // can interleave bytes and corrupt auth.json. rename(2) on the same FS is
+  // atomic for the destination — readers see either the old or the new file,
+  // never a torn one.
+  const tmpPath = `${CCTC_AUTH_PATH}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(auth, null, 2), "utf-8");
+  renameSync(tmpPath, CCTC_AUTH_PATH);
 }
 
 async function loadCredentials(): Promise<CctcAuth | null> {
@@ -177,7 +191,7 @@ async function refreshAccessToken(refreshTokenValue: string): Promise<TokenInfo 
     logger.info("Token refreshed successfully");
     return tokenInfo;
   } catch (error) {
-    logger.error(`Failed to refresh token: ${error}`);
+    logger.error(`Failed to refresh token: ${toErrorMessage(error)}`);
     return null;
   }
 }
@@ -206,8 +220,14 @@ export async function getValidToken(): Promise<TokenInfo | null> {
     return cachedToken;
   }
 
-  // 4. Token expired → refresh inline
-  const refreshed = await refreshAccessToken(auth.refreshToken);
+  // 4. Token expired → refresh, but coalesce so N concurrent callers share
+  // a single network round-trip and a single rotated refresh_token.
+  if (!refreshInFlight) {
+    refreshInFlight = refreshAccessToken(auth.refreshToken).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  const refreshed = await refreshInFlight;
   if (refreshed) return refreshed;
 
   // 5. Refresh failed → null

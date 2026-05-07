@@ -5,6 +5,7 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { usePlanUsage } from "~/hooks/use-plan-usage";
+import { formatCompactTokens } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import type { PlanUsageSource, PlanUsageWindow } from "~/schemas/api-responses";
 import { planLabels, type supportedPlans } from "~/schemas/settings";
@@ -39,15 +40,9 @@ function barColor(percent: number, status?: string): string {
   return "bg-accent";
 }
 
-function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
 function windowSub(w: PlanUsageWindow): string | undefined {
   if (w.tokens !== undefined && w.limit !== undefined) {
-    return `${fmtTokens(w.tokens)} / ${fmtTokens(w.limit)}`;
+    return `${formatCompactTokens(w.tokens)} / ${formatCompactTokens(w.limit)}`;
   }
   return undefined;
 }

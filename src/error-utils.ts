@@ -23,10 +23,6 @@ export async function parseResponseError(
   return { message, type };
 }
 
-/**
- * SSE tail: error content + stop + DONE.
- * Prepend `createOpenAIStreamStart` when no start chunk has been sent yet.
- */
 export function createOpenAIErrorTail(streamId: string, model: string, errMsg: string): string {
   return (
     createOpenAIStreamChunk(streamId, model, `[Error: ${errMsg}]`) +
@@ -35,7 +31,6 @@ export function createOpenAIErrorTail(streamId: string, model: string, errMsg: s
   );
 }
 
-/** Full SSE error stream (start + error content + stop + DONE). */
 export function createOpenAIErrorStream(streamId: string, model: string, errMsg: string): string {
   return createOpenAIStreamStart(streamId, model) + createOpenAIErrorTail(streamId, model, errMsg);
 }

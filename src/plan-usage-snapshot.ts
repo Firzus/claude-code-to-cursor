@@ -12,6 +12,7 @@
 
 import type { Database } from "bun:sqlite";
 import { getDb } from "./db";
+import { toErrorMessage } from "./error-utils";
 import { logger } from "./logger";
 
 export interface RateLimitWindow {
@@ -39,6 +40,16 @@ const SNAPSHOT_TABLE = "plan_usage_snapshot";
 // so we survive restarts, but memory reads avoid a DB hit on every /plan-usage.
 let cachedSnapshot: RateLimitSnapshot | null = null;
 let cachedFromDb = false;
+
+// Throttle DB writes: the API hits ~once per request and almost never
+// changes between two adjacent calls. Persist at most every PERSIST_THROTTLE_MS
+// or immediately on a status change. A trailing timer ensures the last
+// in-memory value reaches disk even during a long quiet period.
+const PERSIST_THROTTLE_MS = 5000;
+let lastPersistedAt = 0;
+let lastPersistedStatus: string | null = null;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPersist: RateLimitSnapshot | null = null;
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -127,9 +138,7 @@ export function parseRateLimitHeaders(headers: Headers): RateLimitSnapshot | nul
 // Persistence
 // ---------------------------------------------------------------------------
 
-export function saveSnapshot(snapshot: RateLimitSnapshot): void {
-  cachedSnapshot = snapshot;
-  cachedFromDb = true;
+function persistSnapshotNow(snapshot: RateLimitSnapshot): void {
   try {
     const database = getDb();
     database.run(
@@ -138,9 +147,48 @@ export function saveSnapshot(snapshot: RateLimitSnapshot): void {
        ON CONFLICT(id) DO UPDATE SET captured_at = excluded.captured_at, data = excluded.data`,
       [snapshot.capturedAt, JSON.stringify(snapshot)],
     );
+    lastPersistedAt = Date.now();
+    lastPersistedStatus = snapshot.overallStatus;
+    pendingPersist = null;
   } catch (error) {
-    logger.verbose(`[plan-usage] failed to persist snapshot: ${String(error)}`);
+    logger.verbose(`[plan-usage] failed to persist snapshot: ${toErrorMessage(error)}`);
   }
+}
+
+export function saveSnapshot(snapshot: RateLimitSnapshot): void {
+  cachedSnapshot = snapshot;
+  cachedFromDb = true;
+
+  const now = Date.now();
+  const statusChanged = snapshot.overallStatus !== lastPersistedStatus;
+  const intervalElapsed = now - lastPersistedAt >= PERSIST_THROTTLE_MS;
+
+  if (statusChanged || intervalElapsed) {
+    persistSnapshotNow(snapshot);
+    return;
+  }
+
+  // Defer: keep the latest snapshot pending and arm a trailing timer so the
+  // last in-memory value reaches disk even during a long quiet period.
+  pendingPersist = snapshot;
+  if (persistTimer) return;
+  const delay = PERSIST_THROTTLE_MS - (now - lastPersistedAt);
+  persistTimer = setTimeout(
+    () => {
+      persistTimer = null;
+      if (pendingPersist) persistSnapshotNow(pendingPersist);
+    },
+    Math.max(0, delay),
+  );
+}
+
+/** Force any pending throttled write to disk. Use during shutdown. */
+export function flushPendingSnapshot(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  if (pendingPersist) persistSnapshotNow(pendingPersist);
 }
 
 export function getLatestSnapshot(): RateLimitSnapshot | null {
@@ -156,7 +204,7 @@ export function getLatestSnapshot(): RateLimitSnapshot | null {
     cachedSnapshot = JSON.parse(row.data) as RateLimitSnapshot;
     return cachedSnapshot;
   } catch (error) {
-    logger.verbose(`[plan-usage] failed to load snapshot: ${String(error)}`);
+    logger.verbose(`[plan-usage] failed to load snapshot: ${toErrorMessage(error)}`);
     cachedFromDb = true;
     return null;
   }
@@ -166,4 +214,11 @@ export function getLatestSnapshot(): RateLimitSnapshot | null {
 export function clearSnapshotCache(): void {
   cachedSnapshot = null;
   cachedFromDb = false;
+  lastPersistedAt = 0;
+  lastPersistedStatus = null;
+  pendingPersist = null;
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
 }

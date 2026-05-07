@@ -10,9 +10,15 @@ import {
   type ThinkingEffort,
 } from "../model-settings";
 import { computeRequestShape } from "../request-metrics";
-import { normalizeAnthropicRequestModel } from "../request-normalization";
+import { normalizeAnthropicRequestModel, TOOL_PREFIX } from "../request-normalization";
 import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
+
+const MCP_TOOL_NAME_JSON_REGEX = new RegExp(`"name"\\s*:\\s*"${TOOL_PREFIX}([^"]+)"`, "g");
+
+function stripMcpToolNamesInJson(json: string): string {
+  return json.replace(MCP_TOOL_NAME_JSON_REGEX, '"name": "$1"');
+}
 
 function rewriteAnthropicJsonResponseModel(bodyText: string, clientModel: string): string {
   try {
@@ -21,10 +27,12 @@ function rewriteAnthropicJsonResponseModel(bodyText: string, clientModel: string
       return bodyText;
     }
 
-    return JSON.stringify({
-      ...body,
-      model: clientModel,
-    } satisfies AnthropicResponse).replace(/"name"\s*:\s*"mcp_([^"]+)"/g, '"name": "$1"');
+    return stripMcpToolNamesInJson(
+      JSON.stringify({
+        ...body,
+        model: clientModel,
+      } satisfies AnthropicResponse),
+    );
   } catch {
     return bodyText;
   }
@@ -136,10 +144,7 @@ function rewriteAnthropicSseResponseModel(
               }
             }
 
-            const rewritten = rewriteAnthropicSseLine(line, clientModel).replace(
-              /"name"\s*:\s*"mcp_([^"]+)"/g,
-              '"name": "$1"',
-            );
+            const rewritten = stripMcpToolNamesInJson(rewriteAnthropicSseLine(line, clientModel));
             controller.enqueue(encoder.encode(`${rewritten}\n`));
             buffer = buffer.slice(newlineIndex + 1);
             newlineIndex = buffer.indexOf("\n");
@@ -287,7 +292,9 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       return new Response(createAnthropicErrorSSE(type, message), { headers: responseHeaders });
     }
 
-    const streamStartTime = Date.now();
+    // performance.now() is monotonic; Date.now() can jump backward under
+    // NTP correction or VM clock skew, producing negative latency rows.
+    const streamStartPerf = performance.now();
     const response = await rewriteAnthropicResponseModel(
       proxiedResponse,
       incomingBody.model,
@@ -302,7 +309,7 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
               cacheCreationTokens: usage.cacheCreationTokens,
               thinkingTokens: usage.thinkingTokens,
               stream: true,
-              latencyMs: Date.now() - streamStartTime,
+              latencyMs: Math.round(performance.now() - streamStartPerf),
               shape,
               decision,
               appliedModel: body.model,

@@ -62,9 +62,17 @@ export function getConfig(): ProxyConfig {
     new Set([...localOrigins, ...(tunnelOrigin ? [tunnelOrigin] : []), ...explicit]),
   );
 
+  // Cap concurrent upstream Anthropic requests to keep the event loop
+  // responsive for in-flight streams. 3 is a balance between throughput and
+  // per-stream latency; bump via env when running on a fast machine.
+  const rawMaxConcurrency = parseInt(process.env.CCTC_MAX_UPSTREAM_CONCURRENCY || "3", 10);
+  const maxUpstreamConcurrency =
+    Number.isInteger(rawMaxConcurrency) && rawMaxConcurrency >= 1 ? rawMaxConcurrency : 3;
+
   return {
     port: parseInt(process.env.PORT || "8082", 10),
     allowedIPs,
     allowedOrigins,
+    maxUpstreamConcurrency,
   };
 }

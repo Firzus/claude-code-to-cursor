@@ -35,6 +35,7 @@ import {
 } from "~/hooks/use-analytics";
 import { useBudgetDay } from "~/hooks/use-budget";
 import { apiFetch } from "~/lib/api-client";
+import { formatCompactTokens } from "~/lib/format";
 import { queryKeys } from "~/lib/query-keys";
 import type { RequestRecord } from "~/schemas/api-responses";
 
@@ -51,12 +52,6 @@ const periods = [
   { value: "month", label: "30d" },
   { value: "all", label: "all" },
 ] as const satisfies readonly { value: Period; label: string }[];
-
-function fmt(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
 
 function pct(n: number): string {
   return `${n.toFixed(1)}%`;
@@ -288,13 +283,13 @@ function AnalyticsPage() {
                 <StatCard
                   icon={ArrowDownToLine}
                   label="tokens in"
-                  value={fmt(totalIn)}
+                  value={formatCompactTokens(totalIn)}
                   accent="muted-foreground"
                 />
                 <StatCard
                   icon={ArrowUpFromLine}
                   label="tokens out"
-                  value={fmt(budget.data.outputTokens)}
+                  value={formatCompactTokens(budget.data.outputTokens)}
                   accent="muted-foreground"
                 />
                 <StatCard
@@ -385,7 +380,7 @@ function AnalyticsPage() {
                   width={50}
                   tick={{ fontSize: 11 }}
                   stroke="var(--color-muted-foreground)"
-                  tickFormatter={(v: number) => fmt(v)}
+                  tickFormatter={(v: number) => formatCompactTokens(v)}
                 />
                 <RechartsTooltip
                   content={
@@ -399,7 +394,7 @@ function AnalyticsPage() {
                           minute: "2-digit",
                         });
                       }}
-                      formatter={(value: number) => fmt(value)}
+                      formatter={(value: number) => formatCompactTokens(value)}
                     />
                   }
                 />
@@ -484,7 +479,7 @@ function AnalyticsPage() {
                     <ExpandableRow
                       key={r.id}
                       record={r}
-                      formatTokens={fmt}
+                      formatTokens={formatCompactTokens}
                       formatCost={formatCost}
                       formatDate={formatDate}
                     />
