@@ -443,6 +443,21 @@ function handle429(response: Response, isProbe: boolean): { resetInfo: string } 
   return { resetInfo };
 }
 
+/**
+ * Anthropic returns "You're out of extra usage" with type=invalid_request_error
+ * even when the user's plan quota is not exhausted. On Pro/Max plans, when
+ * Extra Usage is disabled (or its balance hits 0), Anthropic routes a fraction
+ * of requests — see anthropic-ratelimit-unified-fallback-percentage — to
+ * overage billing and rejects them on the spot, regardless of remaining plan
+ * quota. Confirmed by anthropics/claude-code#28096 and #28450.
+ *
+ * The verbatim upstream wording confuses users who still have plan quota
+ * available, so we rewrite it with the actual cause and the concrete fix.
+ */
+const OVERAGE_REJECTED_MARKER = "out of extra usage";
+const OVERAGE_REJECTED_MESSAGE =
+  "Anthropic routed this request to overage billing (Extra Usage), which is disabled or empty on your account. Your plan quota may still have room — this is Anthropic-side behaviour, not a proxy bug. Fix: enable Extra Usage with a small cap at https://claude.ai/settings/usage. Refs: github.com/anthropics/claude-code/issues/28096, /28450.";
+
 async function handle400(response: Response): Promise<RequestResult> {
   const errorBody = (await response
     .clone()
@@ -453,6 +468,11 @@ async function handle400(response: Response): Promise<RequestResult> {
   if (errorMessage.includes("only authorized for use with Claude Code")) {
     logger.error("OAuth token not authorized for direct API use");
     return { success: false, error: "OAuth not authorized for API" };
+  }
+
+  if (errorMessage.includes(OVERAGE_REJECTED_MARKER)) {
+    logger.error(`Claude Code 400 (overage rejected): ${JSON.stringify(errorBody)}`);
+    return { success: false, error: OVERAGE_REJECTED_MESSAGE };
   }
 
   logger.error(`Claude Code 400 error: ${JSON.stringify(errorBody)}`);
