@@ -54,16 +54,24 @@ export function AuroraShader({ className, intensity = 1 }: AuroraShaderProps) {
           if (!isMotion) return;
           const tweens: gsap.core.Tween[] = [];
           blobs.forEach((blob, i) => {
-            const tween = gsap.to(blob, {
-              xPercent: i % 2 === 0 ? 6 : -8,
-              yPercent: i % 2 === 0 ? -4 : 6,
-              scale: 1.06,
-              duration: 14 + i * 4,
-              repeat: -1,
-              yoyo: true,
-              ease: "sine.inOut",
-              paused: !visible,
-            });
+            // Provide explicit `from` values so GSAP doesn't have to call
+            // `getComputedStyle` for each animated prop on the first tick —
+            // `_getComputedProperty` was the dominant forced-reflow culprit
+            // (~100ms cumulative across 3 blobs × 3 props).
+            const tween = gsap.fromTo(
+              blob,
+              { xPercent: 0, yPercent: 0, scale: 1 },
+              {
+                xPercent: i % 2 === 0 ? 6 : -8,
+                yPercent: i % 2 === 0 ? -4 : 6,
+                scale: 1.06,
+                duration: 14 + i * 4,
+                repeat: -1,
+                yoyo: true,
+                ease: "sine.inOut",
+                paused: !visible,
+              },
+            );
             tweens.push(tween);
           });
           return () => {

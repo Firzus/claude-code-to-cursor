@@ -13,7 +13,13 @@ const config: NextConfig = {
   },
   outputFileTracingRoot: path.resolve(import.meta.dirname),
   experimental: {
-    optimizePackageImports: ["lucide-react", "recharts", "radix-ui"],
+    optimizePackageImports: [
+      "lucide-react",
+      "recharts",
+      "radix-ui",
+      "@hookform/resolvers",
+      "sonner",
+    ],
   },
 };
 
