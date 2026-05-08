@@ -3,7 +3,7 @@
 import { useGSAP } from "@gsap/react";
 import { useRef } from "react";
 import { cn } from "~/lib/cn";
-import { ensureGsapPlugins, gsap, ScrollTrigger } from "~/lib/motion";
+import { gsap } from "~/lib/motion";
 
 interface NumberTickerProps {
   value: number;
@@ -23,6 +23,11 @@ interface NumberTickerProps {
  * Animates a number from 0 → value when the component enters the viewport.
  * Uses `Intl.NumberFormat` for locale-aware grouping and tabular nums for stability.
  * Honors `prefers-reduced-motion` — falls back to the static formatted value.
+ *
+ * Uses a native `IntersectionObserver` rather than `ScrollTrigger.create` so
+ * that mounting many tickers does not register additional triggers (each one
+ * forces a layout read on `ScrollTrigger.refresh`, which dominates the
+ * forced-reflow budget on first render).
  */
 export function NumberTicker({
   value,
@@ -38,7 +43,6 @@ export function NumberTicker({
 
   useGSAP(
     () => {
-      ensureGsapPlugins();
       const node = ref.current;
       if (!node) return;
 
@@ -49,47 +53,56 @@ export function NumberTicker({
 
       const finalText = `${prefix ?? ""}${formatter.format(value)}${suffix ?? ""}`;
 
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMotion: "(prefers-reduced-motion: no-preference)",
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (reduced) {
+        node.textContent = finalText;
+        return;
+      }
+
+      const proxy = { current: 0 };
+      const tween = gsap.to(proxy, {
+        current: value,
+        duration,
+        ease: "power3.out",
+        paused: true,
+        onUpdate: () => {
+          node.textContent = `${prefix ?? ""}${formatter.format(proxy.current)}${suffix ?? ""}`;
         },
-        (ctx) => {
-          const { isMotion } = ctx.conditions as { isMotion: boolean };
-          if (!isMotion) {
-            node.textContent = finalText;
-            return;
-          }
-
-          const proxy = { current: 0 };
-          const tween = gsap.to(proxy, {
-            current: value,
-            duration,
-            ease: "power3.out",
-            paused: true,
-            onUpdate: () => {
-              node.textContent = `${prefix ?? ""}${formatter.format(proxy.current)}${suffix ?? ""}`;
-            },
-            onComplete: () => {
-              node.textContent = finalText;
-            },
-          });
-
-          const trigger = ScrollTrigger.create({
-            trigger: node,
-            start: "top 90%",
-            once: true,
-            onEnter: () => tween.play(),
-          });
-
-          return () => {
-            trigger.kill();
-            tween.kill();
-          };
+        onComplete: () => {
+          node.textContent = finalText;
         },
-      );
+      });
 
-      return () => mm.revert();
+      let observer: IntersectionObserver | null = null;
+      if (typeof IntersectionObserver === "undefined") {
+        // SSR / unsupported: just play immediately rather than skipping.
+        tween.play();
+      } else {
+        observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) {
+                tween.play();
+                observer?.disconnect();
+                observer = null;
+                break;
+              }
+            }
+          },
+          // Approximates ScrollTrigger's `start: "top 90%"`: fire when the
+          // element's top crosses 90% of the viewport from the top.
+          { rootMargin: "0px 0px -10% 0px", threshold: 0 },
+        );
+        observer.observe(node);
+      }
+
+      return () => {
+        observer?.disconnect();
+        tween.kill();
+      };
     },
     { scope: ref, dependencies: [value, fractionDigits, prefix, suffix, locale, duration] },
   );
