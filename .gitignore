@@ -1,52 +1,44 @@
-# dependencies (bun install)
-node_modules
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+.pnpm-store/
 
-# output
-out
-dist
-*.tgz
+# next.js
+/.next/
+/out/
+/build/
+*.tsbuildinfo
+next-env.d.ts
 
-# code coverage
-coverage
-*.lcov
-**/*.db
-**/*.db-journal
-**/*.db-wal
-**/*.db-shm
-# logs
-logs
-_.log
-api.log
-api.*.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+# convex (auto-generated bindings)
+/convex/_generated/
 
-# dotenv environment variable files
+# tests / playwright
+/coverage
+/playwright-report
+/test-results
+/playwright/.cache
+
+# env (secrets)
 .env
+.env.*.local
+.env.local
 !.env.example
 
-# caches
-.eslintcache
-.cache
-*.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
-.DS_Store
-
-# local git worktrees
-.worktrees/
-
-# startup logs
+# logs
+*.log
+api.log
 cctc-startup.log
 cloudflared-startup.log
 
-# frontend build output & caches
-frontend/.output/
-frontend/node_modules/
-frontend/.vinxi/
-frontend/.tanstack/
-frontend/dist/
-frontend/vite.config.timestamp_*
-
+# ide / os
+.DS_Store
+Thumbs.db
+desktop.ini
+*.pem
+.idea/
+.vscode/
+.vercel
+.worktrees/

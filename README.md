@@ -1,174 +1,206 @@
-# claude-code-to-cursor
+# Claude Code to Cursor
 
-A proxy that routes API requests through Claude Code's OAuth authentication. It lets you use Claude in clients like **Cursor**, **VS Code**, or any OpenAI/Anthropic-compatible tool — without needing a direct Anthropic API key.
+[![CI](https://img.shields.io/github/actions/workflow/status/your-org/claude-code-to-cursor/ci.yml?style=flat-square&label=CI)](https://github.com/your-org/claude-code-to-cursor/actions)
+![Bun](https://img.shields.io/badge/Bun-1.x-f9f1e1?style=flat-square&logo=bun)
+![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
 
-All traffic goes through a **Cloudflare Tunnel**, so claude-code-to-cursor is never directly exposed to the internet.
+A self-hosted proxy that routes Cursor IDE traffic through **Claude Code's OAuth session**, exposing both Anthropic (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) endpoints. Ships with a Next.js dashboard for analytics, auth, settings, and plan-usage monitoring.
 
----
+[Features](#features) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Configuration](#configuration) · [API Endpoints](#api-endpoints) · [Dashboard](#dashboard) · [Docker Deployment](#docker-deployment) · [Tech Stack](#tech-stack)
 
-## Prerequisites
+## Features
 
-- [Bun](https://bun.sh) v1.0+ (or Docker)
-- An Anthropic account with Claude Code access
-- A **Cloudflare Tunnel** token ([create one here](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/))
-- A client that supports OpenAI or Anthropic API format (e.g. Cursor)
+- **Dual API compatibility** — serves both Anthropic Messages API and OpenAI Chat Completions API from a single proxy
+- **Claude Code OAuth** — authenticates via Claude Code's PKCE OAuth flow; the dashboard handles login and token refresh
+- **Analytics dashboard** — real-time overview of requests, errors, timelines, plan usage, and budget tracking
+- **Model routing** — configurable model selection and thinking-effort levels per request
+- **IP whitelisting** — restrict API access to known Cursor backend IPs or your own allow-list
+- **Rate limiting** — built-in rate-limit tracking with auto-backoff and cache cleanup
+- **Cloudflare tunnel** — production ingress through a Cloudflare tunnel for secure, public-facing access
+- **SQLite persistence** — lightweight storage for request logs, settings, and analytics via `bun:sqlite`
+- **Event-loop monitoring** — detects and reports event-loop lag to keep streaming responsive
+- **Docker-ready** — full `docker compose` stack with API, frontend, and Cloudflare tunnel containers
 
-## Quick Start
+## Architecture
 
-### Option A: Docker (recommended)
-
-```bash
-cp .env.example .env
-# Edit .env and set CLOUDFLARE_TUNNEL_TOKEN
-
-docker compose up -d
+```
+┌─────────────┐      ┌──────────────────┐      ┌───────────────────┐
+│  Cursor IDE  │─────▶│  Cloudflare      │─────▶│  cctc-api (Bun)   │
+│  (client)    │      │  Tunnel          │      │  :8082            │
+└─────────────┘      └──────────────────┘      └────────┬──────────┘
+                                                        │
+                                          ┌─────────────┼─────────────┐
+                                          ▼             ▼             ▼
+                                   ┌──────────┐  ┌──────────┐  ┌──────────┐
+                                   │ Anthropic │  │  SQLite  │  │ Frontend │
+                                   │ API       │  │  (cctc   │  │ Next.js  │
+                                   │           │  │   .db)   │  │ :3111    │
+                                   └──────────┘  └──────────┘  └──────────┘
 ```
 
-This starts three services:
+The **API server** (`index.ts`) is a flat routing table built on `Bun.serve`. It proxies requests to the Anthropic API using an OAuth token, rewrites model names for the client, and records every request in SQLite. The **frontend** is a Next.js 16 App Router application that reads from the same API to display dashboards.
 
-- **api** — the proxy on port `8082` (internal)
-- **frontend** — the dashboard on port `3111`
-- **cloudflared** — the Cloudflare Tunnel that exposes the proxy
+## Getting Started
 
-### Option B: Run locally with Bun
+### Prerequisites
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| [Bun](https://bun.sh) | 1.x | Backend runtime |
+| [Node.js](https://nodejs.org) | 22+ | Frontend runtime |
+| [pnpm](https://pnpm.io) | 10+ | Frontend package manager |
+
+### Local development
+
+1. **Clone and install**
 
 ```bash
-# Clone and install
-git clone <repo-url> && cd claude-code-to-cursor
+git clone https://github.com/your-org/claude-code-to-cursor.git
+cd claude-code-to-cursor
 bun install
+cd frontend && pnpm install && cd ..
+```
 
-# Copy the example config and set your tunnel token
+2. **Configure environment**
+
+```bash
 cp .env.example .env
-# Edit .env and set CLOUDFLARE_TUNNEL_TOKEN
+# Edit .env — see Configuration section below
+```
 
-# Start the proxy (you still need cloudflared running separately)
+3. **Start the API**
+
+```bash
 bun run dev
 ```
 
-> When running locally, you must run `cloudflared` yourself to establish the
-> tunnel. The Cloudflare ingress should resolve to
-> `http://host.docker.internal:8082` so the same config works whether
-> `cloudflared` runs on the host or inside the prod Docker stack.
+The proxy starts on `http://localhost:8082`. A `/health` endpoint confirms it's running.
 
----
-
-## Authenticate
-
-claude-code-to-cursor uses Claude Code's OAuth flow. Open the dashboard and navigate to the **Auth** page:
-
-1. Click **Initialize** to start the OAuth flow
-2. Open the Anthropic link in your browser and approve access
-3. Copy the authorization code and paste it back in the dashboard
-4. The health indicator should turn green (**Online**)
-
-Tokens auto-refresh. You only need to do this once (or when tokens expire).
-
----
-
-## Configure Your Client
-
-Point your client to your Cloudflare Tunnel URL. The API key can be any non-empty string (e.g. `sk-cctc`) — authentication is handled by OAuth.
-
-### Cursor
-
-Open Cursor settings and configure a custom model:
-
-
-| Setting      | Value                                              |
-| ------------ | -------------------------------------------------- |
-| **Base URL** | `https://<your-tunnel>.cfargotunnel.com/v1`        |
-| **API Key**  | `sk-cctc` (any non-empty string)                   |
-| **Model**    | `Claude`                                          |
-
-
-`Claude` is the only public model ID accepted by the proxy. The dashboard
-still chooses the real Anthropic backend model used for each request.
-
-claude-code-to-cursor exposes two compatible endpoints:
-
-- **OpenAI format**: `POST /v1/chat/completions`
-- **Anthropic format**: `POST /v1/messages`
-
-### Other clients
-
-Any client that supports a custom OpenAI-compatible base URL will work. Set the base URL to `https://<your-tunnel>.cfargotunnel.com/v1` and use any API key value.
-
----
-
-## Verify It Works
-
-Send a test request through your tunnel:
+4. **Start the dashboard** (in a separate terminal)
 
 ```bash
-curl https://<your-tunnel>.cfargotunnel.com/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-cctc" \
-  -d '{
-    "model": "Claude",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
+cd frontend && pnpm run dev
 ```
 
-Or simply start using Claude in your client. The **Analytics** tab in the dashboard will show requests flowing through.
+The dashboard opens at `http://localhost:3111`. On first visit, it redirects to the welcome/auth page if no OAuth session exists.
 
----
+> [!IMPORTANT]
+> A **Cloudflare tunnel** is required for Cursor to reach the proxy in production. For local development, you can point Cursor directly at `http://localhost:8082`.
 
-## Configuration Reference
+### Authenticate
 
-All settings are in `.env`. See `[.env.example](.env.example)` for the full list.
+Open the dashboard, navigate to the **Auth** page, and complete the Claude Code OAuth login. The proxy stores tokens in `~/.cctc/auth.json` (or `CCTC_AUTH_DIR` in Docker).
 
+## Configuration
 
-| Variable                        | Default                       | Description                                 |
-| ------------------------------- | ----------------------------- | ------------------------------------------- |
-| `CLOUDFLARE_TUNNEL_TOKEN`       | *(required)*                  | Cloudflare Tunnel token                     |
-| `PORT`                          | `8082`                        | Proxy server port (internal)                |
-| `ALLOWED_IPS`                   | Cursor backend IPs            | IP whitelist (`disabled` to allow all)      |
-| `CLAUDE_CODE_EXTRA_INSTRUCTION` | *(empty)*                     | Extra instruction appended to system prompt |
-| `CCTC_AUTH_DIR`                 | `~/.cctc` / `/data/auth`      | OAuth credentials storage                   |
-| `CCTC_DB_PATH`                  | `./cctc.db` / `/data/cctc.db` | SQLite database path                        |
-| `SETTINGS_API_KEY`              | *(empty)*                     | Shared secret for settings API              |
-| `FRONTEND_PORT`                 | `3111`                        | Dashboard frontend port                     |
+All settings are read from environment variables. Copy `.env.example` as a starting point:
 
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `8082` | API server port |
+| `ALLOWED_IPS` | Cursor backend IPs | Comma-separated IP whitelist. Set to `disabled` to allow all |
+| `CCTC_AUTH_DIR` | `~/.cctc` | OAuth token storage directory |
+| `CCTC_DB_PATH` | `./cctc.db` | SQLite database path |
+| `LOG_LEVEL` | `INFO` | `VERBOSE`, `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `LOG_DIR` | `.` | Log files directory |
+| `LOG_MAX_SIZE_MB` | `10` | Max log file size before rotation |
+| `LOG_MAX_FILES` | `3` | Number of rotated log files to keep |
+| `LOG_CONSOLE` | `true` | Also write logs to stdout |
+| `SETTINGS_API_KEY` | _(empty)_ | Shared secret for settings API access from frontend |
+| `FRONTEND_PORT` | `3111` | Dashboard port |
+| `CLOUDFLARE_TUNNEL_TOKEN` | _(required in prod)_ | Cloudflare tunnel token |
+| `CLOUDFLARE_TUNNEL_URL` | — | Public tunnel URL shown in the setup wizard |
+| `CCTC_MAX_UPSTREAM_CONCURRENCY` | `3` | Max concurrent requests to Anthropic API |
 
----
+## API Endpoints
 
-## Architecture Overview
+### Proxy routes
 
-```mermaid
-flowchart LR
-    Client["Cursor / Any Client"]
-    CF["Cloudflare Tunnel (cloudflared)"]
-    API["claude-code-to-cursor :8082"]
-    Anthropic["Anthropic API (Claude Code)"]
-    Dashboard["Dashboard :3111"]
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/messages` | Anthropic Messages API proxy |
+| `POST` | `/v1/chat/completions` | OpenAI-compatible Chat Completions proxy |
+| `GET` | `/v1/models` | List available models |
 
-    Client -- "HTTPS" --> CF
-    CF -- "HTTP (internal)" --> API
-    API -- "OAuth" --> Anthropic
-    Anthropic --> API
-    CF --> Client
-    API --- Dashboard
+### Internal routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check (DB, OAuth, rate-limit status) |
+| `GET` | `/analytics` | Summary analytics |
+| `GET` | `/analytics/requests` | Request log with pagination |
+| `GET` | `/analytics/errors` | Error log |
+| `GET` | `/analytics/timeline` | Time-series data |
+| `DELETE` | `/analytics/reset` | Reset analytics data |
+| `GET/PUT` | `/api/settings` | Proxy settings (model, thinking effort) |
+| `GET/PUT` | `/api/budget` | Budget tracking |
+| `GET` | `/api/plan-usage` | Claude plan usage snapshot |
+| `POST` | `/api/auth/login` | Start OAuth PKCE flow |
+| `GET` | `/api/auth/callback` | OAuth callback handler |
+| `GET` | `/api/auth/status` | Auth status check |
+
+## Dashboard
+
+The Next.js frontend provides four main pages:
+
+| Page | Path | Description |
+|------|------|-------------|
+| **Overview** | `/` | Health status, plan usage, today's stats, recent requests |
+| **Usage** | `/usage` | Detailed analytics with timeline charts and error breakdown |
+| **Integrations** | `/integrations` | Cursor configuration guide and connection setup |
+| **Preferences** | `/preferences` | Model selection, thinking effort, and budget settings |
+
+On first launch, the app redirects to `/welcome` for the OAuth setup flow.
+
+## Docker Deployment
+
+The `docker-compose.yml` defines three services:
+
+| Service | Image | Port |
+|---------|-------|------|
+| `api` | `oven/bun:1` | `8082` |
+| `frontend` | `node:22-alpine` | `3111` |
+| `cloudflared` | `cloudflare/cloudflared` | — |
+
+```bash
+# Build all images
+docker compose build
+
+# Start the stack
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
 ```
 
+> [!NOTE]
+> You **must** set `CLOUDFLARE_TUNNEL_TOKEN` in your `.env` before starting the Docker stack. The tunnel is mandatory for production use.
 
+Data is persisted in a named Docker volume (`cctc-data`) mounted at `/data` in the API container, holding the SQLite database, logs, and OAuth tokens.
 
-The proxy intercepts API requests, authenticates them via Claude Code OAuth, and forwards them to Anthropic. The Cloudflare Tunnel ensures the proxy is only reachable through Cloudflare's network. The dashboard provides real-time analytics, model settings, and authentication management.
+## Tech Stack
 
----
+**Backend**
+- [Bun](https://bun.sh) — runtime, HTTP server, SQLite driver
+- TypeScript (strict mode)
+- [Biome](https://biomejs.dev) — linter and formatter
 
-## Troubleshooting
+**Frontend**
+- [Next.js 16](https://nextjs.org) — App Router, React Server Components
+- [React 19](https://react.dev)
+- [Tailwind CSS v4](https://tailwindcss.com)
+- [Radix UI](https://www.radix-ui.com) + shadcn/ui components
+- [SWR](https://swr.vercel.app) — data fetching
+- [Recharts](https://recharts.org) — analytics charts
+- [GSAP](https://gsap.com) — animations
+- [Zod](https://zod.dev) — schema validation
 
-**Health indicator shows "Unauthenticated"**
-→ Navigate to the Auth page and complete the OAuth flow.
-
-**Health indicator shows "Offline"**
-→ The API server isn't running. Check `docker compose logs api`.
-
-**Requests fail with 403**
-→ The requesting IP is not in `ALLOWED_IPS`. Check the logs or set `ALLOWED_IPS=disabled` in `.env`.
-
-**Requests fail with 429**
-→ You've hit Claude Code's rate limit. The dashboard shows when the limit resets.
-
-**Tunnel not connecting**
-→ Verify `CLOUDFLARE_TUNNEL_TOKEN` is set correctly in `.env`. Check `docker compose logs cloudflared` for errors.
+**Infrastructure**
+- [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) — secure ingress
+- [Docker Compose](https://docs.docker.com/compose/) — container orchestration
+- [GitHub Actions](https://github.com/features/actions) — CI pipeline

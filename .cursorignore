@@ -1,34 +1,37 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Lockfile (gros, binaire, pas utile au contexte IA)
-bun.lock
+pnpm-lock.yaml
 
 # Logs
 *.log
 api.log
 cctc-startup.log
 
-# Base de données SQLite (binaire)
-*.db
-*.db-shm
-*.db-wal
-
 # Fichiers d'environnement (secrets)
 .env
+.env.local
+.env.*.local
 
 # Git
 .git/
 
 # Build / output
+.next/
 out/
 dist/
 *.tgz
+
+# Convex (bindings auto-générées, énormes)
+convex/_generated/
 
 # Caches
 .eslintcache
 .cache
 *.tsbuildinfo
+next-env.d.ts
 
 # Coverage
 coverage/

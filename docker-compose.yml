@@ -1,58 +1,34 @@
 services:
-  api:
+  app:
     build: .
-    container_name: cctc-api
+    container_name: cctc-app
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${PORT:-8082}:8082"
-    volumes:
-      - cctc-data:/data
+      # Bound to loopback only — Cloudflare tunnel reaches us via the docker
+      # network at http://app:3111. The host port is for local browser dev.
+      - "127.0.0.1:${APP_PORT:-3111}:3111"
     env_file: .env
     environment:
-      - CCTC_DB_PATH=/data/cctc.db
-      - CCTC_AUTH_DIR=/data/auth
-      - LOG_DIR=/data/logs
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "bun",
-          "-e",
-          "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1))",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    networks:
-      - internal
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1.0"
-
-  frontend:
-    build: ./frontend
-    container_name: cctc-frontend
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${FRONTEND_PORT:-3111}:3111"
-    environment:
-      - BACKEND_URL=http://api:8082
-      - BACKEND_SETTINGS_KEY=${SETTINGS_API_KEY:-}
       - NEXT_TELEMETRY_DISABLED=1
+      # Used by lib/server/oauth.ts to talk to Convex from server-side calls,
+      # and by ConvexReactClient on the browser side. Both pages and route
+      # handlers live in this container, so loopback is fine for the server
+      # path; the browser path needs the host-mapped port (rewritten below).
+      # Browser-side hooks talk to Convex via the host loopback (port 3210
+      # is mapped to 127.0.0.1 on the host). The browser can't resolve the
+      # docker DNS `convex`, so this MUST be the host-reachable URL.
+      - NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL:-http://127.0.0.1:3210}
+      # Server-side calls (route handlers, RSC) use the in-network DNS name.
+      # Hardcoded — overrides .env which holds the host-CLI URL.
+      - CONVEX_SELF_HOSTED_URL=http://convex:3210
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=${CONVEX_SELF_HOSTED_ADMIN_KEY}
+      # Internal URL for RSC → /api fetches in the same container.
+      - INTERNAL_URL=http://127.0.0.1:3111
     depends_on:
-      api:
+      convex:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3111/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3111/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -68,8 +44,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.5"
+          memory: 1G
+          cpus: "1.5"
 
   cloudflared:
     image: cloudflare/cloudflared:2025.4.0
@@ -79,15 +55,15 @@ services:
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
     depends_on:
-      api:
+      app:
         condition: service_healthy
     networks:
       - internal
     extra_hosts:
-      # Tunnel ingress points at `http://host.docker.internal:8082` so the
-      # same config works for the host-native cloudflared in dev. Docker
-      # Desktop sets this automatically, but plain Docker Engine on Linux
-      # needs it spelled out.
+      # Tunnel ingress should point at `http://app:3111` (docker network) or
+      # `http://host.docker.internal:3111` (host-native cloudflared in dev).
+      # The Cloudflare Zero Trust tunnel config must be updated from the
+      # previous 8082 → 3111 when migrating from the Bun proxy.
       - "host.docker.internal:host-gateway"
     security_opt:
       - no-new-privileges:true
@@ -102,9 +78,80 @@ services:
           memory: 128M
           cpus: "0.25"
 
+  convex:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: cctc-convex
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      # Bound to loopback only — Convex is reached either via the in-network
+      # `convex:3210` hostname (from cctc-app) or the local CLI on the host.
+      - "127.0.0.1:${CONVEX_PORT:-3210}:3210"
+      - "127.0.0.1:${CONVEX_SITE_PROXY_PORT:-3211}:3211"
+    volumes:
+      - cctc-convex-data:/convex/data
+    environment:
+      - INSTANCE_NAME=${CONVEX_INSTANCE_NAME:-cctc}
+      - INSTANCE_SECRET=${CONVEX_INSTANCE_SECRET:?Set CONVEX_INSTANCE_SECRET in .env}
+      - CONVEX_CLOUD_ORIGIN=${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${CONVEX_PORT:-3210}}
+      - CONVEX_SITE_ORIGIN=${CONVEX_SITE_ORIGIN:-http://127.0.0.1:${CONVEX_SITE_PROXY_PORT:-3211}}
+      - DISABLE_BEACON=${CONVEX_DISABLE_BEACON:-true}
+      - DISABLE_METRICS_ENDPOINT=true
+      - RUST_LOG=${CONVEX_RUST_LOG:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    container_name: cctc-convex-dashboard
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "127.0.0.1:${CONVEX_DASHBOARD_PORT:-6791}:6791"
+    environment:
+      # Browser-side URL — the dashboard runs in the user's browser and talks
+      # to the backend over the host loopback, not the docker network.
+      - NEXT_PUBLIC_DEPLOYMENT_URL=${CONVEX_DASHBOARD_DEPLOYMENT_URL:-http://127.0.0.1:${CONVEX_PORT:-3210}}
+    depends_on:
+      convex:
+        condition: service_healthy
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
 networks:
   internal:
     driver: bridge
 
 volumes:
-  cctc-data:
+  cctc-convex-data:

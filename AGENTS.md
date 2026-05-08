@@ -2,100 +2,169 @@
 
 ## Overview & Scope
 
-`claude-code-to-cursor` is an OAuth-authenticated proxy that routes API traffic through Claude Code's OAuth credentials, exposing OpenAI- and Anthropic-compatible endpoints to clients (Cursor, VS Code, etc.). Three services, orchestrated by Docker Compose: **API** (Bun, port 8082), **Frontend** (Next.js 16 standalone, port 3111), **Cloudflared** tunnel.
+`claude-code-to-cursor` (cctc): a Next.js 16 full-stack app that exposes
+Anthropic `/v1/messages` and OpenAI `/v1/chat/completions` endpoints (Cursor
+BYOK target) backed by a Claude Code OAuth session, plus a dashboard for
+analytics, auth, settings, and plan-usage. Persistence is **self-hosted Convex**.
+Production ingress runs through a Cloudflare tunnel.
 
-This file applies to the entire repo. There are no nested `AGENTS.md` — closest-wins precedence applies if any are added.
+This file applies to the entire repo. No nested `AGENTS.md` exist; if you
+add one, the closest `AGENTS.md` to the edited file wins.
+
+## Architecture
+
+```
+docker-compose stack (4 services on `internal` network):
+
+  app                     Next.js 16 full-stack (port 3111, repo root)
+    ├── app/              UI pages + Route Handlers (App Router)
+    │   └── api/          /api/v1/* (Cursor) + /api/* (dashboard)
+    ├── components/       UI (radix + shadcn)
+    ├── lib/server/       Server-only modules (proxy logic, OAuth, Convex client)
+    ├── lib/              Shared (env, schemas, formatters)
+    └── convex/           Schema + queries/mutations
+
+  convex                  Self-hosted Convex backend (port 3210, 3211)
+                          Volume: cctc-convex-data
+  convex-dashboard        Convex admin UI (port 6791)
+  cloudflared             Public ingress → app:3111
+```
+
+There is no separate Bun proxy anymore. The previous SQLite analytics, OAuth
+file (`/data/auth/auth.json`), and plan-usage snapshot all live in Convex.
 
 ## Agent Role
 
-Senior TypeScript engineer fluent in Bun, Next.js 16 (App Router, RSC, Server Actions), React 19, GSAP, Tailwind v4, shadcn/ui, SWR, and Anthropic/OpenAI APIs. Allowed: edit source under `src/`, `frontend/app/`, `frontend/components/`, `frontend/hooks/`, `frontend/lib/`, update configs, refactor. Not allowed: commit secrets, run installs/builds without explicit need, push or merge, edit shadcn-generated primitives in `frontend/components/ui/` (regenerate via CLI instead), edit `cctc.db` or files under `/data`, or rewrite migrations history in `src/db.ts`.
+Senior TypeScript engineer comfortable with Next.js 16 (App Router, RSC,
+Route Handlers), self-hosted Convex, and Cloudflare tunnels. Allowed: edit
+`frontend/**` (= the whole app now), `convex/**`, configs, docker-compose.
+Not allowed: rewrite the OAuth/PKCE flow, change the Convex schema without
+migration plan, alter the Cloudflare tunnel topology, or add dependencies
+without explicit user approval. Never log or commit OAuth tokens or `.env`.
 
-## Build & Validation Commands
+## Build, Test & Validation Commands
 
-Backend (repo root, Bun):
+The app lives at the repo root (standard Next.js 16 layout). Convex
+schema/functions live in `convex/`.
 
 ```bash
-bun install
-bun run dev                    # hot reload via bun --hot
-bun run typecheck              # bunx tsc --noEmit
-bun run lint                   # biome check . (covers backend + frontend)
-bun run lint:fix               # biome check --write .
+pnpm install --frozen-lockfile
+pnpm run typecheck       # tsc --noEmit
+pnpm run lint            # biome check .
+pnpm run dev             # next dev -p 3111
+pnpm run build           # next build (standalone output for docker)
+
+# Convex (against the self-hosted instance — needs cctc-convex container up)
+pnpm run convex:deploy   # push schema + functions, regenerate types
+pnpm run convex:dev      # watch mode for development
 ```
 
-Frontend (`cd frontend`, pnpm):
+Docker (full stack: app + convex + convex-dashboard + cloudflared):
 
 ```bash
-pnpm install
-pnpm run dev                   # next dev, port 3111
-pnpm run typecheck             # tsc --noEmit
-pnpm run build                 # next build (standalone output)
-pnpm run start                 # next start (production)
-pnpm run lint                  # biome check .
+docker compose build
+docker compose up -d
+docker compose logs -f
+docker compose down
 ```
 
-Docker:
+Bootstrapping a fresh deployment:
 
 ```bash
-docker compose up -d    fffffff                      # prod stack
-docker compose -f docker-compose.dev.yml up   # dev stack with hot reload
-docker compose build api frontend             # (unverified) used in CI
-```
+# 1. Generate the Convex instance secret (32-byte hex), put in .env as
+#    CONVEX_INSTANCE_SECRET=<hex>
+openssl rand -hex 32
 
-Pre-PR validation:
+# 2. Bring up Convex first
+docker compose up -d convex convex-dashboard
 
-```bash
-bun run typecheck && bun run lint
-cd frontend && pnpm run typecheck && pnpm run build
+# 3. Generate an admin key for the CLI / Next.js server
+docker compose exec convex ./generate_admin_key.sh
+# Paste it into .env and frontend/.env.local as
+# CONVEX_SELF_HOSTED_ADMIN_KEY=<key>
+# CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+
+# 4. Push schema and functions
+pnpm run convex:deploy
+
+# 5. Bring up the rest
+docker compose up -d
 ```
 
 ## Conventions & Patterns
 
-- **Backend**: TypeScript strict (`noUncheckedIndexedAccess`, `noImplicitOverride`, `verbatimModuleSyntax`). Zero runtime deps — only Bun built-ins (HTTP, SQLite, fetch, crypto). Entry: `index.ts`. Source: `src/`. Routes: `src/routes/<domain>.ts`, return `Response`. Shared types: `src/types.ts`. Logging: `logger.info/error/verbose` (file-based, auto-rotating).
-- **Frontend**: Next.js 16 App Router with `output: 'standalone'`, React 19. UI: shadcn/ui (`new-york`, `--base radix`) + Tailwind v4 single-CSS theme (`frontend/app/globals.css`, "Studio Soft" tokens). Display font: Fraunces (`next/font/google`). Animations: GSAP + ScrollTrigger + SplitText via `useGSAP` islands (`frontend/lib/motion.ts`); always under `gsap.matchMedia` honoring `prefers-reduced-motion`. Data: RSC fetches via `frontend/lib/api.ts` (server-only, parses Zod v4 schemas in `frontend/lib/schemas.ts`); SWR polls via `frontend/app/api/proxy/[...path]/route.ts` BFF that adds `x-settings-key` server-side. Mutations: Server Actions in `frontend/lib/server-actions.ts`. Forms: React Hook Form + Zod. Path alias `~/` → `frontend/`.
-- **Naming**: camelCase for vars/functions, PascalCase for types/components/React files, kebab-case for source filenames. Interfaces preferred over type aliases for object shapes.
-- **Imports**: use `import type { ... }` for type-only.
-- **Errors**: Anthropic-shaped JSON `{ type: "error", error: { type, message } }`.
-- **Search**: ignore `node_modules/`, `frontend/.next/`, `frontend/components/ui/` (shadcn-generated).
+- Runtime: **Node 22 + pnpm 10** everywhere (the Bun backend is gone).
+- TypeScript: `strict`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`.
+  Avoid `any`; avoid non-null assertions.
+- Routing: each Next.js Route Handler in `app/api/**/route.ts` is a thin
+  wrapper around a handler in `lib/server/routes/*.ts`. Apply
+  `ipWhitelistGuard()` from `lib/server/guard.ts` at the top of every
+  Cursor-facing or admin route.
+- Imports: use the `~/*` alias for app-relative imports. Use `import type`
+  for type-only imports.
+- Frontend stack: Next.js App Router, React 19, Tailwind CSS v4, Radix UI,
+  shadcn-style components in `components/ui/` (excluded from Biome — do not
+  lint-fix or rewrite them), SWR for data, Convex hooks (`useQuery`) for
+  real-time, Zod for schemas, Sonner for toasts, GSAP/`@gsap/react`.
+- Logging: use `lib/server/logger.ts` (`logger.info|warn|error|verbose`).
+  Never `console.*` in `lib/server/**` except in fatal handlers.
+- Errors: proxy responses follow Anthropic's `{ type: "error", error: { type,
+  message } }` shape (see `lib/server/types.ts`).
+- Formatting: Biome, 2-space indent, line width 100. Run `pnpm run lint:fix`
+  before committing.
+- Search: exclude `node_modules/`, `.next/`, `components/ui/`,
+  `convex/_generated/`, `*.log` when grepping.
 
-## Cursor `/multitask` & Subagents
+## Convex specifics
 
-Cursor 3.2+ exposes `/multitask`, where the parent agent calls a `Task` (alias `Agent`) tool to dispatch async subagents. There is **no new endpoint** to support — subagent traffic flows over the same `/v1/chat/completions` route.
-
-What CCTC does today:
-
-- When Cursor declares `Task` / `Agent` in `tools[]`, the model's `tool_use` blocks for those names are forwarded as OpenAI `tool_calls` (`src/stream-handler.ts`). The parent run works normally.
-- Each spawned subagent **should** hit the proxy as a separate chat completion. When it does, it's served via Claude Code OAuth like any other request.
-- If the model emits `Task` / `Agent` without Cursor declaring it, `formatInternalToolContent` (`src/internal-tools.ts`) renders the dispatch as readable text so the assistant message stays coherent.
-- Both paths log a `[Subagent] …` line (INFO when forwarded, WARN when downgraded to text) so you can confirm what Cursor sent.
-
-Known Cursor-side limitation: in 3.2 the spawned subagents silently bypassed the custom OpenAI base URL and hit Cursor's own cloud (forum thread `159369`). 3.3 partially fixed this; if subagents don't show up in `api.log` after a `/multitask` run, the bypass is back and there is nothing the proxy can do until Cursor routes the calls through it.
+- Schema lives in `frontend/convex/schema.ts` (5 tables: `requests`,
+  `modelSettings`, `planUsageSnapshot`, `oauthTokens`, `pkceState`).
+- All functions are declared as public `mutation`/`query` (not `internal*`).
+  The trust boundary is the docker network — Convex port 3210 MUST stay
+  bound to 127.0.0.1. If you ever expose it publicly, switch the OAuth and
+  PKCE functions to `internalMutation`/`internalQuery` and add a Convex
+  Auth provider.
+- Server-side calls go through `lib/server/convex.ts` (a `ConvexHttpClient`
+  pointed at `CONVEX_SELF_HOSTED_URL`).
+- Browser-side hooks (`useQuery`, `useMutation`) read `NEXT_PUBLIC_CONVEX_URL`
+  via `components/providers.tsx`. In docker that needs to be the host
+  loopback (`http://127.0.0.1:3210`), not the docker DNS name.
 
 ## Dos and Don'ts
 
-- Do: keep `src/db.ts` migrations append-only; never drop or rewrite existing rows.
-- Do: validate every new API response with a Zod schema in `frontend/lib/schemas.ts`.
-- Do: prefix MCP tool names with `mcp_` and sort alphabetically — required for stable cache keys (see `src/anthropic-client.ts`).
-- Do: route all proxy bodies through `src/routing-policy.ts` (`pickRoute`) so thinking effort is normalized.
-- Don't: add a runtime dep to the backend `package.json` — it must stay zero-dep.
-- Don't: change the `User-Agent` (`claude-cli/2.1.97 (external, cli)`), the OAuth client ID, or the system-prompt prefix `"You are Claude Code, Anthropic's official CLI for Claude."` — OAuth breaks otherwise.
-- Don't: commit `api.log`, `cctc.db`, `auth.json`, or any `.env` file.
-- Don't: edit shadcn primitives in `frontend/components/ui/` directly — regenerate via `pnpm dlx shadcn@latest add <name> --overwrite`.
+- Do: keep `lib/server/routes/*` handlers stateless; persist via Convex
+  mutations/queries.
+- Do: read config from `lib/server/config.ts` (env-driven); document new env
+  vars in `.env.example`.
+- Do: respect IP whitelisting — Cursor-facing routes (`/api/v1/*`) and admin
+  routes (`/api/analytics/*`, `/api/auth/*`, `/api/settings/*`,
+  `/api/rate-limit/*`) must call `ipWhitelistGuard()` first.
+- Don't: bypass `getValidToken()` from `lib/server/oauth.ts`; never read
+  tokens from Convex directly outside that module.
+- Don't: introduce blocking I/O in route handlers — they share the Node
+  event loop with in-flight SSE streams.
+- Don't: edit `pnpm-lock.yaml` by hand.
+- Don't: delete the `cctc-convex-data` volume — that's the source of truth
+  for analytics, OAuth tokens, and snapshots.
 
 ## Safety & Guardrails
 
-- Off-limits: production secrets, `CLOUDFLARE_TUNNEL_TOKEN`, OAuth credentials in `CCTC_AUTH_DIR/auth.json`, the `cctc-data` Docker volume.
-- Never run destructive shell ops (`rm -rf`, force pushes, `docker volume rm cctc-data`).
-- Never bump dependency major versions without explicit approval; respect existing pins (Bun v1+, Node 22 for frontend, Next.js 16, Biome v2.4.x, React 19, Tailwind v4, recharts v3, Zod v4, GSAP v3.13+, shadcn `new-york` style, cloudflared `2025.4.0`).
-- Never expose the API directly to the internet — all external traffic must go through cloudflared.
-- IP whitelist (`ALLOWED_IPS` in `.env`) is enforced by `src/middleware.ts`. Setting it to `disabled` is for local dev only.
-- Generated/vendored — do not edit: `frontend/components/ui/` (shadcn), `frontend/.next/`, `node_modules/`, lockfiles (`bun.lock`, `frontend/pnpm-lock.yaml`).
+- Off-limits: `.env`, OAuth tokens (now in Convex `oauthTokens` table),
+  `components/ui/**` (vendored shadcn), `pnpm-lock.yaml`, `node_modules/`,
+  `.next/`, `convex/_generated/`.
+- Safe to automate: handler refactors, new routes, frontend components/pages,
+  Biome fixes, type tightening, Convex schema additions (with migration).
+- Never run during agent work: `docker compose up` (interactive), long-running
+  `next dev` (start in background only when explicitly requested, and clean
+  up before ending the session), destructive Convex mutations on prod data,
+  `git push --force`.
+- Cloudflared tunnel is mandatory in production; do not remove or rewire it.
 
 ## Git & PR Rules
 
-- Branching: feature branches off `main`; PRs into `main`.
-- Commit message: imperative, English, scoped (e.g. `[backend] fix rate-limit cache eviction`, `[frontend] add plan-usage card`, `[docker] pin cloudflared version`).
-- PR title format: `[backend|frontend|docker] Brief description`.
-- PR body: short summary + bullet list of changes. Mention any migration in `src/db.ts`.
-- CI (`.github/workflows/ci.yml`) runs three jobs and must be green: **backend** (`bun install --frozen-lockfile`, `bun run typecheck`, `bun run lint`), **frontend** (`pnpm install --frozen-lockfile`, `pnpm run typecheck`, `pnpm run build`), **docker** (`docker compose build api frontend`).
-- Do not merge with failing typecheck or lint on either side.
-
+- Branch off `main`; feature branches `feat/<scope>`, fixes `fix/<scope>`.
+- Commits: short imperative subject in English. Documentation and code
+  comments stay in English; chat/UI copy is FR/EN per context.
+- PRs describe behavior change, env-var additions, and any Convex schema
+  impact (run `npx convex dev --once` and check the deployment summary).
+  Don't push to remote unless explicitly asked.
