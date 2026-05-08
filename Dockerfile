@@ -1,12 +1,8 @@
 FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Install dependencies
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
-
-# Copy application source
-COPY index.ts tsconfig.json ./
+# Copy application source (no runtime deps to install)
+COPY package.json tsconfig.json index.ts ./
 COPY src/ ./src/
 
 # Create data directories with correct ownership

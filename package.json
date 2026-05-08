@@ -3,16 +3,18 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "scripts": {
-    "start": "bun run index.ts",
     "dev": "bun --hot run index.ts",
-    "docker:build": "docker compose build",
+    "dev:studio": "cd frontend && pnpm dev",
+    "start": "bun run index.ts",
+    "typecheck": "bunx tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "typecheck": "bunx tsc --noEmit",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "docker:build": "docker compose build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.11",

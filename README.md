@@ -45,7 +45,10 @@ cp .env.example .env
 bun run dev
 ```
 
-> When running locally, you must run `cloudflared` yourself to establish the tunnel.
+> When running locally, you must run `cloudflared` yourself to establish the
+> tunnel. The Cloudflare ingress should resolve to
+> `http://host.docker.internal:8082` so the same config works whether
+> `cloudflared` runs on the host or inside the prod Docker stack.
 
 ---
 

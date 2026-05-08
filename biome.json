@@ -4,11 +4,15 @@
     "includes": [
       "index.ts",
       "src/**/*.ts",
-      "frontend/src/**/*.ts",
-      "frontend/src/**/*.tsx",
-      "!frontend/src/routeTree.gen.ts",
+      "frontend/app/**/*.ts",
+      "frontend/app/**/*.tsx",
+      "frontend/components/**/*.ts",
+      "frontend/components/**/*.tsx",
+      "frontend/hooks/**/*.ts",
+      "frontend/lib/**/*.ts",
+      "!frontend/components/ui",
       "!**/node_modules",
-      "!**/dist"
+      "!**/.next"
     ]
   },
   "linter": {
