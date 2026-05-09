@@ -1,8 +1,7 @@
 "use client";
 
 import { ChevronDown, Inbox } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAnalyticsRequests } from "~/hooks/use-analytics-requests";
@@ -13,28 +12,63 @@ import { ExportCsvButton } from "./export-csv-button";
 
 interface RequestTableProps {
   period: Period;
-  page: number;
   pageSize: number;
   initial?: AnalyticsRequests;
 }
 
-export function RequestTable({ period, page, pageSize, initial }: RequestTableProps) {
-  const { data, isLoading, error } = useAnalyticsRequests(period, page, pageSize, initial);
-  const router = useRouter();
-  const pathname = usePathname();
-  const search = useSearchParams();
-  const [pending, startTransition] = useTransition();
-  const [expanded, setExpanded] = useState<number | null>(null);
+// Cursor pagination state lives in component state. Each "Next" pushes the
+// current cursor onto the stack; "Previous" pops back. Refresh resets to
+// page 1 — that's a deliberate trade-off for keeping URLs clean and the
+// implementation simple. The user-facing "Page X of Y" still works because
+// X = stack.length + 1 and Y is derived from total/pageSize.
+export function RequestTable({ period, pageSize, initial }: RequestTableProps) {
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  // `pinnedSince` is the `since` value the server used on page 1. Once we
+  // start paginating we MUST reuse it or Convex's cursor invalidates.
+  const [pinnedSince, setPinnedSince] = useState<number | null>(initial?.since ?? null);
+  // React 19 idiom for "reset state when a prop changes" — branch in render
+  // (not in an effect). The render runs again with the new state immediately.
+  const [prevPeriod, setPrevPeriod] = useState(period);
+  if (period !== prevPeriod) {
+    setPrevPeriod(period);
+    setCursorStack([]);
+    setPinnedSince(null);
+  }
+  const currentCursor = cursorStack.at(-1) ?? null;
+
+  // Only seed `initial` for the first page. After we navigate, `initial` is
+  // stale (it's always the page-1 snapshot from SSR).
+  const fallback = cursorStack.length === 0 ? initial : undefined;
+  const { data, isLoading, error } = useAnalyticsRequests(
+    period,
+    pageSize,
+    currentCursor,
+    pinnedSince,
+    fallback,
+  );
+
+  // Capture the server's `since` from the first response of this period so
+  // we can echo it back on subsequent pages.
+  if (data && pinnedSince === null) {
+    setPinnedSince(data.since);
+  }
+
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const total = data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const pageIndex = cursorStack.length + 1;
 
-  function go(nextPage: number) {
-    const params = new URLSearchParams(search);
-    if (nextPage <= 1) params.delete("page");
-    else params.set("page", String(nextPage));
-    const url = params.size ? `${pathname}?${params.toString()}` : pathname;
-    startTransition(() => router.replace(url, { scroll: false }));
+  const canGoPrev = cursorStack.length > 0;
+  const canGoNext = data ? !data.isDone : false;
+
+  function goPrev() {
+    setCursorStack((s) => s.slice(0, -1));
+  }
+
+  function goNext() {
+    if (!data || data.isDone) return;
+    setCursorStack((s) => [...s, data.continueCursor]);
   }
 
   return (
@@ -119,23 +153,13 @@ export function RequestTable({ period, page, pageSize, initial }: RequestTablePr
 
           <footer className="flex items-center justify-between border-t px-6 py-4 text-xs text-muted-foreground md:px-8">
             <span className="tabular">
-              Page {page} of {pageCount}
+              Page {pageIndex} of {pageCount}
             </span>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1 || pending}
-                onClick={() => go(page - 1)}
-              >
+              <Button variant="outline" size="sm" disabled={!canGoPrev} onClick={goPrev}>
                 Previous
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= pageCount || pending}
-                onClick={() => go(page + 1)}
-              >
+              <Button variant="outline" size="sm" disabled={!canGoNext} onClick={goNext}>
                 Next
               </Button>
             </div>

@@ -23,6 +23,11 @@ services:
       # the dashboard falls back to SWR via /api/* server-side fetches.
       - NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL:-http://127.0.0.1:3210}
       - INTERNAL_URL=http://127.0.0.1:3111
+      # Reach the cloudflared sidecar over the docker network. The default
+      # in `lib/server/tunnel-status.ts` is `127.0.0.1:2000` which is correct
+      # on the host (dev mode) but wrong inside this container — there's no
+      # cloudflared listening on loopback here.
+      - CLOUDFLARED_METRICS_URL=http://cloudflared:2000
     depends_on:
       convex:
         condition: service_healthy
@@ -121,9 +126,15 @@ services:
     image: cloudflare/cloudflared:2025.4.0
     container_name: cctc-cloudflared
     restart: unless-stopped
-    command: tunnel --protocol http2 run
+    # `--metrics 0.0.0.0:2000` exposes the official cloudflared metrics +
+    # `/ready` JSON endpoint inside the container. We then publish only
+    # 127.0.0.1:2000 on the host so the Next.js dashboard can poll it without
+    # leaking the endpoint to the public network.
+    command: tunnel --metrics 0.0.0.0:2000 --protocol http2 run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    ports:
+      - "127.0.0.1:2000:2000"
     networks:
       - internal
     extra_hosts:

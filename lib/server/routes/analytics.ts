@@ -8,14 +8,8 @@ import {
 import { toErrorMessage } from "../error-utils";
 import { logger } from "../logger";
 
-function validatePaginationParams(
-  limit: number,
-  offset: number,
-): { limit: number; offset: number } {
-  return {
-    limit: Number.isInteger(limit) && limit >= 1 && limit <= 1000 ? limit : 20,
-    offset: Number.isInteger(offset) && offset >= 0 ? offset : 0,
-  };
+function validatePageSize(raw: number): number {
+  return Number.isInteger(raw) && raw >= 1 && raw <= 1000 ? raw : 20;
 }
 
 /**
@@ -52,14 +46,26 @@ export async function handleAnalytics(url: URL): Promise<Response> {
 }
 
 export async function handleAnalyticsRequests(url: URL): Promise<Response> {
-  const rawLimit = parseInt(url.searchParams.get("limit") || "20", 10);
-  const rawOffset = parseInt(url.searchParams.get("offset") || "0", 10);
+  const pageSize = validatePageSize(parseInt(url.searchParams.get("limit") || "20", 10));
+  const cursor = url.searchParams.get("cursor"); // null = first page
   const period = url.searchParams.get("period") || "all";
-  const since = calculateSince(period);
 
-  const validated = validatePaginationParams(rawLimit, rawOffset);
-  const { requests, total } = await getRecentRequests(validated.limit, since, validated.offset);
-  return Response.json({ requests, total });
+  // Convex pagination cursors are tied to the exact query (including the
+  // `since` filter). Once page 1 commits to a `since`, subsequent pages MUST
+  // reuse it or Convex returns InvalidCursor. The client echoes back the
+  // `since` we returned in the previous response; on page 1 we compute it
+  // from `period`.
+  const sinceParam = url.searchParams.get("since");
+  const since = sinceParam ? Number.parseInt(sinceParam, 10) : calculateSince(period);
+
+  const result = await getRecentRequests(pageSize, since, cursor);
+  return Response.json({
+    requests: result.requests,
+    total: result.total,
+    isDone: result.isDone,
+    continueCursor: result.continueCursor,
+    since,
+  });
 }
 
 const PERIOD_BUCKETS: Record<string, number> = {

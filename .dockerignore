@@ -12,9 +12,7 @@ dist
 .gitattributes
 
 # env (secrets)
-.env
-.env.local
-.env.*.local
+.env*
 
 # tests
 playwright-report

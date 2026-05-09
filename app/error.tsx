@@ -17,6 +17,9 @@ export default function GlobalError({
     console.error(error);
   }, [error]);
 
+  // Avoid leaking internals via error messages in production.
+  const showRawMessage = process.env.NODE_ENV !== "production";
+
   return (
     <div className="relative flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
       <AuroraShader className="-top-24 h-[36rem]" intensity={0.5} />
@@ -25,8 +28,9 @@ export default function GlobalError({
         We couldn&apos;t finish loading this page.
       </h1>
       <p className="max-w-md text-pretty text-muted-foreground">
-        {error.message || "An unexpected error occurred."} Retry below — if it keeps happening,
-        check that the API service is running.
+        {showRawMessage && error.message
+          ? `${error.message} Retry below — if it keeps happening, check that the API service is running.`
+          : "An unexpected error occurred. Retry below — if it keeps happening, check that the API service is running."}
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Button onClick={() => reset()}>

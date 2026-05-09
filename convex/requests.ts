@@ -1,6 +1,10 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { bumpCounter, setCounter } from "./helpers";
 import { CACHE_READ_COST_RATIO, INPUT_USD_PER_M, estimateRequestUsd } from "./pricing";
+
+const REQUESTS_COUNTER_KEY = "requests";
 
 // Mirrors src/db.ts request shape. The mutation accepts a single record
 // because the SQLite version's micro-batching (50 ms / 50 entries) was a
@@ -36,6 +40,7 @@ export const recordRequest = mutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.insert("requests", args);
+    await bumpCounter(ctx, REQUESTS_COUNTER_KEY, 1);
   },
 });
 
@@ -101,36 +106,47 @@ export const getAnalytics = query({
   },
 });
 
-// Paginated list. Convex supports proper paginate() but mirroring the
-// (limit, offset, since) shape from src/db.ts so the route handler can
-// stay 1:1. Skip semantics are honored by `take(limit + offset)` then
-// slicing — fine for the dashboard's small page sizes (default 100).
+// Paginated list using Convex's native cursor-based `paginate()`. The
+// previous offset-based version did `take(limit + offset)` which scaled
+// linearly with offset — fine for small dashboards but bad once the table
+// grew. Cursor pagination is O(pageSize) regardless of how deep we are.
+//
+// `total` is included for "Page X of Y" UX; it's read from the materialized
+// counter (O(1)) when `since` is unset, or by scanning the bounded window
+// when it is.
 export const getRecentRequests = query({
   args: {
-    limit: v.optional(v.number()),
+    paginationOpts: paginationOptsValidator,
     since: v.optional(v.number()),
-    offset: v.optional(v.number()),
   },
-  handler: async (ctx, { limit = 100, since = 0, offset = 0 }) => {
-    const all = await ctx.db
+  handler: async (ctx, { paginationOpts, since = 0 }) => {
+    const result = await ctx.db
       .query("requests")
       .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
       .order("desc")
-      .take(limit + offset);
+      .paginate(paginationOpts);
 
-    const sliced = all.slice(offset, offset + limit);
-
-    // Total count (separate scan; Convex doesn't expose COUNT(*)).
-    const total = (
-      await ctx.db
-        .query("requests")
-        .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
-        .collect()
-    ).length;
+    let total: number;
+    if (since > 0) {
+      total = (
+        await ctx.db
+          .query("requests")
+          .withIndex("by_timestamp", (q) => q.gte("timestamp", since))
+          .collect()
+      ).length;
+    } else {
+      const counter = await ctx.db
+        .query("counters")
+        .withIndex("by_key", (q) => q.eq("key", REQUESTS_COUNTER_KEY))
+        .unique();
+      total = counter?.count ?? 0;
+    }
 
     return {
       total,
-      requests: sliced.map((row) => ({
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+      requests: result.page.map((row) => ({
         id: row._id,
         timestamp: row.timestamp,
         model: row.model,
@@ -371,6 +387,21 @@ export const resetAnalytics = mutation({
     for (const row of all) {
       await ctx.db.delete(row._id);
     }
+    await setCounter(ctx, REQUESTS_COUNTER_KEY, 0);
     return { deletedCount: all.length };
+  },
+});
+
+/**
+ * One-shot backfill for the `requests` counter. Run after deploying the
+ * counter table (`npx convex run requests:backfillRequestsCounter`). Safe
+ * to re-run — it overwrites the counter with the current row count.
+ */
+export const backfillRequestsCounter = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("requests").collect();
+    await setCounter(ctx, REQUESTS_COUNTER_KEY, all.length);
+    return { count: all.length };
   },
 });

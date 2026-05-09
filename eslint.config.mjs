@@ -8,7 +8,6 @@ const config = [
       "node_modules/**",
       "convex/_generated/**", // auto-generated bindings
       "components/ui/**", // vendored shadcn (per AGENTS.md)
-      "frontend/**", // parallel scratch skeleton, not built
       "next-env.d.ts",
     ],
   },

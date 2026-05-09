@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cacheLife, cacheTag } from "next/cache";
 import { type ZodType, z } from "zod";
 import { API_ROUTES } from "./api-routes";
 import { serverEnv } from "./env";
@@ -133,13 +134,13 @@ export async function getAnalyticsTimeline(
 
 export async function getAnalyticsRequests(
   period: Period,
-  page: number,
   pageSize: number,
+  cursor: string | null,
   forwardedFor?: string,
 ): Promise<AnalyticsRequests> {
-  const offset = Math.max(0, (page - 1) * pageSize);
+  const cursorParam = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
   return backendFetch(
-    `${API_ROUTES.analyticsRequests}?period=${encodeURIComponent(period)}&limit=${pageSize}&offset=${offset}`,
+    `${API_ROUTES.analyticsRequests}?period=${encodeURIComponent(period)}&limit=${pageSize}${cursorParam}`,
     analyticsRequestsSchema,
     { forwardedFor, authenticated: true },
   );
@@ -157,7 +158,14 @@ export async function getAnalyticsErrors(
   );
 }
 
+// Cache settings reads with the `settings` tag so that `savePreferencesAction`
+// can invalidate them via `revalidateTag('settings')`. The `forwardedFor` arg
+// fragments the cache by upstream IP — fine for single-user deployments and
+// keeps the IP-whitelist semantics intact server-side.
 export async function getSettings(forwardedFor?: string): Promise<SettingsResponse> {
+  "use cache";
+  cacheTag("settings");
+  cacheLife("minutes");
   return backendFetch(API_ROUTES.settings, settingsResponseSchema, {
     forwardedFor,
     authenticated: true,

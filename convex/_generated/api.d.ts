@@ -8,9 +8,10 @@
  * @module
  */
 
-import type * as _helpers from "../_helpers.js";
+import type * as helpers from "../helpers.js";
 import type * as modelSettings from "../modelSettings.js";
 import type * as oauthTokens from "../oauthTokens.js";
+import type * as pkceState from "../pkceState.js";
 import type * as planUsageSnapshot from "../planUsageSnapshot.js";
 import type * as pricing from "../pricing.js";
 import type * as requests from "../requests.js";
@@ -22,9 +23,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  _helpers: typeof _helpers;
+  helpers: typeof helpers;
   modelSettings: typeof modelSettings;
   oauthTokens: typeof oauthTokens;
+  pkceState: typeof pkceState;
   planUsageSnapshot: typeof planUsageSnapshot;
   pricing: typeof pricing;
   requests: typeof requests;

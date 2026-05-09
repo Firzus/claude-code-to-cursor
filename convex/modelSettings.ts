@@ -1,12 +1,15 @@
 import { v } from "convex/values";
-import { SINGLETON_KEY, singletonUpsert } from "./_helpers";
+import { SINGLETON_KEY, upsertModelSettings } from "./helpers";
 import { mutation, query } from "./_generated/server";
 
+// Cold-start defaults returned when no `modelSettings` row exists yet.
+// MUST mirror `DEFAULT_MODEL_SETTINGS` in lib/server/model-settings.ts so
+// fresh installs and legacy-payload fallbacks land on the same plan tier.
 const DEFAULT_SETTINGS = {
   selectedModel: "claude-opus-4-7",
   thinkingEnabled: true,
   thinkingEffort: "high" as const,
-  subscriptionPlan: "max5x" as const,
+  subscriptionPlan: "max20x" as const,
 };
 
 export const get = query({
@@ -19,8 +22,13 @@ export const get = query({
 
     if (!row) return DEFAULT_SETTINGS;
 
+    // Soft migration: claude-opus-4-6 was retired in favor of 4-7. Old rows
+    // are remapped at read time so we don't have to backfill the table.
+    const selectedModel =
+      row.selectedModel === "claude-opus-4-6" ? "claude-opus-4-7" : row.selectedModel;
+
     return {
-      selectedModel: row.selectedModel,
+      selectedModel,
       thinkingEnabled: row.thinkingEnabled,
       thinkingEffort: row.thinkingEffort,
       subscriptionPlan: row.subscriptionPlan,
@@ -46,6 +54,6 @@ export const save = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await singletonUpsert(ctx, "modelSettings", args);
+    await upsertModelSettings(ctx, args);
   },
 });

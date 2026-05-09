@@ -8,16 +8,18 @@ import { HoverLift } from "~/components/motion/hover-lift";
 import { useHealth } from "~/hooks/use-health";
 import { cn } from "~/lib/cn";
 import { hostnameOf } from "~/lib/format";
-import type { Health } from "~/lib/schemas";
+import type { Health, TunnelStatus } from "~/lib/schemas";
 import { TONE_BG, type Tone } from "~/lib/tone";
 
 export function HealthCard({ initial }: { initial?: Health }) {
   const { data } = useHealth(initial);
 
-  const tunnel = data?.tunnelUrl;
+  const tunnelUrl = data?.tunnelUrl;
+  const tunnel = data?.tunnel;
   const authenticated = data?.claudeCode.authenticated ?? false;
   const expiresAt = data?.claudeCode.expiresAt ?? null;
   const limited = data?.rateLimit.isLimited ?? false;
+  const tunnelView = describeTunnel(tunnelUrl, tunnel);
 
   return (
     <section
@@ -54,14 +56,66 @@ export function HealthCard({ initial }: { initial?: Health }) {
       <Row
         icon={<Globe2 className="size-3.5" />}
         label="Tunnel"
-        tone={tunnel ? "ok" : "muted"}
-        primary={tunnel ? hostnameOf(tunnel) : "Local network"}
-        secondary={tunnel ? "Cloudflared online" : "No public endpoint"}
-        href={tunnel ?? undefined}
-        external
+        tone={tunnelView.tone}
+        primary={tunnelView.primary}
+        secondary={tunnelView.secondary}
       />
     </section>
   );
+}
+
+interface TunnelView {
+  tone: Tone;
+  primary: string;
+  secondary: ReactNode;
+}
+
+/**
+ * Map the cloudflared probe result to a row tone + copy. We never link out
+ * — the tunnel target IS this same dashboard, so the click was misleading.
+ *
+ *   - online       -> ok      "<host>" / "Cloudflared up · N edge connection(s)"
+ *   - offline      -> warn    "<host>" / "Cloudflared reachable, no edge link"
+ *   - unreachable  -> error   "<host>" / "Cloudflared metrics unreachable"
+ *   - no tunnelUrl -> muted   "Local network" / "No public endpoint"
+ */
+function describeTunnel(url: string | undefined, status: TunnelStatus | undefined): TunnelView {
+  if (!url) {
+    return {
+      tone: "muted",
+      primary: "Local network",
+      secondary: "No public endpoint",
+    };
+  }
+
+  const host = hostnameOf(url);
+
+  if (!status) {
+    return { tone: "muted", primary: host, secondary: "Probing cloudflared…" };
+  }
+
+  if (status.state === "online") {
+    const conns = status.connections ?? 0;
+    return {
+      tone: "ok",
+      primary: host,
+      secondary: `Cloudflared up · ${conns} edge ${conns === 1 ? "connection" : "connections"}`,
+    };
+  }
+
+  if (status.state === "offline") {
+    return {
+      tone: "warn",
+      primary: host,
+      secondary: "Cloudflared reachable, no edge link",
+    };
+  }
+
+  return {
+    tone: "error",
+    primary: host,
+    secondary: "Cloudflared metrics unreachable",
+  };
 }
 
 function Row({
