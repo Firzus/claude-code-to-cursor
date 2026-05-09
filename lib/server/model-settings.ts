@@ -3,7 +3,6 @@ export type ThinkingEffort = (typeof VALID_EFFORTS)[number];
 
 export type SupportedSelectedModel =
   | "claude-opus-4-7"
-  | "claude-opus-4-6"
   | "claude-sonnet-4-6"
   | "claude-haiku-4-5";
 
@@ -25,6 +24,10 @@ export interface ModelSettings {
  */
 export const PUBLIC_MODEL_ID = "claude" as const;
 
+// MUST mirror `DEFAULT_SETTINGS` in convex/modelSettings.ts. Convex's copy
+// applies on cold start (no row yet); this copy backfills legacy payloads
+// that predate the `subscriptionPlan` field. Diverging values would mean two
+// different "defaults" depending on which path the client takes.
 export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-7",
   thinkingEnabled: true,
@@ -83,7 +86,6 @@ const SUGGESTED_MAX_TOKENS: Record<ThinkingEffort, number> = {
 
 export const SUPPORTED_SELECTED_MODELS: readonly SupportedSelectedModel[] = [
   "claude-opus-4-7",
-  "claude-opus-4-6",
   "claude-sonnet-4-6",
   "claude-haiku-4-5",
 ];
@@ -110,7 +112,7 @@ export function isValidThinkingEffort(value: unknown): value is ThinkingEffort {
 
 /** Returns the context window size for a given selected model */
 export function getContextLength(model: SupportedSelectedModel): number {
-  if (model === "claude-opus-4-7" || model === "claude-opus-4-6") return 1000000;
+  if (model === "claude-opus-4-7") return 1000000;
   return 200000;
 }
 

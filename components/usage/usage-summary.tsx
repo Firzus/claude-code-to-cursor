@@ -25,7 +25,7 @@ export function UsageSummary({ period, initial }: UsageSummaryProps) {
 
   return (
     <Card className="border-none shadow-(--shadow-soft-md)">
-      <CardContent className="grid grid-cols-2 gap-6 px-5 py-6 sm:gap-7 md:grid-cols-5 md:px-8 md:py-7">
+      <CardContent className="grid grid-cols-2 gap-6 px-5 py-6 sm:gap-7 md:grid-cols-4 md:px-8 md:py-7">
         <Stat
           label="Requests"
           numeric={data ? <NumberTicker value={data.totalRequests} /> : null}
@@ -59,18 +59,8 @@ export function UsageSummary({ period, initial }: UsageSummaryProps) {
             ) : null
           }
         />
-        <Stat
-          label="Cache savings"
-          numeric={
-            data ? (
-              <NumberTicker value={data.cacheSavingsUsdEstimate} prefix="$" decimals={2} />
-            ) : null
-          }
-          hint={data ? `${formatPercent(data.cacheHitRate)} hit rate` : "—"}
-          tone="success"
-        />
         {isLoading && !data
-          ? Array.from({ length: 5 }).map((_, i) => (
+          ? Array.from({ length: 4 }).map((_, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: stable skeleton placeholders
               <div key={i} className="space-y-2">
                 <Skeleton className="h-3 w-16" />

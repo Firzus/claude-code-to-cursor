@@ -17,7 +17,6 @@ import { periodSchema } from "~/lib/schemas";
 import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const metadata = { title: "Usage" };
-export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
 

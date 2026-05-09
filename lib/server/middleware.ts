@@ -67,17 +67,23 @@ const STATIC_CORS_HEADERS: Record<string, string> = {
  * Create CORS headers for responses.
  *
  * If the request's `Origin` header is in the allow-list, echo it back so the
- * browser accepts the response. Otherwise fall back to the first configured
- * origin (preserves backward-compat for non-browser clients).
+ * browser accepts the response. If there's no Origin header at all (non-browser
+ * client), fall back to the first configured origin so server-to-server tools
+ * still work. Otherwise omit `Access-Control-Allow-Origin` entirely — returning
+ * `*` here is invalid combined with `Allow-Credentials: true`, and echoing an
+ * unknown origin would defeat the allow-list.
  */
 export function corsHeaders(req?: Request): Record<string, string> {
   const requestOrigin = req?.headers.get("origin") ?? null;
   const allowed = config.allowedOrigins;
-  const origin =
-    requestOrigin && allowed.includes(requestOrigin) ? requestOrigin : (allowed[0] ?? "*");
 
-  return {
-    "Access-Control-Allow-Origin": origin,
-    ...STATIC_CORS_HEADERS,
-  };
+  if (requestOrigin && allowed.includes(requestOrigin)) {
+    return { "Access-Control-Allow-Origin": requestOrigin, ...STATIC_CORS_HEADERS };
+  }
+
+  if (!requestOrigin && allowed[0]) {
+    return { "Access-Control-Allow-Origin": allowed[0], ...STATIC_CORS_HEADERS };
+  }
+
+  return { ...STATIC_CORS_HEADERS };
 }

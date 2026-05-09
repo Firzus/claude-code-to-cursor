@@ -121,9 +121,15 @@ services:
     image: cloudflare/cloudflared:2025.4.0
     container_name: cctc-cloudflared
     restart: unless-stopped
-    command: tunnel --protocol http2 run
+    # `--metrics 0.0.0.0:2000` exposes the official cloudflared metrics +
+    # `/ready` JSON endpoint inside the container. We then publish only
+    # 127.0.0.1:2000 on the host so the Next.js dashboard can poll it without
+    # leaking the endpoint to the public network.
+    command: tunnel --metrics 0.0.0.0:2000 --protocol http2 run
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    ports:
+      - "127.0.0.1:2000:2000"
     networks:
       - internal
     extra_hosts:

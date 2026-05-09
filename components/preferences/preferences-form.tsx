@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Brain, Loader2, Sparkles } from "lucide-react";
-import { useTransition } from "react";
+import { useEffect, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
@@ -16,9 +16,11 @@ import {
 } from "~/components/ui/select";
 import { cn } from "~/lib/cn";
 import {
+  allowedEffortsForModel,
   type ModelSettings,
   modelLabels,
   modelSettingsSchema,
+  modelSupportsHighEffort,
   planLabels,
   planPrices,
   supportedModels,
@@ -70,6 +72,20 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
   const [pending, startTransition] = useTransition();
 
   const thinkingEnabled = form.watch("thinkingEnabled");
+  const selectedModel = form.watch("selectedModel");
+  const thinkingEffort = form.watch("thinkingEffort");
+
+  // Only Opus 4.7 supports `xhigh` and `max`. When the user picks any other
+  // model while one of those efforts is active, clamp down to `high` and
+  // mark the form dirty so the change is visible and gets persisted on save.
+  const allowedEfforts = allowedEffortsForModel(selectedModel);
+  const supportsHighEffort = modelSupportsHighEffort(selectedModel);
+
+  useEffect(() => {
+    if (!(allowedEfforts as readonly string[]).includes(thinkingEffort)) {
+      form.setValue("thinkingEffort", "high", { shouldDirty: true });
+    }
+  }, [allowedEfforts, thinkingEffort, form]);
 
   function onSubmit(values: ModelSettings) {
     startTransition(async () => {
@@ -168,7 +184,7 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
                 Thinking effort
               </Label>
               <Select
-                value={form.watch("thinkingEffort")}
+                value={thinkingEffort}
                 disabled={!thinkingEnabled}
                 onValueChange={(v) =>
                   form.setValue("thinkingEffort", v as ModelSettings["thinkingEffort"], {
@@ -180,13 +196,27 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {thinkingEfforts.map((e) => (
-                    <SelectItem key={e} value={e}>
-                      {e}
-                    </SelectItem>
-                  ))}
+                  {thinkingEfforts.map((e) => {
+                    const enabled = (allowedEfforts as readonly string[]).includes(e);
+                    return (
+                      <SelectItem key={e} value={e} disabled={!enabled}>
+                        {e}
+                        {!enabled ? (
+                          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                            opus 4.7 only
+                          </span>
+                        ) : null}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+              {!supportsHighEffort ? (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-mono">xhigh</span> and{" "}
+                  <span className="font-mono">max</span> are only available on Claude Opus 4.7.
+                </p>
+              ) : null}
             </div>
           </div>
         </Section>

@@ -1,17 +1,12 @@
 import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
 import { AppShell } from "~/components/layout/app-shell";
 import { AuroraShader } from "~/components/layout/aurora-shader";
 import { Providers } from "~/components/providers";
 import { Toaster } from "~/components/ui/sonner";
-import { getHealth } from "~/lib/api";
 import { serverEnv } from "~/lib/env";
 import { fontVariables } from "~/lib/fonts";
-import { getForwardedFor } from "~/lib/server/forwarded-for";
-
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: {
@@ -28,18 +23,16 @@ export const viewport: Viewport = {
   themeColor: "#ffffff",
 };
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const forwardedFor = getForwardedFor(await headers());
-  const initialHealth = await getHealth(forwardedFor).catch(() => undefined);
-
+// The layout stays purely structural so Cache Components can pre-render the
+// shell. Live data (health, plan usage, etc.) is fetched per-page or via the
+// client-side SWR hooks, each wrapped in its own <Suspense> boundary.
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={fontVariables} suppressHydrationWarning>
       <body className="min-h-screen antialiased" suppressHydrationWarning>
         <AuroraShader />
         <Providers>
-          <AppShell appName={serverEnv.appName} initialHealth={initialHealth}>
-            {children}
-          </AppShell>
+          <AppShell appName={serverEnv.appName}>{children}</AppShell>
         </Providers>
         <Toaster position="bottom-right" richColors closeButton />
       </body>

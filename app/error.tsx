@@ -17,6 +17,11 @@ export default function GlobalError({
     console.error(error);
   }, [error]);
 
+  // Stack traces and exception messages can leak internals (file paths, SQL,
+  // env-driven URLs). Surface them in dev so the developer sees the cause,
+  // hide them in prod so visitors only see the generic copy.
+  const showRawMessage = process.env.NODE_ENV !== "production";
+
   return (
     <div className="relative flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
       <AuroraShader className="-top-24 h-[36rem]" intensity={0.5} />
@@ -25,8 +30,9 @@ export default function GlobalError({
         We couldn&apos;t finish loading this page.
       </h1>
       <p className="max-w-md text-pretty text-muted-foreground">
-        {error.message || "An unexpected error occurred."} Retry below — if it keeps happening,
-        check that the API service is running.
+        {showRawMessage && error.message
+          ? `${error.message} Retry below — if it keeps happening, check that the API service is running.`
+          : "An unexpected error occurred. Retry below — if it keeps happening, check that the API service is running."}
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2">
         <Button onClick={() => reset()}>

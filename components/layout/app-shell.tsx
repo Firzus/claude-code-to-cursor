@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 import { StatusPill } from "~/components/layout/status-pill";
 import { cn } from "~/lib/cn";
-import type { Health } from "~/lib/schemas";
 
 interface NavItem {
   href: string;
@@ -24,10 +23,9 @@ const navItems: NavItem[] = [
 interface AppShellProps {
   children: ReactNode;
   appName: string;
-  initialHealth?: Health;
 }
 
-export function AppShell({ children, appName, initialHealth }: AppShellProps) {
+export function AppShell({ children, appName }: AppShellProps) {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
 
@@ -101,7 +99,7 @@ export function AppShell({ children, appName, initialHealth }: AppShellProps) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <StatusPill initial={initialHealth} />
+            <StatusPill />
           </div>
         </div>
       </header>

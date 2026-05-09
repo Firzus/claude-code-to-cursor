@@ -3,8 +3,6 @@ import { ipWhitelistGuard } from "~/lib/server/guard";
 import { corsHeaders } from "~/lib/server/middleware";
 import { handleOpenAIChatCompletions } from "~/lib/server/routes/openai";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const blocked = ipWhitelistGuard(req);

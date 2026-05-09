@@ -96,4 +96,14 @@ export default defineSchema({
     scopes: v.array(v.string()),
     obtainedAt: v.number(),
   }).index("by_key", ["key"]),
+
+  // Active PKCE flows. Each row is keyed by the OAuth `state` parameter and
+  // holds the matching `code_verifier` until the callback exchanges it.
+  // Persisting in Convex (instead of an in-memory Map) survives Next dev
+  // reloads and lets multi-process deployments share state.
+  pkceState: defineTable({
+    state: v.string(),
+    codeVerifier: v.string(),
+    createdAt: v.number(),
+  }).index("by_state", ["state"]),
 });

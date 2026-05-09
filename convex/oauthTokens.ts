@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { SINGLETON_KEY, singletonUpsert } from "./_helpers";
+import { SINGLETON_KEY, upsertOauthTokens } from "./helpers";
 import { mutation, query } from "./_generated/server";
 
 // SECURITY: these functions hold OAuth access/refresh tokens. They are
@@ -39,7 +39,7 @@ export const save = mutation({
     obtainedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    await singletonUpsert(ctx, "oauthTokens", args);
+    await upsertOauthTokens(ctx, args);
   },
 });
 

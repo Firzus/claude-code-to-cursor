@@ -6,7 +6,6 @@ import { z } from "zod";
 
 export const supportedModels = [
   "claude-opus-4-7",
-  "claude-opus-4-6",
   "claude-sonnet-4-6",
   "claude-haiku-4-5",
 ] as const;
@@ -15,13 +14,34 @@ export type SupportedModel = (typeof supportedModels)[number];
 
 export const modelLabels: Record<SupportedModel, string> = {
   "claude-opus-4-7": "Claude Opus 4.7",
-  "claude-opus-4-6": "Claude Opus 4.6",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "claude-haiku-4-5": "Claude Haiku 4.5",
 };
 
 export const thinkingEfforts = ["low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingEffort = (typeof thinkingEfforts)[number];
+
+/**
+ * Models that support the extended `xhigh` and `max` thinking efforts.
+ *
+ * As of now only Opus 4.7 exposes these tiers. Other Claude models accept
+ * `low | medium | high` only. The dashboard uses this to filter the effort
+ * dropdown; the proxy/server is intentionally permissive so a future model
+ * can join the list without a coordinated release.
+ */
+export const HIGH_EFFORT_MODELS = ["claude-opus-4-7"] as const;
+
+export const STANDARD_THINKING_EFFORTS = ["low", "medium", "high"] as const satisfies readonly ThinkingEffort[];
+
+export function modelSupportsHighEffort(model: SupportedModel | string): boolean {
+  return (HIGH_EFFORT_MODELS as readonly string[]).includes(model);
+}
+
+export function allowedEffortsForModel(
+  model: SupportedModel | string,
+): readonly ThinkingEffort[] {
+  return modelSupportsHighEffort(model) ? thinkingEfforts : STANDARD_THINKING_EFFORTS;
+}
 
 export const supportedPlans = ["pro", "max5x", "max20x"] as const;
 export type SupportedPlan = (typeof supportedPlans)[number];
@@ -53,10 +73,22 @@ export const eventLoopLagSchema = z
   .passthrough()
   .optional();
 
+export const tunnelStatusSchema = z.object({
+  state: z.enum(["online", "offline", "unreachable"]),
+  connections: z.number().optional(),
+  latencyMs: z.number().optional(),
+  checkedAt: z.number(),
+  error: z.string().optional(),
+});
+
+export type TunnelStatus = z.infer<typeof tunnelStatusSchema>;
+
 export const healthSchema = z.object({
   status: z.enum(["ok", "rate_limited", "error"]),
   message: z.string().optional(),
   tunnelUrl: z.string().optional(),
+  /** Live state of the cloudflared tunnel (probed via its metrics endpoint). */
+  tunnel: tunnelStatusSchema.optional(),
   claudeCode: z.object({
     authenticated: z.boolean(),
     expiresAt: z.number().nullable().optional(),
@@ -152,7 +184,8 @@ export const analyticsSummarySchema = z.object({
 export type AnalyticsSummary = z.infer<typeof analyticsSummarySchema>;
 
 export const requestRecordSchema = z.object({
-  id: z.number(),
+  // Convex returns `_id` as an opaque string (Id<"requests">), not a number.
+  id: z.string(),
   timestamp: z.number(),
   model: z.string(),
   source: z.enum(["claude_code", "error"]),
@@ -199,7 +232,8 @@ export const analyticsTimelineSchema = z.object({
 export type AnalyticsTimeline = z.infer<typeof analyticsTimelineSchema>;
 
 export const errorRecordSchema = z.object({
-  id: z.number(),
+  // Convex returns `_id` as an opaque string (Id<"requests">), not a number.
+  id: z.string(),
   timestamp: z.number(),
   model: z.string(),
   error: z.string().nullable(),

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { SINGLETON_KEY, singletonUpsert } from "./_helpers";
+import { SINGLETON_KEY, upsertPlanUsageSnapshot } from "./helpers";
 import { mutation, query } from "./_generated/server";
 
 const windowValidator = v.union(
@@ -24,7 +24,7 @@ export const save = mutation({
     overageStatus: v.union(v.string(), v.null()),
   },
   handler: async (ctx, args) => {
-    await singletonUpsert(ctx, "planUsageSnapshot", args);
+    await upsertPlanUsageSnapshot(ctx, args);
   },
 });
 
