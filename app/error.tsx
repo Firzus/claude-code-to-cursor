@@ -22,7 +22,7 @@ export default function GlobalError({
       <AuroraShader className="-top-24 h-[36rem]" intensity={0.5} />
       <span className="eyebrow">Something interrupted the proxy view</span>
       <h1 className="font-display text-4xl tracking-tight md:text-5xl text-balance max-w-xl">
-        We couldn't finish loading this page.
+        We couldn&apos;t finish loading this page.
       </h1>
       <p className="max-w-md text-pretty text-muted-foreground">
         {error.message || "An unexpected error occurred."} Retry below — if it keeps happening,

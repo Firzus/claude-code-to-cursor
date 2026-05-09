@@ -199,6 +199,10 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
         >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {supportedPlans.map((plan) => {
+              // react-hook-form's `watch()` is intentionally non-memoizable; the
+              // React Compiler skips memoizing this branch which is the desired
+              // behaviour for a form-driven UI.
+              // eslint-disable-next-line react-hooks/incompatible-library
               const active = form.watch("subscriptionPlan") === plan;
               return (
                 <button

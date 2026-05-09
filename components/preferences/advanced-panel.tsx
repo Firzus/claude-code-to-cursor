@@ -24,7 +24,7 @@ export function AdvancedPanel() {
         <span className="eyebrow">Advanced</span>
         <h3 className="font-display text-2xl leading-tight tracking-tight">Maintenance</h3>
         <p className="max-w-prose text-sm text-muted-foreground">
-          Tools for when something feels off. These actions don't affect your OAuth credentials.
+          Tools for when something feels off. These actions don&apos;t affect your OAuth credentials.
         </p>
       </header>
 

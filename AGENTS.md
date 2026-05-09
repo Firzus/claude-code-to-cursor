@@ -53,7 +53,7 @@ tokens or `.env`.
 ```bash
 pnpm install --frozen-lockfile
 pnpm run typecheck         # tsc --noEmit
-pnpm run lint              # biome check .
+pnpm run lint              # eslint . --max-warnings 0
 
 # Dev mode (hot reload, foreground)
 pnpm dev                   # docker compose up -d && next dev -p 3111
@@ -117,15 +117,16 @@ public hostname to the `pnpm run dev` server running on the host.
 - Imports: use the `~/*` alias for app-relative imports. Use `import type`
   for type-only imports.
 - Frontend stack: Next.js App Router, React 19, Tailwind CSS v4, Radix UI,
-  shadcn-style components in `components/ui/` (excluded from Biome — do not
-  lint-fix or rewrite them), SWR for data, Convex hooks (`useQuery`) for
+ shadcn-style components in `components/ui/` (excluded from ESLint — do not
+ lint-fix or rewrite them), SWR for data, Convex hooks (`useQuery`) for
   real-time, Zod for schemas, Sonner for toasts, GSAP/`@gsap/react`.
 - Logging: use `lib/server/logger.ts` (`logger.info|warn|error|verbose`).
   Never `console.*` in `lib/server/**` except in fatal handlers.
 - Errors: proxy responses follow Anthropic's `{ type: "error", error: { type,
   message } }` shape (see `lib/server/types.ts`).
-- Formatting: Biome, 2-space indent, line width 100. Run
-  `pnpm exec biome check --write .` before committing.
+- Linting: ESLint flat config (`eslint-config-next`, presets
+ `next/core-web-vitals` + `next/typescript`). Run `pnpm run lint`
+ (= `eslint . --max-warnings 0`) before committing.
 - Search: exclude `node_modules/`, `.next/`, `components/ui/`,
   `convex/_generated/`, `*.log` when grepping.
 
@@ -166,7 +167,7 @@ public hostname to the `pnpm run dev` server running on the host.
   `components/ui/**` (vendored shadcn), `pnpm-lock.yaml`, `node_modules/`,
   `.next/`, `convex/_generated/`.
 - Safe to automate: handler refactors, new routes, components/pages,
-  Biome fixes, type tightening, Convex schema additions (with migration).
+  ESLint fixes, type tightening, Convex schema additions (with migration).
 - Never run during agent work: long-running `next dev` (the user keeps it
   in their own foreground terminal — agents must not spawn a competing
   instance), destructive Convex mutations on prod data, `git push --force`.

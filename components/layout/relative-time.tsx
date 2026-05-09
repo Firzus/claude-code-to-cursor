@@ -19,6 +19,10 @@ export function RelativeTime({ timestamp, refreshMs = 30_000, prefix }: Relative
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    // Hydration-safe init: server renders the absolute timestamp, client
+    // swaps to the relative form on mount. The synchronous setState here is
+    // intentional and only runs once per mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), refreshMs);
     return () => window.clearInterval(id);

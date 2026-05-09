@@ -30,7 +30,7 @@ export default async function PreferencesPage() {
         <Alert variant="destructive">
           <AlertTitle>Settings unavailable</AlertTitle>
           <AlertDescription>
-            We couldn't load the current settings from the API. Check that the API service is
+            We couldn&apos;t load the current settings from the API. Check that the API service is
             running, then refresh.
           </AlertDescription>
         </Alert>

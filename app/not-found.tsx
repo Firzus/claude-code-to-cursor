@@ -12,7 +12,7 @@ export default function NotFound() {
         Off the beaten path
       </h1>
       <p className="max-w-md text-pretty text-muted-foreground">
-        The page you were looking for doesn't exist — or maybe never did. Head back to the overview
+        The page you were looking for doesn&apos;t exist — or maybe never did. Head back to the overview
         to keep an eye on the proxy.
       </p>
       <Button asChild>

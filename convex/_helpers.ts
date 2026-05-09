@@ -24,15 +24,18 @@ export async function singletonUpsert<T extends SingletonTable>(
 ): Promise<void> {
   const existing = await (ctx.db
     .query(table)
-    // biome-ignore lint/suspicious/noExplicitAny: typed against the union of singleton tables; the index/key combination is identical across all three.
+    // Typed against the union of singleton tables; the index/key combination is identical across all three.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .withIndex("by_key", (q: any) => q.eq("key", SINGLETON_KEY))
     .unique() as Promise<{ _id: import("./_generated/dataModel").Id<T> } | null>);
 
   if (existing) {
-    // biome-ignore lint/suspicious/noExplicitAny: the per-table row shape is checked by the caller's mutation validator.
+    // The per-table row shape is checked by the caller's mutation validator.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await ctx.db.patch(existing._id, args as any);
   } else {
-    // biome-ignore lint/suspicious/noExplicitAny: the per-table row shape is checked by the caller's mutation validator.
+    // The per-table row shape is checked by the caller's mutation validator.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await ctx.db.insert(table, { key: SINGLETON_KEY, ...args } as any);
   }
 }

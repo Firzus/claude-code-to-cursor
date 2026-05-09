@@ -45,7 +45,7 @@ export function ResetButton() {
         <AlertDialogHeader>
           <AlertDialogTitle>Reset all analytics?</AlertDialogTitle>
           <AlertDialogDescription>
-            This permanently deletes every recorded request and incident. It can't be undone.
+            This permanently deletes every recorded request and incident. It can&apos;t be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

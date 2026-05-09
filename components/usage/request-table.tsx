@@ -58,7 +58,7 @@ export function RequestTable({ period, page, pageSize, initial }: RequestTablePr
         </div>
       ) : error ? (
         <div className="px-6 py-12 text-sm text-muted-foreground md:px-8">
-          We couldn't load the requests log. Retry, or check the API service.
+          We couldn&apos;t load the requests log. Retry, or check the API service.
         </div>
       ) : !data?.requests.length ? (
         <EmptyState />
