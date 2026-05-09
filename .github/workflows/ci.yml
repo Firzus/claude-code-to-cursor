@@ -6,20 +6,8 @@ on:
   pull_request:
 
 jobs:
-  backend:
+  app:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-      - run: bun run lint
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -27,18 +15,18 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
+      - run: pnpm run lint
       - run: pnpm run build
         env:
-          BACKEND_URL: http://localhost:8082
           NEXT_TELEMETRY_DISABLED: "1"
 
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose build api frontend
+      - run: docker compose --profile prod build app
         env:
           CLOUDFLARE_TUNNEL_TOKEN: ci-placeholder
+          CONVEX_INSTANCE_SECRET: ci-placeholder

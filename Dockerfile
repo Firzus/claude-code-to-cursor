@@ -1,27 +1,38 @@
-FROM oven/bun:1 AS base
+## Multi-stage build for the Next.js 16 app, used only in detached prod mode
+## (`pnpm start` → `docker compose --profile prod up -d --build`). Dev mode
+## runs `next dev` on the host and never touches this image.
+
+# 1. Dependencies
+FROM node:22-alpine AS deps
 WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml* .npmrc ./
+RUN pnpm install --frozen-lockfile
 
-# Copy application source (no runtime deps to install)
-COPY package.json tsconfig.json index.ts ./
-COPY src/ ./src/
+# 2. Build
+FROM node:22-alpine AS builder
+WORKDIR /app
+RUN corepack enable
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm run build
 
-# Create data directories with correct ownership
-RUN mkdir -p /data /data/logs /data/auth && chown -R bun:bun /data
+# 3. Runner
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3111
+ENV HOSTNAME=0.0.0.0
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser --system --uid 1001 nextjs
 
-# Environment defaults
-ENV PORT=8082
-ENV CCTC_DB_PATH=/data/cctc.db
-ENV CCTC_AUTH_DIR=/data/auth
-ENV LOG_DIR=/data/logs
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-EXPOSE 8082
-
-USER bun
-
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD bun -e "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1))"
-
-ENTRYPOINT ["docker-entrypoint.sh"]
+USER nextjs
+EXPOSE 3111
+CMD ["node", "server.js"]

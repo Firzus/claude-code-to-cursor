@@ -1,11 +1,38 @@
-node_modules/
-.git/
-*.db
-*.log
-frontend/
-scripts/
+# everything that should NOT be in the docker build context
+node_modules
+.next
+.pnpm-store
+out
+dist
+
+# git
+.git
+.github
+.gitignore
+.gitattributes
+
+# env (secrets)
 .env
-.claude/
-.worktrees/
-.idea/
+.env.local
+.env.*.local
+
+# tests
+playwright-report
+test-results
+.playwright
+
+# IDE / OS
+.vscode
+.idea
+.cursor
+.cursorignore
 .DS_Store
+Thumbs.db
+
+# misc
+README.md
+AGENTS.md
+spike
+docker-compose.yml
+**/*.log
+**/*.tsbuildinfo
