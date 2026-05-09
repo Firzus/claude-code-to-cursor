@@ -10,13 +10,18 @@ const fetcher = makeFetcher(analyticsRequestsSchema);
 
 export function useAnalyticsRequests(
   period: Period,
-  page: number,
   pageSize: number,
+  cursor: string | null,
+  pinnedSince: number | null,
   fallback?: AnalyticsRequests,
 ) {
-  const offset = Math.max(0, (page - 1) * pageSize);
+  const cursorParam = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
+  // Echo back the server's pinned `since` so Convex's cursor stays valid
+  // across pages. On the very first call (cursor=null), we let the server
+  // compute since from `period`.
+  const sinceParam = pinnedSince !== null ? `&since=${pinnedSince}` : "";
   return useSWR<AnalyticsRequests>(
-    `${API_ROUTES.analyticsRequests}?period=${period}&limit=${pageSize}&offset=${offset}`,
+    `${API_ROUTES.analyticsRequests}?period=${period}&limit=${pageSize}${cursorParam}${sinceParam}`,
     fetcher,
     {
       refreshInterval: POLL_FAST,

@@ -11,7 +11,9 @@ import { formatCompactTokens, modelLabel } from "~/lib/format";
 import type { AnalyticsRequests } from "~/lib/schemas";
 
 export function RecentStrip({ initial }: { initial?: AnalyticsRequests }) {
-  const { data, isLoading } = useAnalyticsRequests("day", 1, 8, initial);
+  // RecentStrip never paginates — it always fetches the first 8 rows. So
+  // `pinnedSince` doesn't matter; we let the server recompute each time.
+  const { data, isLoading } = useAnalyticsRequests("day", 8, null, null, initial);
 
   return (
     <section aria-label="Recent activity" className="rounded-xl border bg-card">

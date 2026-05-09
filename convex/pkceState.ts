@@ -4,11 +4,7 @@ import { mutation } from "./_generated/server";
 // Active PKCE flows live here while the user is bouncing between Anthropic's
 // authorize page and the proxy's callback. Each row is keyed by `state` and
 // expires after PKCE_TTL_MS — old rows are swept lazily on every write so we
-// don't need a cron job.
-//
-// SECURITY: The trust boundary is the docker network (port 3210 is bound to
-// 127.0.0.1 only). If you ever expose Convex publicly, switch these to
-// `internalMutation`/`internalQuery` and add a Convex Auth provider.
+// don't need a cron job. Same trust model as `oauthTokens.ts`.
 
 const PKCE_TTL_MS = 10 * 60 * 1000;
 

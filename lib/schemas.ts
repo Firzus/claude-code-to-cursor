@@ -210,6 +210,11 @@ export type RequestRecord = z.infer<typeof requestRecordSchema>;
 export const analyticsRequestsSchema = z.object({
   requests: z.array(requestRecordSchema),
   total: z.number(),
+  isDone: z.boolean(),
+  continueCursor: z.string(),
+  // The server's pinned `since` (ms epoch). Echoed back by the client on
+  // subsequent paginated calls so Convex's cursor stays valid.
+  since: z.number(),
 });
 
 export type AnalyticsRequests = z.infer<typeof analyticsRequestsSchema>;

@@ -16,13 +16,7 @@ import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const metadata = { title: "Integrations" };
 
-export default async function IntegrationsPage() {
-  const incoming = await headers();
-  const ip = getForwardedFor(incoming);
-  const proto = incoming.get("x-forwarded-proto") ?? "http";
-  const host = incoming.get("host") ?? "localhost:3111";
-  const proxyBase = `${proto}://${host}`;
-
+export default function IntegrationsPage() {
   return (
     <div className="space-y-12">
       <PageHeader
@@ -32,13 +26,19 @@ export default async function IntegrationsPage() {
       />
 
       <Suspense fallback={<IntegrationsBodySkeleton />}>
-        <IntegrationsBody ip={ip} proxyBase={proxyBase} />
+        <IntegrationsBody />
       </Suspense>
     </div>
   );
 }
 
-async function IntegrationsBody({ ip, proxyBase }: { ip?: string; proxyBase: string }) {
+async function IntegrationsBody() {
+  const incoming = await headers();
+  const ip = getForwardedFor(incoming);
+  const proto = incoming.get("x-forwarded-proto") ?? "http";
+  const host = incoming.get("host") ?? "localhost:3111";
+  const proxyBase = `${proto}://${host}`;
+
   const health = await getHealth(ip).catch(() => undefined);
   const tunnelUrl = health?.tunnelUrl ?? null;
   const endpoint = tunnelUrl ?? proxyBase;

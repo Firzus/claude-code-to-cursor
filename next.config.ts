@@ -11,12 +11,10 @@ const config: NextConfig = {
     root: path.resolve(import.meta.dirname),
   },
   outputFileTracingRoot: path.resolve(import.meta.dirname),
-  // Enable Cache Components (PPR successor). With this on, pages that don't
-  // use dynamic APIs are pre-rendered by default; pages that read cookies/
-  // headers stay dynamic automatically. `dynamic = "force-dynamic"` exports
-  // are forbidden under cacheComponents (Next throws at compile time), so
-  // we rely on Next's automatic detection plus per-function `'use cache'`
-  // opt-ins (see lib/server/routes/models.ts).
+  // Cache Components (PPR successor): pre-render static pages by default,
+  // keep pages that read cookies/headers dynamic automatically. Note that
+  // `export const dynamic = "force-dynamic"` is forbidden under this flag —
+  // use per-function `'use cache'` opt-ins instead (e.g. `lib/server/routes/models.ts`).
   cacheComponents: true,
   experimental: {
     optimizePackageImports: [
@@ -34,10 +32,9 @@ const config: NextConfig = {
   rewrites: async () => [
     { source: "/v1/:path*", destination: "/api/v1/:path*" },
   ],
-  // Indexation prevention layer #2 (the `noindex` meta tag in `app/layout.tsx`
-  // is layer #1, `app/robots.ts` is layer #3). The HTTP header is the only
-  // signal that covers non-HTML resources (RSC payloads, JSON, static assets)
-  // and is honored by bots that may ignore robots.txt or skip HTML parsing.
+  // Apply `X-Robots-Tag` to every response, including non-HTML resources
+  // (RSC payloads, JSON, static assets) that the meta tag and robots.ts
+  // wouldn't cover.
   headers: async () => [
     {
       source: "/:path*",

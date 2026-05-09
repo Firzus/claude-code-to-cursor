@@ -11,9 +11,7 @@ import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const metadata = { title: "Preferences" };
 
-export default async function PreferencesPage() {
-  const ip = getForwardedFor(await headers());
-
+export default function PreferencesPage() {
   return (
     <div className="space-y-10">
       <PageHeader
@@ -23,7 +21,7 @@ export default async function PreferencesPage() {
       />
 
       <Suspense fallback={<Skeleton className="h-[28rem] w-full rounded-xl" />}>
-        <SettingsSection ip={ip} />
+        <SettingsSection />
       </Suspense>
 
       <Reveal delay={0.12}>
@@ -33,7 +31,8 @@ export default async function PreferencesPage() {
   );
 }
 
-async function SettingsSection({ ip }: { ip?: string }) {
+async function SettingsSection() {
+  const ip = getForwardedFor(await headers());
   const settings = await getSettings(ip).catch(() => undefined);
 
   if (!settings) {

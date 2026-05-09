@@ -106,4 +106,12 @@ export default defineSchema({
     codeVerifier: v.string(),
     createdAt: v.number(),
   }).index("by_state", ["state"]),
+
+  // Materialized counters keyed by name. Avoids `O(n)` scans like
+  // `.collect().length` for "total requests recorded". Bumped atomically
+  // inside Convex mutations.
+  counters: defineTable({
+    key: v.string(),
+    count: v.number(),
+  }).index("by_key", ["key"]),
 });

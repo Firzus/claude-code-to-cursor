@@ -2,10 +2,9 @@
 
 import { useEffect } from "react";
 
-// Renders ONLY when the RootLayout itself throws — Next replaces the entire
-// document with this component, so we own `<html>` and `<body>` here. For
-// errors inside route segments (the common case), `app/error.tsx` is used
-// instead; that one inherits the layout chain and is far less spartan.
+// Renders only when RootLayout itself throws. Next replaces the whole
+// document, so we must provide `<html>` and `<body>`. Route-segment errors
+// keep going through `app/error.tsx`.
 export default function GlobalError({
   error,
   reset,

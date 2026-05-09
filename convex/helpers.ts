@@ -5,11 +5,9 @@ export const SINGLETON_KEY = "singleton" as const;
 
 type Ctx = GenericMutationCtx<DataModel>;
 
-/**
- * Single source of truth for singleton tables (`by_key` indexed, one row keyed
- * `"singleton"`). Each helper is concrete and fully typed against its table —
- * no generics, no `as any`. Adding a new singleton table = adding a new helper.
- */
+// Upsert helpers for singleton tables (`by_key` indexed, one row keyed
+// `"singleton"`). One helper per table keeps the types concrete; add a new
+// helper when introducing a new singleton.
 
 export async function upsertOauthTokens(
   ctx: Ctx,
@@ -64,4 +62,25 @@ export async function upsertPlanUsageSnapshot(
     .unique();
   if (existing) await ctx.db.patch(existing._id, args);
   else await ctx.db.insert("planUsageSnapshot", { key: SINGLETON_KEY, ...args });
+}
+
+// Adjust a named counter atomically. Negative deltas decrement; the counter
+// is clamped at zero so a -N bump on a fresh counter lands at 0, not below.
+export async function bumpCounter(ctx: Ctx, key: string, delta: number): Promise<void> {
+  const existing = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  if (existing) await ctx.db.patch(existing._id, { count: Math.max(0, existing.count + delta) });
+  else await ctx.db.insert("counters", { key, count: Math.max(0, delta) });
+}
+
+/** Set a counter to a specific value (used by reset / backfill). */
+export async function setCounter(ctx: Ctx, key: string, count: number): Promise<void> {
+  const existing = await ctx.db
+    .query("counters")
+    .withIndex("by_key", (q) => q.eq("key", key))
+    .unique();
+  if (existing) await ctx.db.patch(existing._id, { count });
+  else await ctx.db.insert("counters", { key, count });
 }

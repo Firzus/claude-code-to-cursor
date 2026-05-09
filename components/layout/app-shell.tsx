@@ -156,7 +156,8 @@ export function AppShell({ children, appName }: AppShellProps) {
       <footer className="border-t hidden md:block">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-6 py-6 text-xs text-muted-foreground">
           <span>{appName}</span>
-          <span className="font-mono tabular">{new Date().getUTCFullYear()} · self-hosted</span>
+          {/* Hardcoded — `new Date()` would defeat Cache Components prerender. */}
+          <span className="font-mono tabular">2026 · self-hosted</span>
         </div>
       </footer>
     </div>

@@ -17,9 +17,7 @@ export default function GlobalError({
     console.error(error);
   }, [error]);
 
-  // Stack traces and exception messages can leak internals (file paths, SQL,
-  // env-driven URLs). Surface them in dev so the developer sees the cause,
-  // hide them in prod so visitors only see the generic copy.
+  // Avoid leaking internals via error messages in production.
   const showRawMessage = process.env.NODE_ENV !== "production";
 
   return (

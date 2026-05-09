@@ -12,34 +12,36 @@ import { getAnalyticsRequests, getBudget, getHealth, getPlanUsage, getSettings }
 import { modelLabel } from "~/lib/format";
 import { getForwardedFor } from "~/lib/server/forwarded-for";
 
-export default async function OverviewPage() {
-  const ip = getForwardedFor(await headers());
-
+// Synchronous shell so Cache Components can pre-render. Each dynamic
+// section streams in via its own Suspense boundary below.
+export default function OverviewPage() {
   return (
     <div className="space-y-10 md:space-y-14">
       <Suspense fallback={<HeaderSkeleton />}>
-        <OverviewHeader ip={ip} />
+        <OverviewHeader />
       </Suspense>
       <Suspense fallback={<CardSkeleton tall />}>
-        <HealthSection ip={ip} />
+        <HealthSection />
       </Suspense>
       <Suspense fallback={<CardSkeleton tall />}>
-        <PlanSection ip={ip} />
+        <PlanSection />
       </Suspense>
       <Suspense fallback={<CardSkeleton />}>
-        <BudgetSection ip={ip} />
+        <BudgetSection />
       </Suspense>
       <Suspense fallback={<CardSkeleton tall />}>
-        <RecentSection ip={ip} />
+        <RecentSection />
       </Suspense>
     </div>
   );
 }
 
-async function OverviewHeader({ ip }: { ip?: string }) {
-  // The auth gate lives here so the redirect happens before we render anything
-  // dynamic. Health is the cheapest of the page's reads, so colocating it with
-  // the gate keeps the static shell renderable in parallel.
+async function getIp(): Promise<string | undefined> {
+  return getForwardedFor(await headers());
+}
+
+async function OverviewHeader() {
+  const ip = await getIp();
   const [health, settings] = await Promise.all([
     getHealth(ip).catch(() => undefined),
     getSettings(ip).catch(() => undefined),
@@ -62,7 +64,8 @@ async function OverviewHeader({ ip }: { ip?: string }) {
   );
 }
 
-async function HealthSection({ ip }: { ip?: string }) {
+async function HealthSection() {
+  const ip = await getIp();
   const health = await getHealth(ip).catch(() => undefined);
   return (
     <Reveal delay={0.05}>
@@ -71,7 +74,8 @@ async function HealthSection({ ip }: { ip?: string }) {
   );
 }
 
-async function PlanSection({ ip }: { ip?: string }) {
+async function PlanSection() {
+  const ip = await getIp();
   const planUsage = await getPlanUsage(ip).catch(() => undefined);
   return (
     <Reveal delay={0.12}>
@@ -80,7 +84,8 @@ async function PlanSection({ ip }: { ip?: string }) {
   );
 }
 
-async function BudgetSection({ ip }: { ip?: string }) {
+async function BudgetSection() {
+  const ip = await getIp();
   const budget = await getBudget(ip).catch(() => undefined);
   return (
     <Reveal delay={0.18}>
@@ -89,8 +94,9 @@ async function BudgetSection({ ip }: { ip?: string }) {
   );
 }
 
-async function RecentSection({ ip }: { ip?: string }) {
-  const recent = await getAnalyticsRequests("day", 1, 8, ip).catch(() => undefined);
+async function RecentSection() {
+  const ip = await getIp();
+  const recent = await getAnalyticsRequests("day", 8, null, ip).catch(() => undefined);
   return (
     <Reveal delay={0.24}>
       <RecentStrip initial={recent} />

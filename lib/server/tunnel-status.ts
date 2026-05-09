@@ -29,11 +29,7 @@ export interface TunnelStatus {
 }
 
 interface ReadyPayload {
-  /** cloudflared returns `status` numerically — 200 means at least one connection. */
-  status?: number;
   readyConnections?: number;
-  /** Some versions expose the connector id; not consumed but kept in the type. */
-  connectorId?: string;
 }
 
 const METRICS_URL = process.env.CLOUDFLARED_METRICS_URL?.trim() || "http://127.0.0.1:2000";

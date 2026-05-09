@@ -16,20 +16,11 @@ import { stripProtocol } from "~/lib/format";
 import { type ModelSettings, modelLabels } from "~/lib/schemas";
 import { getForwardedFor } from "~/lib/server/forwarded-for";
 
-export default async function WelcomePage({
+export default function WelcomePage({
   searchParams,
 }: {
   searchParams: Promise<{ force?: string }>;
 }) {
-  const { force } = await searchParams;
-  const incoming = await headers();
-  const ip = getForwardedFor(incoming);
-
-  const proto = incoming.get("x-forwarded-proto") ?? "http";
-  const host = incoming.get("host") ?? "localhost:3111";
-  const proxyBase = `${proto}://${host}`;
-  const snippets = buildSnippets(proxyBase);
-
   return (
     <div className="relative space-y-16">
       <AuroraShader className="-top-24 h-[42rem]" intensity={0.7} />
@@ -40,35 +31,24 @@ export default async function WelcomePage({
       />
 
       <Suspense fallback={<StepGridSkeleton />}>
-        <Steps ip={ip} force={force} />
+        <Steps searchParams={searchParams} />
       </Suspense>
 
-      <Reveal delay={0.3}>
-        <div className="space-y-6">
-          <div className="flex items-baseline justify-between gap-4">
-            <div className="space-y-2">
-              <span className="eyebrow">Quick connect</span>
-              <h2 className="font-display text-3xl tracking-tight">Drop this into Cursor</h2>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              Endpoint:{" "}
-              <span className="font-mono text-foreground">{stripProtocol(proxyBase)}</span>
-            </span>
-          </div>
-          <SnippetCard
-            title="Cursor — Settings → Models"
-            description="Add a custom OpenAI provider with the proxy base URL."
-            language="text"
-            snippet={snippets.cursor}
-            pillLabel="Cursor"
-          />
-        </div>
-      </Reveal>
+      <Suspense fallback={<Skeleton className="h-44 w-full rounded-xl" />}>
+        <QuickConnect />
+      </Suspense>
     </div>
   );
 }
 
-async function Steps({ ip, force }: { ip?: string; force?: string }) {
+async function Steps({
+  searchParams,
+}: {
+  searchParams: Promise<{ force?: string }>;
+}) {
+  const { force } = await searchParams;
+  const ip = getForwardedFor(await headers());
+
   const [health, settingsRes] = await Promise.all([
     getHealth(ip).catch(() => undefined),
     getSettings(ip).catch(() => undefined),
@@ -136,6 +116,38 @@ async function Steps({ ip, force }: { ip?: string; force?: string }) {
           <Link href="/integrations">See all snippets</Link>
         </Button>
       </StepCard>
+    </Reveal>
+  );
+}
+
+async function QuickConnect() {
+  const incoming = await headers();
+  const proto = incoming.get("x-forwarded-proto") ?? "http";
+  const host = incoming.get("host") ?? "localhost:3111";
+  const proxyBase = `${proto}://${host}`;
+  const snippets = buildSnippets(proxyBase);
+
+  return (
+    <Reveal delay={0.3}>
+      <div className="space-y-6">
+        <div className="flex items-baseline justify-between gap-4">
+          <div className="space-y-2">
+            <span className="eyebrow">Quick connect</span>
+            <h2 className="font-display text-3xl tracking-tight">Drop this into Cursor</h2>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Endpoint:{" "}
+            <span className="font-mono text-foreground">{stripProtocol(proxyBase)}</span>
+          </span>
+        </div>
+        <SnippetCard
+          title="Cursor — Settings → Models"
+          description="Add a custom OpenAI provider with the proxy base URL."
+          language="text"
+          snippet={snippets.cursor}
+          pillLabel="Cursor"
+        />
+      </div>
     </Reveal>
   );
 }

@@ -23,6 +23,11 @@ services:
       # the dashboard falls back to SWR via /api/* server-side fetches.
       - NEXT_PUBLIC_CONVEX_URL=${NEXT_PUBLIC_CONVEX_URL:-http://127.0.0.1:3210}
       - INTERNAL_URL=http://127.0.0.1:3111
+      # Reach the cloudflared sidecar over the docker network. The default
+      # in `lib/server/tunnel-status.ts` is `127.0.0.1:2000` which is correct
+      # on the host (dev mode) but wrong inside this container — there's no
+      # cloudflared listening on loopback here.
+      - CLOUDFLARED_METRICS_URL=http://cloudflared:2000
     depends_on:
       convex:
         condition: service_healthy

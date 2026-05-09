@@ -3,7 +3,6 @@ import { getRateLimitStatus } from "~/lib/server/anthropic-client";
 import { getValidToken } from "~/lib/server/oauth";
 import { getTunnelStatus } from "~/lib/server/tunnel-status";
 
-
 export async function GET() {
   const tunnelUrl = process.env.CLOUDFLARE_TUNNEL_URL || undefined;
   // Probe cloudflared in parallel with the OAuth check — both are cheap and

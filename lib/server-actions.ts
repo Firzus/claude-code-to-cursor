@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
 import {
@@ -31,8 +31,10 @@ export async function savePreferencesAction(raw: unknown): Promise<ActionResult<
   try {
     const ip = await forwardedFor();
     const settings = await postSettings(parsed.data, ip);
-    revalidatePath("/preferences");
-    revalidatePath("/");
+    // Invalidates `getSettings` (lib/api.ts) and `getModelsPayload`
+    // (lib/server/routes/models.ts) — both tagged `settings`. `updateTag`
+    // (vs `revalidateTag`) gives read-your-own-writes within this action.
+    updateTag("settings");
     return { ok: true, data: settings };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Failed to save preferences." };

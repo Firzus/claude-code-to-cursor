@@ -118,8 +118,15 @@ export async function getAnalytics(since: number, until?: number) {
   return convex.query(api.requests.getAnalytics, { since, until, now: Date.now() });
 }
 
-export async function getRecentRequests(limit?: number, since?: number, offset?: number) {
-  return convex.query(api.requests.getRecentRequests, { limit, since, offset });
+export async function getRecentRequests(
+  pageSize: number,
+  since?: number,
+  cursor: string | null = null,
+) {
+  return convex.query(api.requests.getRecentRequests, {
+    paginationOpts: { numItems: pageSize, cursor },
+    since,
+  });
 }
 
 export async function getAnalyticsTimeline(since: number, until?: number, buckets?: number) {
