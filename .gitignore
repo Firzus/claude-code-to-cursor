@@ -12,8 +12,9 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 
-# convex (auto-generated bindings)
-/convex/_generated/
+# convex: `_generated/` IS committed so CI can typecheck/build without
+# a live Convex backend (`convex codegen` requires admin auth). Pure type
+# bindings, no secrets — regenerated locally by `pnpm run convex:deploy`.
 
 # tests / playwright
 /coverage
