@@ -4,7 +4,7 @@ import { useGSAP } from "@gsap/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useRef, useTransition } from "react";
 import { cn } from "~/lib/cn";
-import { ensureGsapPlugins, gsap } from "~/lib/motion";
+import { ensureGsapPlugins, gsap, withReducedMotion } from "~/lib/motion";
 import type { Period } from "~/lib/schemas";
 
 const items: { value: Period; label: string }[] = [
@@ -48,23 +48,15 @@ export function PeriodTabs({ value }: { value: Period }) {
       const targetX = btnRect.left - listRect.left;
       const targetW = btnRect.width;
 
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMotion: "(prefers-reduced-motion: no-preference)",
-        },
-        (ctx) => {
-          const { isMotion } = ctx.conditions as { isMotion: boolean };
-          gsap.to(indicator, {
-            x: targetX,
-            width: targetW,
-            duration: isMotion ? 0.3 : 0,
-            ease: "power3.out",
-            autoAlpha: 1,
-          });
-        },
-      );
-      return () => mm.revert();
+      return withReducedMotion((isMotion) => {
+        gsap.to(indicator, {
+          x: targetX,
+          width: targetW,
+          duration: isMotion ? 0.3 : 0,
+          ease: "power3.out",
+          autoAlpha: 1,
+        });
+      });
     },
     { scope: listRef, dependencies: [value] },
   );

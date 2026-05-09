@@ -1,6 +1,7 @@
 import "server-only";
 
 import { type ZodType, z } from "zod";
+import { API_ROUTES } from "./api-routes";
 import { serverEnv } from "./env";
 import {
   type AnalyticsErrors,
@@ -97,15 +98,15 @@ async function backendFetch<T>(
 /* ------------------------------------------------------------------ */
 
 export async function getHealth(forwardedFor?: string): Promise<Health> {
-  return backendFetch("/api/health", healthSchema, { forwardedFor });
+  return backendFetch(API_ROUTES.health, healthSchema, { forwardedFor });
 }
 
 export async function getPlanUsage(forwardedFor?: string): Promise<PlanUsage> {
-  return backendFetch("/api/plan-usage", planUsageSchema, { forwardedFor });
+  return backendFetch(API_ROUTES.planUsage, planUsageSchema, { forwardedFor });
 }
 
 export async function getBudget(forwardedFor?: string): Promise<Budget> {
-  return backendFetch("/api/budget", budgetSchema, { forwardedFor });
+  return backendFetch(API_ROUTES.budget, budgetSchema, { forwardedFor });
 }
 
 export async function getAnalyticsSummary(
@@ -113,7 +114,7 @@ export async function getAnalyticsSummary(
   forwardedFor?: string,
 ): Promise<AnalyticsSummary> {
   return backendFetch(
-    `/api/analytics?period=${encodeURIComponent(period)}`,
+    `${API_ROUTES.analyticsSummary}?period=${encodeURIComponent(period)}`,
     analyticsSummarySchema,
     { forwardedFor, authenticated: true },
   );
@@ -124,7 +125,7 @@ export async function getAnalyticsTimeline(
   forwardedFor?: string,
 ): Promise<AnalyticsTimeline> {
   return backendFetch(
-    `/api/analytics/timeline?period=${encodeURIComponent(period)}`,
+    `${API_ROUTES.analyticsTimeline}?period=${encodeURIComponent(period)}`,
     analyticsTimelineSchema,
     { forwardedFor, authenticated: true },
   );
@@ -138,7 +139,7 @@ export async function getAnalyticsRequests(
 ): Promise<AnalyticsRequests> {
   const offset = Math.max(0, (page - 1) * pageSize);
   return backendFetch(
-    `/api/analytics/requests?period=${encodeURIComponent(period)}&limit=${pageSize}&offset=${offset}`,
+    `${API_ROUTES.analyticsRequests}?period=${encodeURIComponent(period)}&limit=${pageSize}&offset=${offset}`,
     analyticsRequestsSchema,
     { forwardedFor, authenticated: true },
   );
@@ -150,21 +151,21 @@ export async function getAnalyticsErrors(
   forwardedFor?: string,
 ): Promise<AnalyticsErrors> {
   return backendFetch(
-    `/api/analytics/errors?period=${encodeURIComponent(period)}&limit=${limit}`,
+    `${API_ROUTES.analyticsErrors}?period=${encodeURIComponent(period)}&limit=${limit}`,
     analyticsErrorsSchema,
     { forwardedFor, authenticated: true },
   );
 }
 
 export async function getSettings(forwardedFor?: string): Promise<SettingsResponse> {
-  return backendFetch("/api/settings", settingsResponseSchema, {
+  return backendFetch(API_ROUTES.settings, settingsResponseSchema, {
     forwardedFor,
     authenticated: true,
   });
 }
 
 export async function getAuthStatus(forwardedFor?: string): Promise<AuthStatus> {
-  return backendFetch("/api/auth/status", authStatusSchema, {
+  return backendFetch(API_ROUTES.authStatus, authStatusSchema, {
     forwardedFor,
     authenticated: true,
   });
@@ -178,7 +179,7 @@ export async function postSettings(
   settings: ModelSettings,
   forwardedFor?: string,
 ): Promise<ModelSettings> {
-  const data = await backendFetch("/api/settings/model", z4SuccessSettings, {
+  const data = await backendFetch(API_ROUTES.settingsModel, z4SuccessSettings, {
     method: "POST",
     body: settings,
     authenticated: true,
@@ -188,7 +189,7 @@ export async function postSettings(
 }
 
 export async function postAnalyticsReset(forwardedFor?: string): Promise<number> {
-  const data = await backendFetch("/api/analytics/reset", analyticsResetSchema, {
+  const data = await backendFetch(API_ROUTES.analyticsReset, analyticsResetSchema, {
     method: "POST",
     authenticated: true,
     forwardedFor,
@@ -203,7 +204,7 @@ export async function postRateLimitReset(forwardedFor?: string): Promise<void> {
     headers["cf-connecting-ip"] = forwardedFor;
     headers["x-forwarded-for"] = forwardedFor;
   }
-  await fetch(`${serverEnv.internalUrl}/api/rate-limit/reset`, {
+  await fetch(`${serverEnv.internalUrl}${API_ROUTES.rateLimitReset}`, {
     method: "POST",
     headers,
     cache: "no-store",
@@ -211,7 +212,7 @@ export async function postRateLimitReset(forwardedFor?: string): Promise<void> {
 }
 
 export async function postAuthLogin(forwardedFor?: string): Promise<AuthLogin> {
-  return backendFetch("/api/auth/login", authLoginSchema, {
+  return backendFetch(API_ROUTES.authLogin, authLoginSchema, {
     forwardedFor,
     authenticated: true,
   });
@@ -221,7 +222,7 @@ export async function postAuthCallback(
   payload: { code: string; state: string },
   forwardedFor?: string,
 ): Promise<AuthCallbackResult> {
-  return backendFetch("/api/auth/callback", authCallbackResultSchema, {
+  return backendFetch(API_ROUTES.authCallback, authCallbackResultSchema, {
     method: "POST",
     body: payload,
     authenticated: true,

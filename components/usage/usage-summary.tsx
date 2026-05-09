@@ -5,19 +5,12 @@ import { Card, CardContent } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAnalyticsSummary } from "~/hooks/use-analytics-summary";
 import { cn } from "~/lib/cn";
-import { formatPercent } from "~/lib/format";
+import { compactNumber, formatPercent } from "~/lib/format";
 import type { AnalyticsSummary, Period } from "~/lib/schemas";
 
 interface UsageSummaryProps {
   period: Period;
   initial?: AnalyticsSummary;
-}
-
-function compactSuffix(n: number): { value: number; suffix: string; decimals: number } {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return { value: n / 1_000_000, suffix: "M", decimals: 1 };
-  if (abs >= 1_000) return { value: n / 1_000, suffix: "k", decimals: 1 };
-  return { value: n, suffix: "", decimals: 0 };
 }
 
 export function UsageSummary({ period, initial }: UsageSummaryProps) {
@@ -27,8 +20,8 @@ export function UsageSummary({ period, initial }: UsageSummaryProps) {
     ? data.totalInputTokens + data.totalCacheReadTokens + data.totalCacheCreationTokens
     : 0;
   const totalOut = data?.totalOutputTokens ?? 0;
-  const inFmt = compactSuffix(totalIn);
-  const outFmt = compactSuffix(totalOut);
+  const inFmt = compactNumber(totalIn);
+  const outFmt = compactNumber(totalOut);
 
   return (
     <Card className="border-none shadow-(--shadow-soft-md)">

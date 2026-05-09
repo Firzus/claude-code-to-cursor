@@ -2,12 +2,11 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const config: NextConfig = {
+  // Required by the production Dockerfile (it copies `.next/standalone`).
+  // Harmless when running on the host (`pnpm dev` / `pnpm build && next start`).
   output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
-  // Lock turbopack/Next root to this folder. The repo also contains a Bun
-  // backend at <repo>/src/, which Next.js 16 would otherwise pick up as
-  // candidate middleware/source.
   turbopack: {
     root: path.resolve(import.meta.dirname),
   },
@@ -21,6 +20,13 @@ const config: NextConfig = {
       "sonner",
     ],
   },
+  // Backwards-compat with the legacy Bun-proxy URL shape: the Cursor BYOK
+  // config (and any existing OpenAI/Anthropic SDK clients pointing at this
+  // host) sends to `/v1/...`, while Next.js puts our handlers under
+  // `/api/v1/...`. Rewrite is internal — the client URL doesn't change.
+  rewrites: async () => [
+    { source: "/v1/:path*", destination: "/api/v1/:path*" },
+  ],
 };
 
 export default config;

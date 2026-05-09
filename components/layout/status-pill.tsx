@@ -3,11 +3,9 @@
 import { useHealth } from "~/hooks/use-health";
 import { cn } from "~/lib/cn";
 import type { Health } from "~/lib/schemas";
+import { TONE_BG, type Tone } from "~/lib/tone";
 
-function statusFor(health: Health | undefined): {
-  tone: "ok" | "warn" | "error" | "muted";
-  label: string;
-} {
+function statusFor(health: Health | undefined): { tone: Tone; label: string } {
   if (!health) return { tone: "muted", label: "Connecting" };
   if (!health.claudeCode.authenticated) return { tone: "error", label: "Disconnected" };
   if (health.rateLimit.isLimited) return { tone: "warn", label: "Rate limited" };
@@ -18,12 +16,7 @@ function statusFor(health: Health | undefined): {
 export function StatusPill({ initial }: { initial?: Health }) {
   const { data } = useHealth(initial);
   const { tone, label } = statusFor(data);
-  const dot = {
-    ok: "bg-success",
-    warn: "bg-warning",
-    error: "bg-destructive",
-    muted: "bg-muted-foreground/60",
-  }[tone];
+  const dot = TONE_BG[tone];
 
   return (
     <span

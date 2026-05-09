@@ -11,7 +11,7 @@ import { ConvexHttpClient } from "convex/browser";
 // expose port 3210 via a separate Cloudflare tunnel hostname AND add a
 // Convex auth provider — see `convex/auth.config.ts` (TODO).
 
-// Lazy proxy so `next build` (which collects route metadata without env)
+// Lazy client so `next build` (which collects route metadata without env)
 // doesn't trip the URL check. The throw happens on first real use.
 let cached: ConvexHttpClient | null = null;
 
@@ -35,12 +35,15 @@ function getClient(): ConvexHttpClient {
   return cached;
 }
 
-// Same call sites as before: `convex.query(...)`, `convex.mutation(...)`.
-// The Proxy forwards every method call to a real client created on first use.
-export const convex = new Proxy({} as ConvexHttpClient, {
-  get(_target, prop, receiver) {
-    const client = getClient() as unknown as Record<string | symbol, unknown>;
-    const value = client[prop];
-    return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(client) : value;
-  },
-});
+// Same call sites as before: `convex.query(...)`, `convex.mutation(...)`,
+// `convex.action(...)`. Each method lazily resolves the underlying client
+// while preserving the original generic signatures.
+type Query = ConvexHttpClient["query"];
+type Mutation = ConvexHttpClient["mutation"];
+type Action = ConvexHttpClient["action"];
+
+export const convex = {
+  query: ((...args) => getClient().query(...args)) as Query,
+  mutation: ((...args) => getClient().mutation(...args)) as Mutation,
+  action: ((...args) => getClient().action(...args)) as Action,
+};

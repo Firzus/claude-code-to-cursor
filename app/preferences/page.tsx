@@ -5,13 +5,13 @@ import { AdvancedPanel } from "~/components/preferences/advanced-panel";
 import { PreferencesForm } from "~/components/preferences/preferences-form";
 import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { getSettings } from "~/lib/api";
+import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const metadata = { title: "Preferences" };
 export const dynamic = "force-dynamic";
 
 export default async function PreferencesPage() {
-  const incoming = await headers();
-  const ip = incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
+  const ip = getForwardedFor(await headers());
   const settings = await getSettings(ip).catch(() => undefined);
 
   return (

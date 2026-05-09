@@ -5,17 +5,11 @@ import { NumberTicker } from "~/components/motion/number-ticker";
 import { Card, CardContent } from "~/components/ui/card";
 import { useBudget } from "~/hooks/use-budget";
 import { cn } from "~/lib/cn";
+import { compactNumber } from "~/lib/format";
 import type { Budget } from "~/lib/schemas";
 
 interface TodayStatsProps {
   initial?: Budget;
-}
-
-function compactSuffix(n: number): { value: number; suffix: string; decimals: number } {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return { value: n / 1_000_000, suffix: "M", decimals: 1 };
-  if (abs >= 1_000) return { value: n / 1_000, suffix: "k", decimals: 1 };
-  return { value: n, suffix: "", decimals: 0 };
 }
 
 export function TodayStats({ initial }: TodayStatsProps) {
@@ -27,8 +21,8 @@ export function TodayStats({ initial }: TodayStatsProps) {
   const totalOut = data?.outputTokens ?? 0;
   const spend = data?.estimatedUsd ?? 0;
 
-  const inFmt = compactSuffix(totalIn);
-  const outFmt = compactSuffix(totalOut);
+  const inFmt = compactNumber(totalIn);
+  const outFmt = compactNumber(totalOut);
 
   return (
     <Card className="border-none shadow-(--shadow-soft-md)">

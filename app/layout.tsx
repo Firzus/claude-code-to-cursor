@@ -9,6 +9,7 @@ import { Toaster } from "~/components/ui/sonner";
 import { getHealth } from "~/lib/api";
 import { serverEnv } from "~/lib/env";
 import { fontVariables } from "~/lib/fonts";
+import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,6 @@ export const metadata: Metadata = {
     "A self-hosted proxy that routes API traffic through Claude Code's OAuth credentials.",
   applicationName: serverEnv.appName,
   robots: { index: false, follow: false },
-  icons: { icon: "/favicon.svg" },
 };
 
 export const viewport: Viewport = {
@@ -29,10 +29,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const incoming = await headers();
-  const forwardedFor =
-    incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
-
+  const forwardedFor = getForwardedFor(await headers());
   const initialHealth = await getHealth(forwardedFor).catch(() => undefined);
 
   return (

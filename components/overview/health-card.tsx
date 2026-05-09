@@ -7,7 +7,9 @@ import { RelativeTime } from "~/components/layout/relative-time";
 import { HoverLift } from "~/components/motion/hover-lift";
 import { useHealth } from "~/hooks/use-health";
 import { cn } from "~/lib/cn";
+import { hostnameOf } from "~/lib/format";
 import type { Health } from "~/lib/schemas";
+import { TONE_BG, type Tone } from "~/lib/tone";
 
 export function HealthCard({ initial }: { initial?: Health }) {
   const { data } = useHealth(initial);
@@ -75,16 +77,11 @@ function Row({
   label: string;
   primary: string;
   secondary: ReactNode;
-  tone: "ok" | "warn" | "error" | "muted";
+  tone: Tone;
   href?: string;
   external?: boolean;
 }) {
-  const dotClass = {
-    ok: "bg-success",
-    warn: "bg-warning",
-    error: "bg-destructive",
-    muted: "bg-muted-foreground/60",
-  }[tone];
+  const dotClass = TONE_BG[tone];
 
   const inner = (
     <div className="flex h-full flex-col justify-between gap-6 p-6 md:p-7">
@@ -121,12 +118,4 @@ function Row({
   }
 
   return <div>{inner}</div>;
-}
-
-function hostnameOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url.replace(/^https?:\/\//, "");
-  }
 }

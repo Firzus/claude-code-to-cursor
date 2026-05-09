@@ -18,7 +18,13 @@ function validatePaginationParams(
   };
 }
 
-function calculateSince(period: string | null): number {
+/**
+ * Resolve the start of an analytics window. The timeline endpoint shows a
+ * 90-day history when the user picks "all"; the rolling-summary endpoints
+ * fall back to the beginning of time. Pass `allWindowMs` to opt into the
+ * timeline behaviour.
+ */
+function calculateSince(period: string | null, allWindowMs?: number): number {
   const now = Date.now();
   switch (period) {
     case "5hour":
@@ -28,15 +34,10 @@ function calculateSince(period: string | null): number {
     case "month":
       return now - 30 * 86_400_000;
     case "all":
-      return 0;
+      return allWindowMs ? now - allWindowMs : 0;
     default:
       return now - 86_400_000;
   }
-}
-
-function calculateTimelineSince(period: string | null): number {
-  if (period === "all") return Date.now() - 90 * 86_400_000;
-  return calculateSince(period);
 }
 
 export async function handleAnalytics(url: URL): Promise<Response> {
@@ -71,7 +72,7 @@ const PERIOD_BUCKETS: Record<string, number> = {
 
 export async function handleAnalyticsTimeline(url: URL): Promise<Response> {
   const period = url.searchParams.get("period") || "day";
-  const since = calculateTimelineSince(period);
+  const since = calculateSince(period, 90 * 86_400_000);
   const buckets = PERIOD_BUCKETS[period] ?? 24;
   const timeline = await getAnalyticsTimeline(since, Date.now(), buckets);
 

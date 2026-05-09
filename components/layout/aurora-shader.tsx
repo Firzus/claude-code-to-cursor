@@ -3,7 +3,7 @@
 import { useGSAP } from "@gsap/react";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/lib/cn";
-import { ensureGsapPlugins, gsap } from "~/lib/motion";
+import { ensureGsapPlugins, gsap, withReducedMotion } from "~/lib/motion";
 
 interface AuroraShaderProps {
   className?: string;
@@ -44,21 +44,16 @@ export function AuroraShader({ className, intensity = 1 }: AuroraShaderProps) {
       const blobs = node.querySelectorAll<HTMLElement>("[data-aurora-blob]");
       if (!blobs.length) return;
 
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMotion: "(prefers-reduced-motion: no-preference)",
-        },
-        (ctx) => {
-          const { isMotion } = ctx.conditions as { isMotion: boolean };
-          if (!isMotion) return;
-          const tweens: gsap.core.Tween[] = [];
-          blobs.forEach((blob, i) => {
-            // Provide explicit `from` values so GSAP doesn't have to call
-            // `getComputedStyle` for each animated prop on the first tick —
-            // `_getComputedProperty` was the dominant forced-reflow culprit
-            // (~100ms cumulative across 3 blobs × 3 props).
-            const tween = gsap.fromTo(
+      const tweens: gsap.core.Tween[] = [];
+      const cleanup = withReducedMotion((isMotion) => {
+        if (!isMotion) return;
+        blobs.forEach((blob, i) => {
+          // Provide explicit `from` values so GSAP doesn't have to call
+          // `getComputedStyle` for each animated prop on the first tick —
+          // `_getComputedProperty` was the dominant forced-reflow culprit
+          // (~100ms cumulative across 3 blobs × 3 props).
+          tweens.push(
+            gsap.fromTo(
               blob,
               { xPercent: 0, yPercent: 0, scale: 1 },
               {
@@ -71,15 +66,14 @@ export function AuroraShader({ className, intensity = 1 }: AuroraShaderProps) {
                 ease: "sine.inOut",
                 paused: !visible,
               },
-            );
-            tweens.push(tween);
-          });
-          return () => {
-            for (const t of tweens) t.kill();
-          };
-        },
-      );
-      return () => mm.revert();
+            ),
+          );
+        });
+      });
+      return () => {
+        for (const t of tweens) t.kill();
+        cleanup();
+      };
     },
     { scope: wrapRef, dependencies: [visible] },
   );

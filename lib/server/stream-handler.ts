@@ -14,6 +14,7 @@ import {
   createOpenAIToolCallChunk,
 } from "./openai-adapter";
 import { stripMcpPrefix } from "./request-normalization";
+import { safeCancel, safeClose } from "./safe-stream";
 
 const encoder = new TextEncoder();
 
@@ -47,7 +48,10 @@ export function createOpenAIStreamFromAnthropic(
     });
   }
   const HEARTBEAT_INTERVAL = 5000;
-  const includeUsageNull = !!streamOptions?.include_usage;
+  // `streamOptions.include_usage` was historically toggled to inject
+  // `"usage":null` into every chunk; the chunk builders now ship that field
+  // unconditionally, so the option is a no-op kept only for API parity.
+  void streamOptions?.include_usage;
 
   let cancelled = false;
   // Hoisted so the outer `cancel(reason)` handler can clear the timer
@@ -112,11 +116,7 @@ export function createOpenAIStreamFromAnthropic(
       const safeEnqueue = (text: string) => {
         try {
           if (cancelled) return;
-          let out = text;
-          if (includeUsageNull && text.startsWith("data: {") && !text.includes('"usage"')) {
-            out = text.replace(/\}\s*\n\n$/, ',"usage":null}\n\n');
-          }
-          controller.enqueue(encoder.encode(out));
+          controller.enqueue(encoder.encode(text));
         } catch {
           cancelled = true;
         }
@@ -136,6 +136,8 @@ export function createOpenAIStreamFromAnthropic(
         }
       }, HEARTBEAT_INTERVAL);
 
+      let parseFailures = 0;
+
       try {
         let chunkCount = 0;
         while (true) {
@@ -153,7 +155,6 @@ export function createOpenAIStreamFromAnthropic(
                   usageInputTokens,
                   usageOutputTokens,
                   usageCacheReadTokens,
-                  usageCacheCreationTokens,
                   reasoningFromStream,
                 ),
               );
@@ -288,7 +289,9 @@ export function createOpenAIStreamFromAnthropic(
                   try {
                     const parsed = internalToolCallJson ? JSON.parse(internalToolCallJson) : null;
                     extractedText = formatInternalToolContent(internalToolCallName, parsed);
-                  } catch {}
+                  } catch {
+                    parseFailures++;
+                  }
 
                   if (extractedText) {
                     logger.info(
@@ -392,9 +395,33 @@ export function createOpenAIStreamFromAnthropic(
 
                 const text = event.delta.text;
 
+                // Fast path: most plain-text deltas never contain `<` so the
+                // state machine below would just copy each character into
+                // `output`. Skip straight to the turn-marker scan.
+                let output = "";
+                if (!inTextThinkingTag && textTagBuffer.length === 0 && !text.includes("<")) {
+                  output = text;
+                  for (let ci = 0; ci < text.length; ci++) {
+                    turnMarkerSuffix = (turnMarkerSuffix + text.charAt(ci)).slice(
+                      -TURN_MARKER.length,
+                    );
+                    if (turnMarkerSuffix === TURN_MARKER) {
+                      if (output.endsWith(TURN_MARKER)) {
+                        output = output.slice(0, -TURN_MARKER.length);
+                      }
+                      turnMarkerStopped = true;
+                      break;
+                    }
+                  }
+                  if (output.length > 0) {
+                    safeEnqueue(createOpenAIStreamChunk(streamId, model, output));
+                    lastChunkTime = Date.now();
+                  }
+                  continue;
+                }
+
                 // --- <thinking> tag filter state machine ---
                 // Process character by character to handle tags split across chunks
-                let output = "";
                 for (let ci = 0; ci < text.length; ci++) {
                   const ch = text.charAt(ci);
 
@@ -486,7 +513,6 @@ export function createOpenAIStreamFromAnthropic(
                     usageInputTokens,
                     usageOutputTokens,
                     usageCacheReadTokens,
-                    usageCacheCreationTokens,
                     reasoningFromStream,
                   ),
                 );
@@ -502,40 +528,29 @@ export function createOpenAIStreamFromAnthropic(
                   thinkingTokens: reasoningFromStream,
                 });
               }
-            } catch {}
+            } catch {
+              parseFailures++;
+            }
           }
+        }
+        if (parseFailures > 0) {
+          logger.verbose(`[Stream] ${parseFailures} unparseable SSE event(s) skipped`);
         }
       } catch (streamError) {
         if (!cancelled) {
           const errMsg = toErrorMessage(streamError);
           logger.error(`[Stream] Processing failed: ${errMsg}`);
-          try {
-            const payload = sentStart
-              ? createOpenAIErrorTail(streamId, model, errMsg)
-              : createOpenAIErrorStream(streamId, model, errMsg);
-            safeEnqueue(payload);
-            controller.close();
-          } catch {
-            // Best effort — controller may already be closed
-          }
+          const payload = sentStart
+            ? createOpenAIErrorTail(streamId, model, errMsg)
+            : createOpenAIErrorStream(streamId, model, errMsg);
+          safeEnqueue(payload);
+          safeClose(controller);
         }
       } finally {
         stopHeartbeat();
-
-        try {
-          if (!cancelled) {
-            reader.cancel().catch(() => {});
-          }
-        } catch {
-          // Reader might already be released
-        }
-
-        try {
-          if (!cancelled) {
-            controller.close();
-          }
-        } catch {
-          // Controller already closed
+        if (!cancelled) {
+          safeCancel(reader);
+          safeClose(controller);
         }
       }
     },

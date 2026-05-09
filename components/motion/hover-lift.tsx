@@ -8,8 +8,6 @@ interface HoverLiftProps {
   className?: string;
   /** Lift in px on hover. Default: 1. */
   lift?: number;
-  /** When true, also shifts a child marked `data-hover-target="border"` to primary/30. */
-  borderShift?: boolean;
 }
 
 /**
@@ -20,10 +18,9 @@ interface HoverLiftProps {
  *
  * @example
  *   <HoverLift><Link href="/">Card</Link></HoverLift>
- *   <HoverLift lift={2} borderShift>...</HoverLift>
  */
-export function HoverLift({ children, className, lift = 1, borderShift = false }: HoverLiftProps) {
-  const liftStyle = { ["--hover-lift" as string]: `-${lift}px` } as React.CSSProperties;
+export function HoverLift({ children, className, lift = 1 }: HoverLiftProps) {
+  const liftStyle = { "--hover-lift": `-${lift}px` } as React.CSSProperties;
   return (
     <div
       style={liftStyle}
@@ -31,8 +28,6 @@ export function HoverLift({ children, className, lift = 1, borderShift = false }
         "transition-transform duration-200 ease-out motion-reduce:transition-none",
         "hover-only:hover:[transform:translateY(var(--hover-lift))]",
         "hover-only:focus-within:[transform:translateY(var(--hover-lift))]",
-        borderShift &&
-          "[&_[data-hover-target=border]]:transition-colors hover-only:hover:[&_[data-hover-target=border]]:border-primary/30",
         className,
       )}
     >

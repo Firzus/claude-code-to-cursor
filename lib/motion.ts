@@ -20,4 +20,22 @@ export function ensureGsapPlugins(): typeof gsap {
   return gsap;
 }
 
+/**
+ * Centralizes the `gsap.matchMedia` boilerplate (registration + cleanup +
+ * `isMotion` condition cast) that previously lived in 6+ components. The
+ * setup callback receives `isMotion=false` when the user has requested
+ * reduced motion, so callers can still set final state with duration 0
+ * instead of skipping entirely.
+ */
+export function withReducedMotion(
+  setup: (isMotion: boolean) => (() => void) | void,
+): () => void {
+  const mm = gsap.matchMedia();
+  mm.add({ isMotion: "(prefers-reduced-motion: no-preference)" }, (ctx) => {
+    const conditions = ctx.conditions as { isMotion: boolean } | undefined;
+    return setup(conditions?.isMotion ?? false);
+  });
+  return () => mm.revert();
+}
+
 export { gsap, ScrollTrigger, SplitText };

@@ -13,7 +13,8 @@ import {
   getAnalyticsSummary,
   getAnalyticsTimeline,
 } from "~/lib/api";
-import { type Period, periodSchema } from "~/lib/schemas";
+import { periodSchema } from "~/lib/schemas";
+import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const metadata = { title: "Usage" };
 export const dynamic = "force-dynamic";
@@ -24,23 +25,12 @@ interface UsagePageProps {
   searchParams: Promise<{ period?: string; page?: string }>;
 }
 
-function parsePeriod(value: string | undefined): Period {
-  const parsed = periodSchema.safeParse(value ?? "day");
-  return parsed.success ? parsed.data : "day";
-}
-
-function parsePage(value: string | undefined): number {
-  const num = Number.parseInt(value ?? "1", 10);
-  return Number.isFinite(num) && num > 0 ? num : 1;
-}
-
 export default async function UsagePage({ searchParams }: UsagePageProps) {
   const params = await searchParams;
-  const period = parsePeriod(params.period);
-  const page = parsePage(params.page);
+  const period = periodSchema.safeParse(params.period ?? "day").data ?? "day";
+  const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
-  const incoming = await headers();
-  const ip = incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
+  const ip = getForwardedFor(await headers());
 
   const [summary, timeline, requests, errors] = await Promise.all([
     getAnalyticsSummary(period, ip).catch(() => undefined),

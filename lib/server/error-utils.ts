@@ -1,4 +1,5 @@
 import { createOpenAIStreamChunk, createOpenAIStreamStart } from "./openai-adapter";
+import type { AnthropicError } from "./types";
 
 export function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -37,4 +38,17 @@ export function createOpenAIErrorStream(streamId: string, model: string, errMsg:
 
 export function createAnthropicErrorSSE(type: string, message: string): string {
   return `event: error\ndata: ${JSON.stringify({ type: "error", error: { type, message } })}\n\n`;
+}
+
+/** Build an Anthropic-format JSON error body. */
+export function buildAnthropicError(type: string, message: string): AnthropicError {
+  return { type: "error", error: { type, message } };
+}
+
+/** Build an OpenAI-format JSON error body. */
+export function buildOpenAIError(
+  type: "invalid_request_error" | "internal_error" | "api_error",
+  message: string,
+): { error: { message: string; type: string } } {
+  return { error: { message, type } };
 }

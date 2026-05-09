@@ -1,7 +1,6 @@
 import { v } from "convex/values";
+import { SINGLETON_KEY, singletonUpsert } from "./_helpers";
 import { mutation, query } from "./_generated/server";
-
-const SINGLETON_KEY = "singleton" as const;
 
 const windowValidator = v.union(
   v.object({
@@ -25,16 +24,7 @@ export const save = mutation({
     overageStatus: v.union(v.string(), v.null()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("planUsageSnapshot")
-      .withIndex("by_key", (q) => q.eq("key", SINGLETON_KEY))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, args);
-    } else {
-      await ctx.db.insert("planUsageSnapshot", { key: SINGLETON_KEY, ...args });
-    }
+    await singletonUpsert(ctx, "planUsageSnapshot", args);
   },
 });
 

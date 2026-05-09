@@ -27,6 +27,41 @@ import {
 } from "~/lib/schemas";
 import { savePreferencesAction } from "~/lib/server-actions";
 
+const THINKING_MODES = [
+  {
+    v: false,
+    label: "Disabled",
+    icon: Sparkles,
+    hint: "Direct answers, no extra thinking tokens.",
+  },
+  {
+    v: true,
+    label: "Enabled",
+    icon: Brain,
+    hint: "Reasons internally before responding.",
+  },
+] as const;
+
+/**
+ * Shared base classes for the radio-style tiles in this form. The layout
+ * (flex direction, gaps) lives at the call site since the two tile groups
+ * arrange their content differently. Pass `hoverLift` for groups that should
+ * subtly translate-y on hover.
+ */
+function selectableTileClasses(active: boolean, options?: { hoverLift?: boolean }): string {
+  return cn(
+    "rounded-lg border p-4 text-left outline-none",
+    "transition-[background-color,border-color,transform] duration-150 ease-out",
+    "focus-visible:ring-2 focus-visible:ring-ring/60",
+    active
+      ? "border-primary/40 bg-primary/[0.04]"
+      : cn(
+          "border-border hover-only:hover:border-foreground/20 hover-only:hover:bg-accent/40",
+          options?.hoverLift && "hover-only:hover:-translate-y-px",
+        ),
+  );
+}
+
 export function PreferencesForm({ defaultValues }: { defaultValues: ModelSettings }) {
   const form = useForm<ModelSettings>({
     resolver: zodResolver(modelSettingsSchema),
@@ -93,20 +128,7 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
             <div className="grid gap-2">
               <span className="text-sm font-medium">Mode</span>
               <div role="radiogroup" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {[
-                  {
-                    v: false,
-                    label: "Disabled",
-                    icon: Sparkles,
-                    hint: "Direct answers, no extra thinking tokens.",
-                  },
-                  {
-                    v: true,
-                    label: "Enabled",
-                    icon: Brain,
-                    hint: "Reasons internally before responding.",
-                  },
-                ].map(({ v, label, icon: Icon, hint }) => {
+                {THINKING_MODES.map(({ v, label, icon: Icon, hint }) => {
                   const active = thinkingEnabled === v;
                   return (
                     <button
@@ -115,12 +137,8 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
                       onClick={() => form.setValue("thinkingEnabled", v, { shouldDirty: true })}
                       aria-pressed={active}
                       className={cn(
-                        "group flex items-start gap-3 rounded-lg border p-4 text-left outline-none",
-                        "transition-[background-color,border-color] duration-150 ease-out",
-                        "focus-visible:ring-2 focus-visible:ring-ring/60",
-                        active
-                          ? "border-primary/40 bg-primary/[0.04]"
-                          : "border-border hover-only:hover:border-foreground/20 hover-only:hover:bg-accent/40",
+                        "group flex items-start gap-3",
+                        selectableTileClasses(active),
                       )}
                     >
                       <span
@@ -189,12 +207,8 @@ export function PreferencesForm({ defaultValues }: { defaultValues: ModelSetting
                   onClick={() => form.setValue("subscriptionPlan", plan, { shouldDirty: true })}
                   aria-pressed={active}
                   className={cn(
-                    "flex flex-col gap-1 rounded-lg border p-4 text-left outline-none",
-                    "transition-[background-color,border-color,transform] duration-150 ease-out",
-                    "focus-visible:ring-2 focus-visible:ring-ring/60",
-                    active
-                      ? "border-primary/40 bg-primary/[0.04]"
-                      : "border-border hover-only:hover:border-foreground/20 hover-only:hover:bg-accent/40 hover-only:hover:-translate-y-px",
+                    "flex flex-col gap-1",
+                    selectableTileClasses(active, { hoverLift: true }),
                   )}
                 >
                   <span className="font-display text-lg leading-tight tracking-tight">

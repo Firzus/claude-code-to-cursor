@@ -44,9 +44,7 @@ export function startEventLoopMonitor(): void {
     pushSample(lag);
   }, SAMPLE_INTERVAL_MS);
   // Don't keep the process alive solely for this timer.
-  if (timer && typeof (timer as { unref?: () => void }).unref === "function") {
-    (timer as { unref: () => void }).unref();
-  }
+  (timer as NodeJS.Timeout).unref?.();
 }
 
 export function stopEventLoopMonitor(): void {

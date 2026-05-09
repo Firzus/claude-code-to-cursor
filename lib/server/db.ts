@@ -6,6 +6,7 @@ import { logger } from "./logger";
 import { type ModelSettings, validateModelSettings } from "./model-settings";
 import type { RoutingDecision } from "./routing-policy";
 import type { RequestShapeMetrics } from "./types";
+import type { AnthropicUsageSnapshot } from "./usage";
 
 export type { RequestShapeMetrics };
 
@@ -65,6 +66,36 @@ export function recordRequest(record: RequestRecord): void {
     });
 }
 
+/**
+ * Convenience wrapper around `recordRequest` for the common case where the
+ * caller has just produced an `AnthropicUsageSnapshot`. Spreads the snapshot
+ * fields and fills in routing metadata; saves a 7-line copy at every site.
+ */
+export function recordUsage(args: {
+  usage: AnthropicUsageSnapshot;
+  model: string;
+  appliedModel: string;
+  stream: boolean;
+  latencyMs: number;
+  shape?: RequestShapeMetrics;
+  decision?: RoutingDecision;
+}): void {
+  recordRequest({
+    model: args.model,
+    source: "claude_code",
+    inputTokens: args.usage.inputTokens,
+    outputTokens: args.usage.outputTokens,
+    cacheReadTokens: args.usage.cacheReadTokens,
+    cacheCreationTokens: args.usage.cacheCreationTokens,
+    thinkingTokens: args.usage.thinkingTokens,
+    stream: args.stream,
+    latencyMs: args.latencyMs,
+    shape: args.shape,
+    decision: args.decision,
+    appliedModel: args.appliedModel,
+  });
+}
+
 // Async accessors used by route handlers. These are not called from the
 // hot path (anthropic-client) so the await cost is irrelevant.
 
@@ -80,8 +111,11 @@ export async function saveModelSettings(settings: ModelSettings) {
   await convex.mutation(api.modelSettings.save, settings);
 }
 
+// `now` is captured here (Convex queries must be deterministic) and forwarded
+// to every time-windowed query so the server-side cache stays valid.
+
 export async function getAnalytics(since: number, until?: number) {
-  return convex.query(api.requests.getAnalytics, { since, until });
+  return convex.query(api.requests.getAnalytics, { since, until, now: Date.now() });
 }
 
 export async function getRecentRequests(limit?: number, since?: number, offset?: number) {
@@ -89,26 +123,26 @@ export async function getRecentRequests(limit?: number, since?: number, offset?:
 }
 
 export async function getAnalyticsTimeline(since: number, until?: number, buckets?: number) {
-  return convex.query(api.requests.getAnalyticsTimeline, { since, until, buckets });
+  return convex.query(api.requests.getAnalyticsTimeline, {
+    since,
+    until,
+    buckets,
+    now: Date.now(),
+  });
 }
 
 export async function getRecentErrors(limit?: number, since?: number, until?: number) {
-  return convex.query(api.requests.getRecentErrors, { limit, since, until });
+  return convex.query(api.requests.getRecentErrors, { limit, since, until, now: Date.now() });
 }
 
 export async function getBudgetDaySummary() {
-  return convex.query(api.requests.getBudgetDaySummary, {});
+  return convex.query(api.requests.getBudgetDaySummary, { now: Date.now() });
 }
 
 export async function getPlanWindowUsage(sinceMs: number) {
-  return convex.query(api.requests.getPlanWindowUsage, { sinceMs });
+  return convex.query(api.requests.getPlanWindowUsage, { sinceMs, now: Date.now() });
 }
 
 export async function resetAnalytics() {
   return convex.mutation(api.requests.resetAnalytics, {});
 }
-
-// Compatibility no-ops — the SQLite version drained an in-memory queue on
-// SIGTERM. With Convex there's no local pending state, so these can be
-// removed once anthropic-client.ts is the only caller.
-export function flushPendingRequests(): void {}

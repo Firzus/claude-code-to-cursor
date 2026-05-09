@@ -32,7 +32,7 @@ export function getUpstreamSemaphoreState(): { active: number; pending: number }
 
 type RequestResult =
   | { success: true; response: Response; source: "claude_code" }
-  | { success: false; error: string };
+  | { success: false; error: string; clientError?: boolean };
 
 // Rate limit cache with soft expiry and max cap
 const RATE_LIMIT_MAX_CACHE_MS = 900_000; // 15 min
@@ -237,7 +237,7 @@ function convertReasoningBudget(prepared: AnthropicRequest): void {
       prepared.max_tokens = suggested;
     }
     logger.verbose(
-      `   [Debug] Converted reasoning_budget (${val}) → output_config.effort=${effort}`,
+      `[ClaudeCode] reasoning_budget=${val} → output_config.effort=${effort}`,
     );
   }
   delete prepared.reasoning_budget;
@@ -258,7 +258,7 @@ function prefixToolNames(prepared: AnthropicRequest): void {
       }
     }
     logger.verbose(
-      `   [Debug] Passing ${prepared.tools.length} tools to Claude Code API (sorted, prefixed with ${TOOL_PREFIX}, last cached)`,
+      `[ClaudeCode] ${prepared.tools.length} tools (sorted, prefixed with ${TOOL_PREFIX}, last cached)`,
     );
   }
   if (prepared.tool_choice?.type === "tool" && prepared.tool_choice.name) {
@@ -467,16 +467,16 @@ async function handle400(response: Response): Promise<RequestResult> {
 
   if (errorMessage.includes("only authorized for use with Claude Code")) {
     logger.error("OAuth token not authorized for direct API use");
-    return { success: false, error: "OAuth not authorized for API" };
+    return { success: false, error: "OAuth not authorized for API", clientError: true };
   }
 
   if (errorMessage.includes(OVERAGE_REJECTED_MARKER)) {
     logger.error(`Claude Code 400 (overage rejected): ${JSON.stringify(errorBody)}`);
-    return { success: false, error: OVERAGE_REJECTED_MESSAGE };
+    return { success: false, error: OVERAGE_REJECTED_MESSAGE, clientError: true };
   }
 
   logger.error(`Claude Code 400 error: ${JSON.stringify(errorBody)}`);
-  return { success: false, error: errorMessage || "Bad request" };
+  return { success: false, error: errorMessage || "Bad request", clientError: true };
 }
 
 async function handleNonOkStatus(response: Response): Promise<RequestResult> {
@@ -611,11 +611,10 @@ export async function proxyRequest(endpoint: string, body: AnthropicRequest): Pr
     return result.response;
   }
 
-  // Claude Code failed - return the error directly
-  const isClientError =
-    result.error.includes("too long") ||
-    result.error.includes("invalid") ||
-    result.error.includes("Bad request");
+  // Claude Code failed - return the error directly. `clientError` is set
+  // explicitly on the failure path; we no longer string-match the error
+  // message to decide between 400 and 502.
+  const isClientError = result.clientError === true;
 
   recordRequest({
     model,
@@ -634,7 +633,7 @@ export async function proxyRequest(endpoint: string, body: AnthropicRequest): Pr
     },
   };
 
-  logger.debug(`   [Debug] Error response: ${JSON.stringify(errorBody)}`);
+  logger.debug(`[ClaudeCode] Error response: ${JSON.stringify(errorBody)}`);
 
   return new Response(JSON.stringify(errorBody), {
     status: isClientError ? 400 : 502,

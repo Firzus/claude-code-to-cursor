@@ -100,6 +100,12 @@ function ArcBlock({
   );
 }
 
+const SOURCE_PILL = {
+  anthropic: { tone: "border-success/40 text-success", label: "Live · from Anthropic" },
+  estimated: { tone: "border-warning/40 text-warning", label: "Estimated · local count" },
+  none: { tone: "border-border text-muted-foreground", label: "Awaiting first request" },
+} as const;
+
 function SourcePill({
   source,
   capturedAt,
@@ -107,12 +113,7 @@ function SourcePill({
   source: PlanUsage["source"];
   capturedAt: number | null;
 }) {
-  const map = {
-    anthropic: { tone: "border-success/40 text-success", label: "Live · from Anthropic" },
-    estimated: { tone: "border-warning/40 text-warning", label: "Estimated · local count" },
-    none: { tone: "border-border text-muted-foreground", label: "Awaiting first request" },
-  } as const;
-  const cfg = map[source];
+  const cfg = SOURCE_PILL[source];
   return (
     <span
       className={cn(

@@ -2,8 +2,10 @@
 
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/cn";
+import { COPY_FEEDBACK_MS } from "~/lib/intervals";
 
 interface SnippetCardProps {
   title: string;
@@ -26,9 +28,9 @@ export function SnippetCard({
     try {
       await navigator.clipboard.writeText(snippet);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1_400);
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
     } catch {
-      /* ignore */
+      toast.error("Couldn't copy to clipboard");
     }
   }
 

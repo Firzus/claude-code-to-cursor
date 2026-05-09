@@ -1,4 +1,6 @@
-## Multi-stage build for Next.js 16 standalone output.
+## Multi-stage build for the Next.js 16 app, used only in detached prod mode
+## (`pnpm start` → `docker compose --profile prod up -d --build`). Dev mode
+## runs `next dev` on the host and never touches this image.
 
 # 1. Dependencies
 FROM node:22-alpine AS deps

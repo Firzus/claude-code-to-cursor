@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import { ensureGsapPlugins, gsap } from "~/lib/motion";
+import { ensureGsapPlugins, gsap, withReducedMotion } from "~/lib/motion";
 import { startOAuthAction, submitOAuthCodeAction } from "~/lib/server-actions";
 
 interface FormValues {
@@ -38,26 +38,18 @@ export function ConnectFlow({ initiallyConnected, expiresAt }: ConnectFlowProps)
       ensureGsapPlugins();
       const node = formRef.current;
       if (!node) return;
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMotion: "(prefers-reduced-motion: no-preference)",
-        },
-        (ctx) => {
-          const { isMotion } = ctx.conditions as { isMotion: boolean };
-          if (!isMotion) return;
-          gsap.fromTo(
-            node,
-            { x: 0 },
-            {
-              keyframes: [{ x: -6 }, { x: 6 }, { x: -4 }, { x: 4 }, { x: 0 }],
-              duration: 0.34,
-              ease: "power2.inOut",
-            },
-          );
-        },
-      );
-      return () => mm.revert();
+      return withReducedMotion((isMotion) => {
+        if (!isMotion) return;
+        gsap.fromTo(
+          node,
+          { x: 0 },
+          {
+            keyframes: [{ x: -6 }, { x: 6 }, { x: -4 }, { x: 4 }, { x: 0 }],
+            duration: 0.34,
+            ease: "power2.inOut",
+          },
+        );
+      });
     },
     { dependencies: [errorTick] },
   );

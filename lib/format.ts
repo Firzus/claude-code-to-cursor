@@ -6,6 +6,47 @@ export function formatCompactTokens(n: number): string {
   return `${(n / 1_000_000_000).toFixed(1)}b`;
 }
 
+/**
+ * Split a number into `value` + `suffix` so animated number tickers can
+ * spin the value while the suffix stays static. Used by the overview and
+ * usage cards.
+ */
+export function compactNumber(n: number): { value: number; suffix: string; decimals: number } {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return { value: n / 1_000_000, suffix: "M", decimals: 1 };
+  if (abs >= 1_000) return { value: n / 1_000, suffix: "k", decimals: 1 };
+  return { value: n, suffix: "", decimals: 0 };
+}
+
+/** Drop the protocol prefix (`https://example.com` → `example.com`). */
+export function stripProtocol(url: string): string {
+  return url.replace(/^https?:\/\//, "");
+}
+
+/**
+ * Best-effort hostname extraction. Falls back to `stripProtocol` when the
+ * input isn't a valid URL (e.g. partial tunnel URL during setup).
+ */
+export function hostnameOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return stripProtocol(url);
+  }
+}
+
+/**
+ * Tick formatter for the analytics timeline X axis. Short windows (5 hours,
+ * 1 day) get a `HH:mm` time; longer windows get a `MMM dd` date.
+ */
+export function formatTimelineTick(period: string, ts: number): string {
+  const d = new Date(ts);
+  if (period === "5hour" || period === "day") {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 export function formatUsd(n: number): string {
   if (!Number.isFinite(n)) return "—";
   if (n < 0.005) return "$0.00";

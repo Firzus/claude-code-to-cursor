@@ -1,8 +1,6 @@
 import "server-only";
 
-import type { FunctionReference } from "convex/server";
-
-import { internal } from "../../convex/_generated/api";
+import { api } from "../../convex/_generated/api";
 import {
   ANTHROPIC_AUTHORIZE_URL,
   ANTHROPIC_TOKEN_URL,
@@ -14,33 +12,6 @@ import { convex } from "./convex";
 import { toErrorMessage } from "./error-utils";
 import { logger } from "./logger";
 import type { CctcAuth, TokenInfo, TokenRefreshResponse } from "./types";
-
-/** ConvexHttpClient typings only accept public mutation/query refs; OAuth uses internal functions. */
-function asPublicMutation(
-  ref: FunctionReference<"mutation", "internal">,
-): FunctionReference<"mutation"> {
-  return ref as unknown as FunctionReference<"mutation">;
-}
-
-function asPublicQuery(ref: FunctionReference<"query", "internal">): FunctionReference<"query"> {
-  return ref as unknown as FunctionReference<"query">;
-}
-
-/**
- * Bridges generated `internal` when FilterApi resolves loosely under strict TS.
- * Function references match runtime (`api.js` exports `internal` as `anyApi`).
- */
-const convexInternal = internal as unknown as {
-  oauthTokens: {
-    save: FunctionReference<"mutation", "internal">;
-    get: FunctionReference<"query", "internal">;
-    getStatus: FunctionReference<"query", "internal">;
-  };
-  pkceState: {
-    create: FunctionReference<"mutation", "internal">;
-    consume: FunctionReference<"mutation", "internal">;
-  };
-};
 
 let cachedToken: TokenInfo | null = null;
 
@@ -145,7 +116,7 @@ export async function exchangeCode(
 // ---------------------------------------------------------------------------
 
 async function saveCredentials(auth: CctcAuth): Promise<void> {
-  await convex.mutation(asPublicMutation(convexInternal.oauthTokens.save), {
+  await convex.mutation(api.oauthTokens.save, {
     accessToken: auth.accessToken,
     refreshToken: auth.refreshToken,
     expiresAt: auth.expiresAt,
@@ -156,19 +127,19 @@ async function saveCredentials(auth: CctcAuth): Promise<void> {
 
 async function loadCredentials(): Promise<CctcAuth | null> {
   try {
-    const stored = await convex.query(asPublicQuery(convexInternal.oauthTokens.get), {});
-    return stored;
+    return await convex.query(api.oauthTokens.get, {});
   } catch (error) {
-    logger.verbose(`[oauth] failed to load credentials: ${toErrorMessage(error)}`);
+    logger.error(`[oauth] failed to load credentials: ${toErrorMessage(error)}`);
     return null;
   }
 }
 
 export async function hasCredentials(): Promise<boolean> {
   try {
-    const status = await convex.query(asPublicQuery(convexInternal.oauthTokens.getStatus), {});
+    const status = await convex.query(api.oauthTokens.getStatus, {});
     return status.authenticated;
-  } catch {
+  } catch (error) {
+    logger.warn(`[oauth] hasCredentials check failed: ${toErrorMessage(error)}`);
     return false;
   }
 }
@@ -262,24 +233,6 @@ export async function getValidToken(): Promise<TokenInfo | null> {
 
 export function clearCachedToken(): void {
   cachedToken = null;
-}
-
-// ---------------------------------------------------------------------------
-// PKCE state (Convex-backed)
-// ---------------------------------------------------------------------------
-
-export async function storePkceState(state: string, codeVerifier: string): Promise<void> {
-  await convex.mutation(asPublicMutation(convexInternal.pkceState.create), {
-    state,
-    codeVerifier,
-  });
-}
-
-export async function consumePkceState(state: string): Promise<string | null> {
-  const result = await convex.mutation(asPublicMutation(convexInternal.pkceState.consume), {
-    state,
-  });
-  return result?.codeVerifier ?? null;
 }
 
 // ---------------------------------------------------------------------------

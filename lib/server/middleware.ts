@@ -52,6 +52,17 @@ export function checkIPWhitelist(req: Request): {
   };
 }
 
+// Static portion of every CORS response. Built once at module load so per-
+// request work is just the single dynamic `Access-Control-Allow-Origin` header.
+const STATIC_CORS_HEADERS: Record<string, string> = {
+  Vary: "Origin",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-settings-key",
+  "Access-Control-Allow-Credentials": "true",
+  "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+};
+
 /**
  * Create CORS headers for responses.
  *
@@ -67,11 +78,6 @@ export function corsHeaders(req?: Request): Record<string, string> {
 
   return {
     "Access-Control-Allow-Origin": origin,
-    Vary: "Origin",
-    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta, x-settings-key",
-    "Access-Control-Allow-Credentials": "true",
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    ...STATIC_CORS_HEADERS,
   };
 }

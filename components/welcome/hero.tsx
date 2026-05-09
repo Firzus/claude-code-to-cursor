@@ -2,7 +2,7 @@
 
 import { useGSAP } from "@gsap/react";
 import { useRef } from "react";
-import { ensureGsapPlugins, gsap, SplitText } from "~/lib/motion";
+import { ensureGsapPlugins, gsap, SplitText, withReducedMotion } from "~/lib/motion";
 
 interface HeroProps {
   eyebrow: string;
@@ -18,9 +18,7 @@ export function WelcomeHero({ eyebrow, title, description }: HeroProps) {
       ensureGsapPlugins();
       const titleEl = containerRef.current?.querySelector<HTMLElement>("[data-split]");
       if (!titleEl) return;
-      const mm = gsap.matchMedia();
-      mm.add({ isMotion: "(prefers-reduced-motion: no-preference)" }, (ctx) => {
-        const { isMotion } = ctx.conditions as { isMotion: boolean };
+      return withReducedMotion((isMotion) => {
         if (!isMotion) {
           gsap.set(titleEl, { autoAlpha: 1 });
           return;
@@ -36,7 +34,6 @@ export function WelcomeHero({ eyebrow, title, description }: HeroProps) {
         });
         return () => split.revert();
       });
-      return () => mm.revert();
     },
     { scope: containerRef, dependencies: [title] },
   );

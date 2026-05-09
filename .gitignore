@@ -22,9 +22,7 @@ next-env.d.ts
 /playwright/.cache
 
 # env (secrets)
-.env
-.env.*.local
-.env.local
+.env*
 !.env.example
 
 # logs

@@ -11,9 +11,9 @@ export function buildSnippets(baseUrl: string): SnippetSource {
     cursor: `# Cursor → Settings → Models → Add custom OpenAI provider
 Base URL : ${trimmed}/v1
 API key  : <any non-empty string — proxy enforces auth via OAuth + IP allow-list>
-Model    : Claude
+Model    : claude
 
-# In a Cursor chat, pick "Claude" — your prompts will be routed
+# In a Cursor chat, pick "claude" — your prompts will be routed
 # through Claude Code's OAuth credentials.`,
     vscode: `// .vscode/settings.json
 {
@@ -21,7 +21,7 @@ Model    : Claude
     {
       "title": "Claude (via cctc)",
       "provider": "openai",
-      "model": "Claude",
+      "model": "claude",
       "apiBase": "${trimmed}/v1",
       "apiKey": "ignored"
     }
@@ -30,7 +30,7 @@ Model    : Claude
     cli: `# OpenAI-compatible CLI tools (e.g. aider, llm)
 export OPENAI_API_BASE="${trimmed}/v1"
 export OPENAI_API_KEY="ignored"
-aider --model Claude
+aider --model claude
 
 # Anthropic-native clients can target /v1/messages too:
 export ANTHROPIC_BASE_URL="${trimmed}"
@@ -43,7 +43,7 @@ const openai = new OpenAI({
 });
 
 const stream = await openai.chat.completions.create({
-  model: "Claude",
+  model: "claude",
   stream: true,
   messages: [{ role: "user", content: "Hello, Claude" }],
 });

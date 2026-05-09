@@ -3,7 +3,7 @@
 import { useGSAP } from "@gsap/react";
 import { type ReactNode, useRef } from "react";
 import { cn } from "~/lib/cn";
-import { ensureGsapPlugins, gsap } from "~/lib/motion";
+import { ensureGsapPlugins, gsap, withReducedMotion } from "~/lib/motion";
 
 interface RevealProps {
   children: ReactNode;
@@ -33,22 +33,13 @@ export function Reveal({
       ensureGsapPlugins();
       const node = containerRef.current;
       if (!node) return;
-      const mm = gsap.matchMedia();
-      mm.add(
-        {
-          isMotion: "(prefers-reduced-motion: no-preference)",
-          isReduced: "(prefers-reduced-motion: reduce)",
-        },
-        (ctx) => {
-          const { isMotion } = ctx.conditions as { isMotion: boolean; isReduced: boolean };
-          gsap.fromTo(
-            node,
-            { autoAlpha: 0, y: isMotion ? y : 0 },
-            { autoAlpha: 1, y: 0, duration: isMotion ? duration : 0, delay, ease: "power2.out" },
-          );
-        },
-      );
-      return () => mm.revert();
+      return withReducedMotion((isMotion) => {
+        gsap.fromTo(
+          node,
+          { autoAlpha: 0, y: isMotion ? y : 0 },
+          { autoAlpha: 1, y: 0, duration: isMotion ? duration : 0, delay, ease: "power2.out" },
+        );
+      });
     },
     { scope: containerRef, dependencies: [delay, y, duration] },
   );

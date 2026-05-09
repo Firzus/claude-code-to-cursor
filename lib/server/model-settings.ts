@@ -23,7 +23,7 @@ export interface ModelSettings {
  * This is only the client-facing model label. The proxy ignores the
  * value after validation and routes to the dashboard's selectedModel.
  */
-export const PUBLIC_MODEL_ID = "Claude" as const;
+export const PUBLIC_MODEL_ID = "claude" as const;
 
 export const DEFAULT_MODEL_SETTINGS = {
   selectedModel: "claude-opus-4-7",

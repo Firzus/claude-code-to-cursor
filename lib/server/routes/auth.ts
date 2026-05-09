@@ -55,11 +55,6 @@ export function stopPkceCleanup(): void {
   }
 }
 
-/** @internal for tests */
-export function __getPkceStoreSize(): number {
-  return pkceStore.size;
-}
-
 export async function handleLoginAPI(): Promise<Response> {
   cleanPkceStore();
   const { codeVerifier, codeChallenge } = await generatePKCE();

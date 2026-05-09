@@ -11,7 +11,7 @@ dist
 .gitignore
 .gitattributes
 
-# env (secrets) — but keep .env.example as a template
+# env (secrets)
 .env
 .env.local
 .env.*.local

@@ -1,206 +1,244 @@
-# Claude Code to Cursor
+# claude-code-to-cursor
 
-[![CI](https://img.shields.io/github/actions/workflow/status/your-org/claude-code-to-cursor/ci.yml?style=flat-square&label=CI)](https://github.com/your-org/claude-code-to-cursor/actions)
-![Bun](https://img.shields.io/badge/Bun-1.x-f9f1e1?style=flat-square&logo=bun)
-![Next.js](https://img.shields.io/badge/Next.js-16-000?style=flat-square&logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)
+A self-hosted Next.js 16 proxy that routes Cursor IDE traffic through your
+Claude Code OAuth session. Exposes both Anthropic (`/v1/messages`) and
+OpenAI-compatible (`/v1/chat/completions`) endpoints, plus a dashboard for
+analytics, auth, and plan-usage. Persistence is self-hosted Convex; public
+ingress is a Cloudflare tunnel.
 
-A self-hosted proxy that routes Cursor IDE traffic through **Claude Code's OAuth session**, exposing both Anthropic (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) endpoints. Ships with a Next.js dashboard for analytics, auth, settings, and plan-usage monitoring.
+This is a personal tool meant to run on your own laptop. There is no
+production deployment, no SaaS, no other consumers. The Cloudflare tunnel
+exists so Cursor's backend (which runs on AWS) can reach the proxy on
+your machine.
 
-[Features](#features) · [Architecture](#architecture) · [Getting Started](#getting-started) · [Configuration](#configuration) · [API Endpoints](#api-endpoints) · [Dashboard](#dashboard) · [Docker Deployment](#docker-deployment) · [Tech Stack](#tech-stack)
-
-## Features
-
-- **Dual API compatibility** — serves both Anthropic Messages API and OpenAI Chat Completions API from a single proxy
-- **Claude Code OAuth** — authenticates via Claude Code's PKCE OAuth flow; the dashboard handles login and token refresh
-- **Analytics dashboard** — real-time overview of requests, errors, timelines, plan usage, and budget tracking
-- **Model routing** — configurable model selection and thinking-effort levels per request
-- **IP whitelisting** — restrict API access to known Cursor backend IPs or your own allow-list
-- **Rate limiting** — built-in rate-limit tracking with auto-backoff and cache cleanup
-- **Cloudflare tunnel** — production ingress through a Cloudflare tunnel for secure, public-facing access
-- **SQLite persistence** — lightweight storage for request logs, settings, and analytics via `bun:sqlite`
-- **Event-loop monitoring** — detects and reports event-loop lag to keep streaming responsive
-- **Docker-ready** — full `docker compose` stack with API, frontend, and Cloudflare tunnel containers
+---
 
 ## Architecture
 
 ```
-┌─────────────┐      ┌──────────────────┐      ┌───────────────────┐
-│  Cursor IDE  │─────▶│  Cloudflare      │─────▶│  cctc-api (Bun)   │
-│  (client)    │      │  Tunnel          │      │  :8082            │
-└─────────────┘      └──────────────────┘      └────────┬──────────┘
-                                                        │
-                                          ┌─────────────┼─────────────┐
-                                          ▼             ▼             ▼
-                                   ┌──────────┐  ┌──────────┐  ┌──────────┐
-                                   │ Anthropic │  │  SQLite  │  │ Frontend │
-                                   │ API       │  │  (cctc   │  │ Next.js  │
-                                   │           │  │   .db)   │  │ :3111    │
-                                   └──────────┘  └──────────┘  └──────────┘
+Cursor (Cursor's AWS backend)
+       │
+       ▼
+https://your-tunnel.example.com   ← Cloudflare tunnel (cloudflared)
+       │
+       ▼
+http://host.docker.internal:3111  ← reaches the host
+       │
+       ▼
+pnpm run dev (Next.js, port 3111) ← the app, where you edit code
+       │
+       ▼
+http://127.0.0.1:3210             ← self-hosted Convex (docker)
 ```
 
-The **API server** (`index.ts`) is a flat routing table built on `Bun.serve`. It proxies requests to the Anthropic API using an OAuth token, rewrites model names for the client, and records every request in SQLite. The **frontend** is a Next.js 16 App Router application that reads from the same API to display dashboards.
+Three things run in Docker (Convex backend, Convex admin UI, cloudflared
+tunnel). The Next.js app runs on the host with hot reload.
 
-## Getting Started
+---
 
-### Prerequisites
+## Setup (first time)
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| [Bun](https://bun.sh) | 1.x | Backend runtime |
-| [Node.js](https://nodejs.org) | 22+ | Frontend runtime |
-| [pnpm](https://pnpm.io) | 10+ | Frontend package manager |
+### 1. Prerequisites
 
-### Local development
+- Docker Desktop (or Docker Engine + Compose)
+- Node 22 + pnpm 10 (`corepack enable && corepack prepare pnpm@10 --activate`)
+- A Cloudflare account with a tunnel set up — copy the tunnel token
 
-1. **Clone and install**
+### 2. Clone & install
 
 ```bash
-git clone https://github.com/your-org/claude-code-to-cursor.git
+git clone <your-repo>
 cd claude-code-to-cursor
-bun install
-cd frontend && pnpm install && cd ..
+pnpm install
 ```
 
-2. **Configure environment**
+### 3. Environment
+
+Create `.env` from the template:
 
 ```bash
 cp .env.example .env
-# Edit .env — see Configuration section below
 ```
 
-3. **Start the API**
+Fill in:
+
+- `CLOUDFLARE_TUNNEL_TOKEN` — from Cloudflare Zero Trust
+- `CONVEX_INSTANCE_SECRET` — generate once and never lose it:
+
+  ```bash
+  openssl rand -hex 32
+  ```
+
+`CONVEX_SELF_HOSTED_URL` defaults to `http://127.0.0.1:3210` — leave it.
+
+### 4. Bring up Convex and generate the admin key
 
 ```bash
-bun run dev
+docker compose up -d convex convex-dashboard
+docker compose exec convex ./generate_admin_key.sh
 ```
 
-The proxy starts on `http://localhost:8082`. A `/health` endpoint confirms it's running.
+Copy the printed key to `.env`:
 
-4. **Start the dashboard** (in a separate terminal)
+```
+CONVEX_SELF_HOSTED_ADMIN_KEY=cctc|...
+```
+
+Also create `.env.local` with the same two Convex vars (Next.js reads
+`.env.local` for client-bundled values):
+
+```
+CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+CONVEX_SELF_HOSTED_ADMIN_KEY=cctc|...
+NEXT_PUBLIC_CONVEX_URL=http://127.0.0.1:3210
+```
+
+### 5. Push the Convex schema and functions
 
 ```bash
-cd frontend && pnpm run dev
+pnpm run convex:deploy
 ```
 
-The dashboard opens at `http://localhost:3111`. On first visit, it redirects to the welcome/auth page if no OAuth session exists.
+### 6. Configure the Cloudflare tunnel (one-time)
 
-> [!IMPORTANT]
-> A **Cloudflare tunnel** is required for Cursor to reach the proxy in production. For local development, you can point Cursor directly at `http://localhost:8082`.
+Cloudflare Zero Trust → Networks → Tunnels → your tunnel → Public Hostnames.
+Add or edit your hostname:
 
-### Authenticate
+- **Service**: `http://host.docker.internal:3111`
 
-Open the dashboard, navigate to the **Auth** page, and complete the Claude Code OAuth login. The proxy stores tokens in `~/.cctc/auth.json` (or `CCTC_AUTH_DIR` in Docker).
+Save. Never touched again.
 
-## Configuration
-
-All settings are read from environment variables. Copy `.env.example` as a starting point:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8082` | API server port |
-| `ALLOWED_IPS` | Cursor backend IPs | Comma-separated IP whitelist. Set to `disabled` to allow all |
-| `CCTC_AUTH_DIR` | `~/.cctc` | OAuth token storage directory |
-| `CCTC_DB_PATH` | `./cctc.db` | SQLite database path |
-| `LOG_LEVEL` | `INFO` | `VERBOSE`, `DEBUG`, `INFO`, `WARN`, `ERROR` |
-| `LOG_DIR` | `.` | Log files directory |
-| `LOG_MAX_SIZE_MB` | `10` | Max log file size before rotation |
-| `LOG_MAX_FILES` | `3` | Number of rotated log files to keep |
-| `LOG_CONSOLE` | `true` | Also write logs to stdout |
-| `SETTINGS_API_KEY` | _(empty)_ | Shared secret for settings API access from frontend |
-| `FRONTEND_PORT` | `3111` | Dashboard port |
-| `CLOUDFLARE_TUNNEL_TOKEN` | _(required in prod)_ | Cloudflare tunnel token |
-| `CLOUDFLARE_TUNNEL_URL` | — | Public tunnel URL shown in the setup wizard |
-| `CCTC_MAX_UPSTREAM_CONCURRENCY` | `3` | Max concurrent requests to Anthropic API |
-
-## API Endpoints
-
-### Proxy routes
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/messages` | Anthropic Messages API proxy |
-| `POST` | `/v1/chat/completions` | OpenAI-compatible Chat Completions proxy |
-| `GET` | `/v1/models` | List available models |
-
-### Internal routes
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Health check (DB, OAuth, rate-limit status) |
-| `GET` | `/analytics` | Summary analytics |
-| `GET` | `/analytics/requests` | Request log with pagination |
-| `GET` | `/analytics/errors` | Error log |
-| `GET` | `/analytics/timeline` | Time-series data |
-| `DELETE` | `/analytics/reset` | Reset analytics data |
-| `GET/PUT` | `/api/settings` | Proxy settings (model, thinking effort) |
-| `GET/PUT` | `/api/budget` | Budget tracking |
-| `GET` | `/api/plan-usage` | Claude plan usage snapshot |
-| `POST` | `/api/auth/login` | Start OAuth PKCE flow |
-| `GET` | `/api/auth/callback` | OAuth callback handler |
-| `GET` | `/api/auth/status` | Auth status check |
-
-## Dashboard
-
-The Next.js frontend provides four main pages:
-
-| Page | Path | Description |
-|------|------|-------------|
-| **Overview** | `/` | Health status, plan usage, today's stats, recent requests |
-| **Usage** | `/usage` | Detailed analytics with timeline charts and error breakdown |
-| **Integrations** | `/integrations` | Cursor configuration guide and connection setup |
-| **Preferences** | `/preferences` | Model selection, thinking effort, and budget settings |
-
-On first launch, the app redirects to `/welcome` for the OAuth setup flow.
-
-## Docker Deployment
-
-The `docker-compose.yml` defines three services:
-
-| Service | Image | Port |
-|---------|-------|------|
-| `api` | `oven/bun:1` | `8082` |
-| `frontend` | `node:22-alpine` | `3111` |
-| `cloudflared` | `cloudflare/cloudflared` | — |
+### 7. Start everything
 
 ```bash
-# Build all images
-docker compose build
-
-# Start the stack
-docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Stop
-docker compose down
+pnpm dev
 ```
 
-> [!NOTE]
-> You **must** set `CLOUDFLARE_TUNNEL_TOKEN` in your `.env` before starting the Docker stack. The tunnel is mandatory for production use.
+That single script runs `docker compose up -d` (Convex + tunnel) then
+`next dev -p 3111` (the app with hot reload).
 
-Data is persisted in a named Docker volume (`cctc-data`) mounted at `/data` in the API container, holding the SQLite database, logs, and OAuth tokens.
+### 8. Authenticate with Claude
 
-## Tech Stack
+Open <http://localhost:3111/integrations> and log in via the OAuth flow.
+Tokens land in the Convex `oauthTokens` table.
 
-**Backend**
-- [Bun](https://bun.sh) — runtime, HTTP server, SQLite driver
-- TypeScript (strict mode)
-- [Biome](https://biomejs.dev) — linter and formatter
+### 9. Configure Cursor
 
-**Frontend**
-- [Next.js 16](https://nextjs.org) — App Router, React Server Components
-- [React 19](https://react.dev)
-- [Tailwind CSS v4](https://tailwindcss.com)
-- [Radix UI](https://www.radix-ui.com) + shadcn/ui components
-- [SWR](https://swr.vercel.app) — data fetching
-- [Recharts](https://recharts.org) — analytics charts
-- [GSAP](https://gsap.com) — animations
-- [Zod](https://zod.dev) — schema validation
+Cursor → Settings → Models → Add custom OpenAI provider:
 
-**Infrastructure**
-- [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) — secure ingress
-- [Docker Compose](https://docs.docker.com/compose/) — container orchestration
-- [GitHub Actions](https://github.com/features/actions) — CI pipeline
+- **Base URL**: `https://your-tunnel.example.com/v1` (your Cloudflare hostname)
+- **API key**: any non-empty string (auth happens via OAuth + IP whitelist)
+- **Model**: `claude` (lowercase, case-sensitive)
+
+In a Cursor chat, pick `claude`. Your prompts route through the tunnel to
+your local proxy and back.
+
+---
+
+## Daily workflow
+
+```bash
+pnpm dev    # docker stack + dev server
+# ... code, save, browser auto-reloads, Cursor requests hit live code
+```
+
+When you're done:
+
+```bash
+# stop the dev server (Ctrl-C in its terminal)
+pnpm down
+```
+
+Useful URLs while running:
+
+| URL | What |
+|---|---|
+| http://localhost:3111 | The app (dashboard + API) |
+| http://localhost:6791 | Convex admin UI (browse data) |
+| https://your-tunnel.example.com | Same app, reached over the tunnel |
+
+---
+
+## Running in production mode (detached)
+
+If you don't plan to edit code (e.g. you cloned the repo on a different
+machine, or you want a process that keeps running without a terminal
+window open), skip `pnpm dev` and do this once after setup steps 1–6:
+
+```bash
+pnpm start       # docker compose --profile prod up -d --build
+```
+
+That builds the production image and brings up the full stack — Convex,
+tunnel, AND a containerized Next.js app — all detached. You can close
+the terminal and the app keeps running. Docker auto-restarts it on crash
+or reboot.
+
+```bash
+pnpm logs        # follow the app's logs (Ctrl-C to detach)
+pnpm down        # stop everything
+```
+
+When you pull new code:
+
+```bash
+pnpm start       # rebuilds the image and re-launches (--build flag)
+```
+
+### Dev vs prod cheat sheet
+
+| | `pnpm dev` | `pnpm start` |
+|---|---|---|
+| Where the app runs | Foreground on the host | Detached docker container |
+| Need terminal open | Yes (Ctrl-C kills it) | No |
+| Hot reload | Yes (Turbopack) | No |
+| Auto-restart on crash | No | Yes (Docker) |
+| Survives reboot | No | Yes (`restart: unless-stopped`) |
+| Iteration speed | Instant | ~15s rebuild per change |
+
+Both modes use the same Cloudflare tunnel target
+(`host.docker.internal:3111`), so Cursor BYOK works identically.
+
+---
+
+## Troubleshooting
+
+**`Provider Error -- We're having trouble finding the resource you requested`** in Cursor
+- Cursor is hitting `/v1/...` but the path no longer exists. The app
+  rewrites `/v1/* → /api/v1/*` internally, so the legacy URL still works.
+  If you see this, double-check the Cloudflare service is set to
+  `http://host.docker.internal:3111` and that `pnpm run dev` is running.
+
+**`User API Key Rate limit exceeded`** in Cursor
+- Not a real rate limit. It's a generic Cursor client-side mapping for any
+  `ConnectError [invalid_argument]` returned by their AI transport. The
+  request often never even reaches the proxy. Known Cursor bug, tracked on
+  their forum (search "User API Key Rate limit").
+
+**Tunnel returns 502**
+- The tunnel target (`host.docker.internal:3111`) is unreachable. Either
+  `pnpm run dev` isn't running, or it's running on a different port.
+
+**Convex CLI complains about missing admin key**
+- Make sure `CONVEX_SELF_HOSTED_URL` and `CONVEX_SELF_HOSTED_ADMIN_KEY`
+  are set in `.env.local` (the file the Next.js dev server reads).
+
+---
+
+## Repository layout
+
+```
+app/                      Next.js App Router (UI + API Route Handlers)
+  api/                    /api/v1/* (Cursor-facing) + /api/* (dashboard)
+components/               UI (radix + shadcn)
+convex/                   Convex schema + queries/mutations
+hooks/                    React hooks
+lib/                      Shared utilities + lib/server/ (server-only)
+public/                   Static assets
+scripts/                  Standalone scripts (e2e smoke tests, tooling)
+
+docker-compose.yml        3 services: convex, convex-dashboard, cloudflared
+next.config.ts            includes the /v1/* → /api/v1/* rewrite
+.env / .env.example       runtime config
+AGENTS.md                 contributor guide for AI agents
+```

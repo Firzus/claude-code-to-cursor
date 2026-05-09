@@ -37,7 +37,9 @@ export function AdvancedPanel() {
           confirmHelp="The next request will probe upstream and re-hydrate the cache."
           action={async () => {
             const res = await resetRateLimitAction();
-            return res.ok ? "Rate-limit cache cleared" : `Failed: ${res.error}`;
+            return res.ok
+              ? { ok: true, message: "Rate-limit cache cleared" }
+              : { ok: false, message: res.error };
           }}
         />
         <ResetCard
@@ -48,7 +50,9 @@ export function AdvancedPanel() {
           confirmHelp="This can't be undone. Estimates and budget cards will reset to zero."
           action={async () => {
             const res = await resetAnalyticsAction();
-            return res.ok ? `Cleared ${res.data} requests` : `Failed: ${res.error}`;
+            return res.ok
+              ? { ok: true, message: `Cleared ${res.data} requests` }
+              : { ok: false, message: res.error };
           }}
           danger
         />
@@ -71,7 +75,7 @@ function ResetCard({
   description: string;
   confirm: string;
   confirmHelp: string;
-  action: () => Promise<string>;
+  action: () => Promise<{ ok: boolean; message: string }>;
   danger?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -105,9 +109,9 @@ function ResetCard({
           <AlertDialogAction
             onClick={() =>
               startTransition(async () => {
-                const message = await action();
-                if (message.startsWith("Failed")) toast.error(message);
-                else toast.success(message);
+                const result = await action();
+                if (result.ok) toast.success(result.message);
+                else toast.error(`Failed: ${result.message}`);
                 setOpen(false);
               })
             }

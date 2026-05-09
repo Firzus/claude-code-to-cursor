@@ -11,10 +11,10 @@ import {
   postSettings,
 } from "./api";
 import { type ModelSettings, modelSettingsSchema } from "./schemas";
+import { getForwardedFor } from "./server/forwarded-for";
 
-async function getForwardedFor(): Promise<string | undefined> {
-  const incoming = await headers();
-  return incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
+async function forwardedFor(): Promise<string | undefined> {
+  return getForwardedFor(await headers());
 }
 
 export type ActionResult<T = void> = { ok: true; data: T } | { ok: false; error: string };
@@ -29,7 +29,7 @@ export async function savePreferencesAction(raw: unknown): Promise<ActionResult<
     return { ok: false, error: "Invalid settings payload." };
   }
   try {
-    const ip = await getForwardedFor();
+    const ip = await forwardedFor();
     const settings = await postSettings(parsed.data, ip);
     revalidatePath("/preferences");
     revalidatePath("/");
@@ -47,7 +47,7 @@ export async function startOAuthAction(): Promise<
   ActionResult<{ authURL: string; state: string }>
 > {
   try {
-    const ip = await getForwardedFor();
+    const ip = await forwardedFor();
     const data = await postAuthLogin(ip);
     return { ok: true, data };
   } catch (err) {
@@ -68,7 +68,7 @@ export async function submitOAuthCodeAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid payload." };
   }
   try {
-    const ip = await getForwardedFor();
+    const ip = await forwardedFor();
     const data = await postAuthCallback(parsed.data, ip);
     if (!data.success) {
       return { ok: false, error: data.message ?? "OAuth callback failed." };
@@ -89,7 +89,7 @@ export async function submitOAuthCodeAction(
 
 export async function resetAnalyticsAction(): Promise<ActionResult<number>> {
   try {
-    const ip = await getForwardedFor();
+    const ip = await forwardedFor();
     const deletedCount = await postAnalyticsReset(ip);
     revalidatePath("/usage");
     revalidatePath("/");
@@ -101,7 +101,7 @@ export async function resetAnalyticsAction(): Promise<ActionResult<number>> {
 
 export async function resetRateLimitAction(): Promise<ActionResult> {
   try {
-    const ip = await getForwardedFor();
+    const ip = await forwardedFor();
     await postRateLimitReset(ip);
     revalidatePath("/preferences");
     return { ok: true, data: undefined };

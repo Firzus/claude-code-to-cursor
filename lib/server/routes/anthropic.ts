@@ -1,6 +1,11 @@
 import { proxyRequest } from "../anthropic-client";
-import { getModelSettings, recordRequest } from "../db";
-import { createAnthropicErrorSSE, parseResponseError, toErrorMessage } from "../error-utils";
+import { getModelSettings, recordUsage } from "../db";
+import {
+  buildAnthropicError,
+  createAnthropicErrorSSE,
+  parseResponseError,
+  toErrorMessage,
+} from "../error-utils";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import {
@@ -13,6 +18,7 @@ import { computeRequestShape } from "../request-metrics";
 import { normalizeAnthropicRequestModel, TOOL_PREFIX } from "../request-normalization";
 import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import type { AnthropicError, AnthropicRequest, AnthropicResponse } from "../types";
+import { type AnthropicUsageSnapshot, extractAnthropicUsage } from "../usage";
 
 const MCP_TOOL_NAME_JSON_REGEX = new RegExp(`"name"\\s*:\\s*"${TOOL_PREFIX}([^"]+)"`, "g");
 
@@ -33,7 +39,8 @@ function rewriteAnthropicJsonResponseModel(bodyText: string, clientModel: string
         model: clientModel,
       } satisfies AnthropicResponse),
     );
-  } catch {
+  } catch (err) {
+    logger.verbose(`[Anthropic] JSON response not parseable, passing through: ${toErrorMessage(err)}`);
     return bodyText;
   }
 }
@@ -64,7 +71,8 @@ function rewriteAnthropicSseLine(line: string, clientModel: string): string {
         model: clientModel,
       },
     })}`;
-  } catch {
+  } catch (err) {
+    logger.verbose(`[Anthropic] SSE line not parseable, passing through: ${toErrorMessage(err)}`);
     return line;
   }
 }
@@ -89,6 +97,7 @@ function rewriteAnthropicSseResponseModel(
   let cacheReadTokens = 0;
   let cacheCreationTokens = 0;
   let thinkingCharsAccum = 0;
+  let parseFailures = 0;
 
   return new ReadableStream<Uint8Array>({
     // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: single-pass SSE rewriter with usage extraction — splitting would duplicate stream plumbing.
@@ -140,7 +149,7 @@ function rewriteAnthropicSseResponseModel(
                   }
                 }
               } catch {
-                // ignore parse errors
+                parseFailures++;
               }
             }
 
@@ -154,6 +163,12 @@ function rewriteAnthropicSseResponseModel(
         buffer += decoder.decode();
         if (buffer.length > 0) {
           controller.enqueue(encoder.encode(rewriteAnthropicSseLine(buffer, clientModel)));
+        }
+
+        if (parseFailures > 0) {
+          logger.verbose(
+            `[Anthropic] SSE rewriter: ${parseFailures} unparseable event(s) skipped`,
+          );
         }
 
         onComplete?.({
@@ -170,8 +185,8 @@ function rewriteAnthropicSseResponseModel(
         try {
           controller.enqueue(encoder.encode(createAnthropicErrorSSE("api_error", errMsg)));
           controller.close();
-        } catch {
-          // Controller already closed or errored
+        } catch (closeErr) {
+          logger.verbose(`[Stream] controller already closed: ${toErrorMessage(closeErr)}`);
         }
       } finally {
         reader.releaseLock();
@@ -180,26 +195,10 @@ function rewriteAnthropicSseResponseModel(
   });
 }
 
-interface UsageMetrics {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-  thinkingTokens: number;
-}
-
-function extractJsonUsage(bodyText: string): UsageMetrics | null {
+function extractJsonUsage(bodyText: string): AnthropicUsageSnapshot | null {
   try {
     const parsed = JSON.parse(bodyText) as { usage?: AnthropicResponse["usage"] };
-    const usage = parsed.usage;
-    if (!usage) return null;
-    return {
-      inputTokens: usage.input_tokens || 0,
-      outputTokens: usage.output_tokens || 0,
-      cacheReadTokens: usage.cache_read_input_tokens || 0,
-      cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-      thinkingTokens: usage.thinking_tokens ?? 0,
-    };
+    return parsed.usage ? extractAnthropicUsage(parsed.usage) : null;
   } catch {
     return null;
   }
@@ -208,7 +207,7 @@ function extractJsonUsage(bodyText: string): UsageMetrics | null {
 async function rewriteAnthropicResponseModel(
   response: Response,
   clientModel: string,
-  onComplete?: (usage: UsageMetrics) => void,
+  onComplete?: (usage: AnthropicUsageSnapshot) => void,
 ): Promise<Response> {
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("Content-Length");
@@ -319,19 +318,14 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
       proxiedResponse,
       incomingBody.model,
       (usage) => {
-        recordRequest({
+        recordUsage({
+          usage,
           model: body.model,
-          source: "claude_code",
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          cacheReadTokens: usage.cacheReadTokens,
-          cacheCreationTokens: usage.cacheCreationTokens,
-          thinkingTokens: usage.thinkingTokens,
+          appliedModel: body.model,
           stream: body.stream || false,
           latencyMs: Math.round(performance.now() - upstreamStartPerf),
           shape,
           decision,
-          appliedModel: body.model,
         });
       },
     );
@@ -348,12 +342,6 @@ export async function handleAnthropicMessages(req: Request): Promise<Response> {
   } catch (error) {
     const message = toErrorMessage(error);
     logger.error(`Request handling error: ${message}`);
-    return Response.json(
-      {
-        type: "error",
-        error: { type: "invalid_request_error", message },
-      } satisfies AnthropicError,
-      { status: 400 },
-    );
+    return Response.json(buildAnthropicError("invalid_request_error", message), { status: 400 });
   }
 }

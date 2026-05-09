@@ -2,7 +2,7 @@
 
 import { useGSAP } from "@gsap/react";
 import { useRef } from "react";
-import { ensureGsapPlugins, gsap } from "~/lib/motion";
+import { ensureGsapPlugins, gsap, withReducedMotion } from "~/lib/motion";
 
 interface PlanUsageArcProps {
   /** 0..100 */
@@ -34,9 +34,7 @@ export function PlanUsageArc({ value, label, size = 220, strokeWidth = 6 }: Plan
       const arc = arcRef.current;
       if (!arc) return;
       const targetOffset = arcLength * (1 - clamped / 100);
-      const mm = gsap.matchMedia();
-      mm.add({ isMotion: "(prefers-reduced-motion: no-preference)" }, (ctx) => {
-        const { isMotion } = ctx.conditions as { isMotion: boolean };
+      return withReducedMotion((isMotion) => {
         gsap.fromTo(
           arc,
           { strokeDashoffset: arcLength },
@@ -48,7 +46,6 @@ export function PlanUsageArc({ value, label, size = 220, strokeWidth = 6 }: Plan
           },
         );
       });
-      return () => mm.revert();
     },
     { scope: containerRef, dependencies: [clamped, arcLength] },
   );

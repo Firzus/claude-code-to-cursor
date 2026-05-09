@@ -8,12 +8,12 @@ import { RecentStrip } from "~/components/overview/recent-strip";
 import { TodayStats } from "~/components/overview/today-stats";
 import { getAnalyticsRequests, getBudget, getHealth, getPlanUsage, getSettings } from "~/lib/api";
 import { modelLabel } from "~/lib/format";
+import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const incoming = await headers();
-  const ip = incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
+  const ip = getForwardedFor(await headers());
 
   const [health, planUsage, budget, recent, settings] = await Promise.all([
     getHealth(ip).catch(() => undefined),

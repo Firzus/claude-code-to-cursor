@@ -96,12 +96,4 @@ export default defineSchema({
     scopes: v.array(v.string()),
     obtainedAt: v.number(),
   }).index("by_key", ["key"]),
-
-  // Transient PKCE state during the OAuth /login → /callback handshake.
-  // Cleaned up by a scheduled function after a few minutes.
-  pkceState: defineTable({
-    state: v.string(),
-    codeVerifier: v.string(),
-    createdAt: v.number(),
-  }).index("by_state", ["state"]),
 });

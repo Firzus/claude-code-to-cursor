@@ -1,6 +1,11 @@
 import { proxyRequest } from "../anthropic-client";
-import { getModelSettings, recordRequest } from "../db";
-import { createOpenAIErrorStream, parseResponseError, toErrorMessage } from "../error-utils";
+import { getModelSettings, recordUsage } from "../db";
+import {
+  buildOpenAIError,
+  createOpenAIErrorStream,
+  parseResponseError,
+  toErrorMessage,
+} from "../error-utils";
 import { logger } from "../logger";
 import { corsHeaders, logRequestDetails } from "../middleware";
 import { isValidThinkingEffort, type ThinkingEffort } from "../model-settings";
@@ -14,6 +19,7 @@ import { computeRequestShape } from "../request-metrics";
 import { applyThinkingToBody, pickRoute } from "../routing-policy";
 import { createOpenAIStreamFromAnthropic } from "../stream-handler";
 import type { AnthropicRequest, AnthropicResponse, ContentBlock } from "../types";
+import { extractAnthropicUsage } from "../usage";
 
 function stringifyContent(content: string | ContentBlock[] | null | undefined): string {
   if (typeof content === "string") return content;
@@ -185,7 +191,7 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
       }
 
       if (!response.body) {
-        return Response.json({ error: { message: "No response body" } }, { status: 500 });
+        return Response.json(buildOpenAIError("api_error", "No response body"), { status: 500 });
       }
 
       let userToolNames: Set<string> | undefined;
@@ -205,19 +211,14 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
         openaiBody.stream_options,
         userToolNames,
         (usage) => {
-          recordRequest({
+          recordUsage({
+            usage,
             model: anthropicBody.model,
-            source: "claude_code",
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            cacheReadTokens: usage.cacheReadTokens,
-            cacheCreationTokens: usage.cacheCreationTokens,
-            thinkingTokens: usage.thinkingTokens,
+            appliedModel: anthropicBody.model,
             stream: true,
             latencyMs: Math.round(performance.now() - streamStartPerf),
             shape,
             decision,
-            appliedModel: anthropicBody.model,
           });
         },
       );
@@ -238,32 +239,29 @@ export async function handleOpenAIChatCompletions(req: Request): Promise<Respons
     const anthropicResponse = (await response.json()) as AnthropicResponse;
     const openaiResponse = anthropicToOpenai(anthropicResponse, openaiBody.model);
 
-    const usage = anthropicResponse.usage ?? {
-      input_tokens: 0,
-      output_tokens: 0,
-    };
-    recordRequest({
+    recordUsage({
+      usage: extractAnthropicUsage(anthropicResponse.usage),
       model: anthropicBody.model,
-      source: "claude_code",
-      inputTokens: usage.input_tokens || 0,
-      outputTokens: usage.output_tokens || 0,
-      cacheReadTokens: usage.cache_read_input_tokens || 0,
-      cacheCreationTokens: usage.cache_creation_input_tokens || 0,
-      thinkingTokens: usage.thinking_tokens ?? 0,
+      appliedModel: anthropicBody.model,
       stream: false,
       latencyMs: Math.round(performance.now() - upstreamStartPerf),
       shape,
       decision,
-      appliedModel: anthropicBody.model,
     });
 
     return Response.json(openaiResponse, { headers: responseHeaders });
   } catch (error) {
     const stack = error instanceof Error && error.stack ? `\n${error.stack}` : "";
-    logger.error(`OpenAI request handling error: ${toErrorMessage(error)}${stack}`);
-    return Response.json(
-      { error: { message: "Request processing failed", type: "invalid_request_error" } },
-      { status: 400 },
-    );
+    const message = toErrorMessage(error);
+    logger.error(`OpenAI request handling error: ${message}${stack}`);
+    // Distinguish bad client JSON (400) from internal failures (500). Cursor
+    // surfaces internal_error differently from invalid_request_error in its UI,
+    // so reflecting the actual cause helps users diagnose stuck requests.
+    if (error instanceof SyntaxError) {
+      return Response.json(buildOpenAIError("invalid_request_error", message), { status: 400 });
+    }
+    return Response.json(buildOpenAIError("internal_error", "Request processing failed"), {
+      status: 500,
+    });
   }
 }

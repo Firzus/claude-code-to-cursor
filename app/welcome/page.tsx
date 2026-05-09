@@ -10,22 +10,20 @@ import { Button } from "~/components/ui/button";
 import { WelcomeHero } from "~/components/welcome/hero";
 import { StepCard } from "~/components/welcome/step-card";
 import { getHealth, getSettings } from "~/lib/api";
+import { stripProtocol } from "~/lib/format";
 import { type ModelSettings, modelLabels } from "~/lib/schemas";
+import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const dynamic = "force-dynamic";
-
-interface WelcomeSearchParams {
-  force?: string;
-}
 
 export default async function WelcomePage({
   searchParams,
 }: {
-  searchParams: Promise<WelcomeSearchParams>;
+  searchParams: Promise<{ force?: string }>;
 }) {
   const { force } = await searchParams;
   const incoming = await headers();
-  const ip = incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
+  const ip = getForwardedFor(incoming);
 
   const [health, settingsRes] = await Promise.all([
     getHealth(ip).catch(() => undefined),
@@ -118,9 +116,7 @@ export default async function WelcomePage({
             </div>
             <span className="text-xs text-muted-foreground">
               Endpoint:{" "}
-              <span className="font-mono text-foreground">
-                {proxyBase.replace(/^https?:\/\//, "")}
-              </span>
+              <span className="font-mono text-foreground">{stripProtocol(proxyBase)}</span>
             </span>
           </div>
           <SnippetCard

@@ -7,13 +7,15 @@ import { TunnelBanner } from "~/components/integrations/tunnel-banner";
 import { PageHeader } from "~/components/layout/page-header";
 import { Reveal } from "~/components/motion/reveal";
 import { getHealth } from "~/lib/api";
+import { stripProtocol } from "~/lib/format";
+import { getForwardedFor } from "~/lib/server/forwarded-for";
 
 export const metadata = { title: "Integrations" };
 export const dynamic = "force-dynamic";
 
 export default async function IntegrationsPage() {
   const incoming = await headers();
-  const ip = incoming.get("cf-connecting-ip") ?? incoming.get("x-forwarded-for") ?? undefined;
+  const ip = getForwardedFor(incoming);
   const proto = incoming.get("x-forwarded-proto") ?? "http";
   const host = incoming.get("host") ?? "localhost:3111";
   const proxyBase = `${proto}://${host}`;
@@ -66,7 +68,7 @@ export default async function IntegrationsPage() {
             <span className="text-xs text-muted-foreground">
               Endpoint:{" "}
               <span className="font-mono text-foreground">
-                {(tunnelUrl ?? proxyBase).replace(/^https?:\/\//, "")}
+                {stripProtocol(tunnelUrl ?? proxyBase)}
               </span>
             </span>
           </div>

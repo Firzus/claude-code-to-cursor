@@ -1,7 +1,6 @@
 import { v } from "convex/values";
+import { SINGLETON_KEY, singletonUpsert } from "./_helpers";
 import { mutation, query } from "./_generated/server";
-
-const SINGLETON_KEY = "singleton" as const;
 
 // SECURITY: these functions hold OAuth access/refresh tokens. They are
 // declared as public `mutation`/`query` only because the self-hosted Convex
@@ -40,16 +39,7 @@ export const save = mutation({
     obtainedAt: v.number(),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("oauthTokens")
-      .withIndex("by_key", (q) => q.eq("key", SINGLETON_KEY))
-      .unique();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, args);
-    } else {
-      await ctx.db.insert("oauthTokens", { key: SINGLETON_KEY, ...args });
-    }
+    await singletonUpsert(ctx, "oauthTokens", args);
   },
 });
 

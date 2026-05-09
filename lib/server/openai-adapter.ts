@@ -369,13 +369,14 @@ function convertContent(
       const url = openaiPart.image_url.url;
       if (url.startsWith("data:")) {
         const match = url.match(/^data:([^;]+);base64,(.+)$/);
-        if (match) {
+        const [, mediaType, data] = match ?? [];
+        if (mediaType && data) {
           blocks.push({
             type: "image",
             source: {
               type: "base64",
-              media_type: match[1] as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-              data: match[2],
+              media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              data,
             },
           });
         }
@@ -688,6 +689,19 @@ export function anthropicToOpenai(
   };
 }
 
+/**
+ * Common envelope shared by every `chat.completion.chunk` we emit. Pulled out
+ * so the four helpers below stay focused on their specific delta payload.
+ */
+function baseChunk(id: string, model: string): Pick<OpenAIStreamChunk, "id" | "object" | "created" | "model"> {
+  return {
+    id: `chatcmpl-${id}`,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model,
+  };
+}
+
 export function createOpenAIStreamChunk(
   id: string,
   model: string,
@@ -696,10 +710,7 @@ export function createOpenAIStreamChunk(
   usage?: OpenAIStreamChunk["usage"],
 ): string {
   const chunk: OpenAIStreamChunk = {
-    id: `chatcmpl-${id}`,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model,
+    ...baseChunk(id, model),
     choices: [
       {
         index: 0,
@@ -707,21 +718,18 @@ export function createOpenAIStreamChunk(
         finish_reason: finishReason || null,
       },
     ],
+    // Cursor's OpenAI client expects `usage` to be present on every chunk
+    // (null on streaming chunks, populated on the final usage chunk). Pre-set
+    // it here so we don't have to post-process the JSON via regex.
+    usage: usage ?? null,
   };
-
-  if (usage !== undefined) {
-    chunk.usage = usage;
-  }
 
   return `data: ${JSON.stringify(chunk)}\n\n`;
 }
 
 export function createOpenAIStreamStart(id: string, model: string): string {
   const chunk: OpenAIStreamChunk = {
-    id: `chatcmpl-${id}`,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model,
+    ...baseChunk(id, model),
     choices: [
       {
         index: 0,
@@ -729,6 +737,7 @@ export function createOpenAIStreamStart(id: string, model: string): string {
         finish_reason: null,
       },
     ],
+    usage: null,
   };
 
   return `data: ${JSON.stringify(chunk)}\n\n`;
@@ -765,10 +774,7 @@ export function createOpenAIToolCallChunk(
   }
 
   const chunk: OpenAIStreamChunk = {
-    id: `chatcmpl-${id}`,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model,
+    ...baseChunk(id, model),
     choices: [
       {
         index: 0,
@@ -778,6 +784,7 @@ export function createOpenAIToolCallChunk(
         finish_reason: finishReason || null,
       },
     ],
+    usage: null,
   };
 
   return `data: ${JSON.stringify(chunk)}\n\n`;
@@ -794,14 +801,10 @@ export function createOpenAIStreamUsageChunk(
   promptTokens: number,
   completionTokens: number,
   cacheReadTokens: number = 0,
-  _cacheCreationTokens: number = 0,
   reasoningTokens: number = 0,
 ): string {
   const chunk: OpenAIStreamChunk = {
-    id: `chatcmpl-${id}`,
-    object: "chat.completion.chunk",
-    created: Math.floor(Date.now() / 1000),
-    model,
+    ...baseChunk(id, model),
     choices: [],
     usage: computeOpenAIUsage(promptTokens, completionTokens, cacheReadTokens, reasoningTokens),
   };

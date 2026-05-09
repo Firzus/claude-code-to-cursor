@@ -152,18 +152,8 @@ export async function getLatestSnapshot(): Promise<RateLimitSnapshot | null> {
     cachedSnapshot = stored as RateLimitSnapshot;
     return cachedSnapshot;
   } catch (error) {
-    logger.verbose(`[plan-usage] failed to load snapshot: ${toErrorMessage(error)}`);
+    logger.warn(`[plan-usage] failed to load snapshot: ${toErrorMessage(error)}`);
     return null;
   }
 }
 
-export function clearSnapshotCache(): void {
-  cachedSnapshot = null;
-  lastPersistedAt = 0;
-  lastPersistedStatus = null;
-  pendingPersist = null;
-  if (persistTimer) {
-    clearTimeout(persistTimer);
-    persistTimer = null;
-  }
-}

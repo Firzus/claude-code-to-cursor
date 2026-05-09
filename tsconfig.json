@@ -44,6 +44,6 @@
     ".next",
     "playwright-report",
     "test-results",
-    "spike"
+    "scripts"
   ]
 }

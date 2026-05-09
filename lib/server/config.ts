@@ -1,10 +1,4 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { ProxyConfig } from "./types";
-
-// OAuth credentials persistence (own directory, not Claude Code's)
-export const CCTC_AUTH_DIR = process.env.CCTC_AUTH_DIR || join(homedir(), ".cctc");
-export const CCTC_AUTH_PATH = join(CCTC_AUTH_DIR, "auth.json");
 
 export const CLAUDE_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 export const ANTHROPIC_TOKEN_URL = "https://console.anthropic.com/v1/oauth/token";
@@ -12,7 +6,6 @@ export const ANTHROPIC_AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 export const OAUTH_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback";
 export const OAUTH_SCOPES = "org:create_api_key user:profile user:inference";
 export const ANTHROPIC_API_URL = "https://api.anthropic.com";
-export const TUNNEL_URL = process.env.CLOUDFLARE_TUNNEL_URL || "";
 // Required beta headers for Claude Code OAuth
 const ANTHROPIC_BETA_OAUTH = "oauth-2025-04-20";
 const ANTHROPIC_BETA_INTERLEAVED_THINKING = "interleaved-thinking-2025-05-14";
@@ -33,7 +26,16 @@ export const CLAUDE_CODE_USER_AGENT = "claude-cli/2.1.97 (external, cli)";
 export const CLAUDE_CODE_SYSTEM_PROMPT =
   "You are Claude Code, Anthropic's official CLI for Claude.";
 
+function parseEnvInt(name: string, fallback: number, min = 1): number {
+  const raw = parseInt(process.env[name] || "", 10);
+  return Number.isInteger(raw) && raw >= min ? raw : fallback;
+}
+
+let cachedConfig: ProxyConfig | null = null;
+
 export function getConfig(): ProxyConfig {
+  if (cachedConfig) return cachedConfig;
+
   // IP whitelist for requests coming through the Cloudflare tunnel.
   // Set to "disabled" to allow all IPs.
   const allowedIPsEnv = process.env.ALLOWED_IPS || "52.44.113.131,184.73.225.134";
@@ -62,17 +64,14 @@ export function getConfig(): ProxyConfig {
     new Set([...localOrigins, ...(tunnelOrigin ? [tunnelOrigin] : []), ...explicit]),
   );
 
-  // Cap concurrent upstream Anthropic requests to keep the event loop
-  // responsive for in-flight streams. 3 is a balance between throughput and
-  // per-stream latency; bump via env when running on a fast machine.
-  const rawMaxConcurrency = parseInt(process.env.CCTC_MAX_UPSTREAM_CONCURRENCY || "3", 10);
-  const maxUpstreamConcurrency =
-    Number.isInteger(rawMaxConcurrency) && rawMaxConcurrency >= 1 ? rawMaxConcurrency : 3;
-
-  return {
-    port: parseInt(process.env.PORT || "8082", 10),
+  cachedConfig = {
+    port: parseEnvInt("PORT", 8082, 0),
     allowedIPs,
     allowedOrigins,
-    maxUpstreamConcurrency,
+    // Cap concurrent upstream Anthropic requests to keep the event loop
+    // responsive for in-flight streams. 3 is a balance between throughput
+    // and per-stream latency; bump via env when running on a fast machine.
+    maxUpstreamConcurrency: parseEnvInt("CCTC_MAX_UPSTREAM_CONCURRENCY", 3),
   };
+  return cachedConfig;
 }

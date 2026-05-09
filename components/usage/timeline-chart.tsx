@@ -1,7 +1,7 @@
 "use client";
 
 import { useGSAP } from "@gsap/react";
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import {
   CartesianGrid,
   Line,
@@ -13,8 +13,8 @@ import {
 } from "recharts";
 import { Skeleton } from "~/components/ui/skeleton";
 import { useAnalyticsTimeline } from "~/hooks/use-analytics-timeline";
-import { formatCompactTokens } from "~/lib/format";
-import { ensureGsapPlugins, gsap } from "~/lib/motion";
+import { formatCompactTokens, formatTimelineTick } from "~/lib/format";
+import { ensureGsapPlugins, gsap, withReducedMotion } from "~/lib/motion";
 import type { AnalyticsTimeline, Period } from "~/lib/schemas";
 
 interface TimelineChartProps {
@@ -26,24 +26,23 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
   const { data, isLoading } = useAnalyticsTimeline(period, initial);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const points = useMemo(() => {
-    if (!data?.buckets) return [];
-    return data.buckets.map((b) => ({
+  // Recharts only re-renders when the array reference changes, and the
+  // outer component already only re-renders when `data` changes via SWR.
+  // Memoising buys nothing here — a fresh map every render is cheap (24 items).
+  const points =
+    data?.buckets.map((b) => ({
       timestamp: b.timestamp,
       tokens: Math.round(
         b.inputTokens + b.outputTokens + b.cacheCreationTokens + b.cacheReadTokens * 0.1,
       ),
-    }));
-  }, [data]);
+    })) ?? [];
 
   useGSAP(
     () => {
       ensureGsapPlugins();
       const node = containerRef.current;
       if (!node) return;
-      const mm = gsap.matchMedia();
-      mm.add({ isMotion: "(prefers-reduced-motion: no-preference)" }, (ctx) => {
-        const { isMotion } = ctx.conditions as { isMotion: boolean };
+      return withReducedMotion((isMotion) => {
         if (!isMotion) {
           gsap.set(node, { clipPath: "inset(0 0 0 0)" });
           return;
@@ -54,7 +53,6 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
           { clipPath: "inset(0 0 0 0)", duration: 1.1, ease: "power3.out" },
         );
       });
-      return () => mm.revert();
     },
     { scope: containerRef, dependencies: [points.length, period] },
   );
@@ -96,13 +94,7 @@ export function TimelineChart({ period, initial }: TimelineChartProps) {
                   tickMargin={10}
                   minTickGap={40}
                   tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
-                  tickFormatter={(v: number) => {
-                    const d = new Date(v);
-                    if (period === "5hour" || period === "day") {
-                      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                    }
-                    return d.toLocaleDateString([], { month: "short", day: "numeric" });
-                  }}
+                  tickFormatter={(v: number) => formatTimelineTick(period, v)}
                 />
                 <YAxis
                   tickLine={false}

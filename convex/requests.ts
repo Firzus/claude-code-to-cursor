@@ -43,13 +43,17 @@ export const recordRequest = mutation({
 // Convex doesn't expose SQL SUM, so we stream the rows in the time window
 // and aggregate in JS. Cheap as long as the window is bounded; for very
 // large ranges we'd want a denormalized rollup table.
+//
+// NB: queries must be deterministic. `Date.now()` would break Convex caching
+// and reactivity, so callers pass `now` explicitly when `until` is unset.
 export const getAnalytics = query({
   args: {
     since: v.number(),
     until: v.optional(v.number()),
+    now: v.number(),
   },
-  handler: async (ctx, { since, until }) => {
-    const periodEnd = until ?? Date.now();
+  handler: async (ctx, { since, until, now }) => {
+    const periodEnd = until ?? now;
 
     const rows = await ctx.db
       .query("requests")
@@ -162,9 +166,10 @@ export const getAnalyticsTimeline = query({
     since: v.number(),
     until: v.optional(v.number()),
     buckets: v.optional(v.number()),
+    now: v.number(),
   },
-  handler: async (ctx, { since, until, buckets = 24 }) => {
-    const periodEnd = until ?? Date.now();
+  handler: async (ctx, { since, until, buckets = 24, now }) => {
+    const periodEnd = until ?? now;
     const span = periodEnd - since;
     const bucketSize = Math.max(1, Math.floor(span / buckets));
 
@@ -236,9 +241,10 @@ export const getRecentErrors = query({
     limit: v.optional(v.number()),
     since: v.optional(v.number()),
     until: v.optional(v.number()),
+    now: v.number(),
   },
-  handler: async (ctx, { limit = 10, since = 0, until }) => {
-    const periodEnd = until ?? Date.now();
+  handler: async (ctx, { limit = 10, since = 0, until, now }) => {
+    const periodEnd = until ?? now;
 
     const inWindow = await ctx.db
       .query("requests")
@@ -271,12 +277,12 @@ export const getRecentErrors = query({
 });
 
 export const getBudgetDaySummary = query({
-  args: {},
-  handler: async (ctx) => {
-    const start = new Date();
+  args: { now: v.number() },
+  handler: async (ctx, { now }) => {
+    const start = new Date(now);
     start.setUTCHours(0, 0, 0, 0);
     const periodStart = start.getTime();
-    const periodEnd = Date.now();
+    const periodEnd = now;
 
     const rows = await ctx.db
       .query("requests")
@@ -320,9 +326,9 @@ export const getBudgetDaySummary = query({
 export const getPlanWindowUsage = query({
   args: {
     sinceMs: v.number(),
+    now: v.number(),
   },
-  handler: async (ctx, { sinceMs }) => {
-    const now = Date.now();
+  handler: async (ctx, { sinceMs, now }) => {
 
     const rows = await ctx.db
       .query("requests")

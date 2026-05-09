@@ -1,7 +1,6 @@
-"use client";
-
 import { ArrowUpRight, Globe2 } from "lucide-react";
 import Link from "next/link";
+import { stripProtocol } from "~/lib/format";
 
 interface TunnelBannerProps {
   tunnelUrl: string | null | undefined;
@@ -35,7 +34,7 @@ export function TunnelBanner({ tunnelUrl }: TunnelBannerProps) {
         </span>
         <div className="min-w-0">
           <span className="eyebrow">Tunnel</span>
-          <p className="font-mono text-sm truncate">{tunnelUrl.replace(/^https?:\/\//, "")}</p>
+          <p className="font-mono text-sm truncate">{stripProtocol(tunnelUrl)}</p>
         </div>
       </div>
       <ArrowUpRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
